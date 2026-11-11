@@ -6,6 +6,8 @@ import { TransactionDetails } from './TransactionDetails'
 import { AccountList, type Account } from './AccountList'
 import { groupedAccounts } from './accounts'
 import { Chart, NetWorth, type HistoryPoint } from './Charts'
+import { HomeSpending, SpendingPage, type SpendingReport } from './Spending'
+import { AssetSummary } from './AssetSummary'
 import './styles.css'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
@@ -22,8 +24,9 @@ type Overview = {
   assets_minor: number; liabilities_minor: number; net_worth_minor: number;
   income_minor: number; spending_minor: number; cash_flow_minor: number; uncategorized_minor: number;
   pending_count?: number; missing_balance_count?: number; review_count?: number;
+  spending: SpendingReport;
 }
-type Page = 'Overview' | 'Transactions' | 'Budgets' | 'Accounts' | 'Bank sync'
+type Page = 'Overview' | 'Spending' | 'Transactions' | 'Budgets' | 'Accounts' | 'Bank sync'
 type Theme = 'dark' | 'light'
 type Mode = 'personal' | 'sandbox'
 type DialogState =
@@ -34,8 +37,8 @@ type DialogState =
   | { type: 'category' }
   | { type: 'sandbox-transaction'; entry: Transaction }
 
-const pages: Page[] = ['Overview', 'Transactions', 'Budgets', 'Accounts', 'Bank sync']
-const icons = ['overview', 'transactions', 'budgets', 'accounts', 'transactions'] as const
+const pages: Page[] = ['Overview', 'Spending', 'Transactions', 'Budgets', 'Accounts', 'Bank sync']
+const icons = ['overview', 'expense', 'transactions', 'budgets', 'accounts', 'transactions'] as const
 const kinds: Record<Kind, string> = { expense: 'Expense', income: 'Income', refund: 'Refund', transfer: 'Transfer', investment: 'Investment activity' }
 const accountKinds = { checking: 'Checking', savings: 'Savings', cash: 'Cash', investment: 'Investment', credit: 'Credit card', loan: 'Loan', property: 'Property', other: 'Other asset' }
 const currencies = ['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'CHF', 'JPY']
@@ -166,7 +169,7 @@ function CashFlow({ data, month }: { data: Overview; month: string }) {
 function TransactionList({ transactions, edit, empty = 'No transactions match this view.' }: { transactions: Transaction[]; edit: (tx: Transaction) => void; empty?: string }) {
   if (!transactions.length) return <p className="empty">{empty}</p>
   return <div className="ledger">
-    {transactions.map(tx => <button className="ledger-row" key={tx.id} onClick={() => edit(tx)}>
+    {transactions.map(tx => <button className="ledger-row" data-transaction-id={tx.id} key={tx.id} onClick={() => edit(tx)}>
       <span className={'row-icon row-' + tx.kind}><Icon name={tx.kind === 'transfer' ? 'transactions' : tx.kind === 'income' || tx.kind === 'refund' ? 'income' : 'expense'} /></span>
       <span className="row-main"><strong>{tx.merchant}</strong><small>{tx.account_name}{tx.destination_name && ' → ' + tx.destination_name} · {tx.date}{tx.pending ? ' · Pending' : ''}{tx.needs_review ? ' · Review credit type' : ''}</small></span>
       <span className="chip row-category">{tx.needs_review ? 'Review credit' : tx.category_name ?? kinds[tx.kind]}</span>
@@ -229,6 +232,8 @@ function App() {
   const [accountFilter, setAccountFilter] = useState(0)
   const [search, setSearch] = useState('')
   const [transactionPage, setTransactionPage] = useState(0)
+  const [drilldown, setDrilldown] = useState<{ ids: number[]; label: string } | null>(null)
+  const [chartAccountIds, setChartAccountIds] = useState<number[] | null>(null)
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -245,6 +250,7 @@ function App() {
   const previewPath = '/plaid/sandbox/preview'
   useEffect(() => { setTransactionPage(0) }, [search, accountFilter, categoryFilter, month, mode])
   useEffect(() => { window.scrollTo(0, 0) }, [page])
+  useEffect(() => { setDrilldown(null) }, [month, mode])
 
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -349,6 +355,7 @@ function App() {
   }
 
   function filterCategory(id: number) {
+    setDrilldown(null)
     setCategoryFilter(id)
     setAccountFilter(0)
     setSearch('')
@@ -396,7 +403,11 @@ function App() {
     } else open({ type: 'transaction', entry })
   }
   const editBudget = (budget: Budget) => open({ type: 'budget', budget })
+  const drillSpending = (ids: number[], label: string) => {
+    setDrilldown({ ids, label }); setCategoryFilter(0); setAccountFilter(0); setSearch(''); setTransactionPage(0); setPage('Transactions')
+  }
   const entries = ready?.transactions.filter(tx => (!categoryFilter || tx.category_id === categoryFilter) &&
+    (!drilldown || drilldown.ids.includes(tx.id)) &&
     (!accountFilter || tx.account_id === accountFilter) &&
     [tx.merchant, tx.account_name, tx.category_name, tx.notes].some(value => value?.toLowerCase().includes(search.trim().toLowerCase()))) ?? []
   const pageSize = 25
@@ -416,7 +427,7 @@ function App() {
         <option value="personal">Personal</option><option value="sandbox">Sandbox preview</option>
       </select></label>
       <nav aria-label="Finance sections">{pages.map((item, index) =>
-        <button key={item} aria-current={page === item ? 'page' : undefined} onClick={() => { setPage(item); setCategoryFilter(0); setAccountFilter(0); setSearch('') }}>
+        <button key={item} aria-current={page === item ? 'page' : undefined} onClick={() => { setPage(item); setDrilldown(null); setCategoryFilter(0); setAccountFilter(0); setSearch('') }}>
           <Icon name={icons[index]} />{item}
         </button>)}</nav>
       <div className="sidebar-footer">
@@ -430,6 +441,7 @@ function App() {
       <header className="page-header">
         <div><h1>{page}</h1><p className="page-description">{{
           Overview: 'Net worth, monthly cash flow, and budget progress.',
+          Spending: 'See when, where, and how your spending changes.',
           Transactions: 'Browse your ledger and recurring templates.',
           Budgets: 'Plan category spending and compare it with last month.',
           Accounts: 'Track balances across the accounts you own.',
@@ -451,21 +463,23 @@ function App() {
       {ready && page === 'Overview' && <>
         <div className="overview-grid">
         <NetWorth key={mode} accounts={ready.accounts} history={ready.history} mode={mode === 'sandbox' ? 'sandbox' : 'personal'}
-          request={request} money={money} onStart={() => mode === 'sandbox' ? setPage('Bank sync') : open({ type: 'account' })} />
+          request={request} money={money} onSelectionChange={setChartAccountIds} onStart={() => mode === 'sandbox' ? setPage('Bank sync') : open({ type: 'account' })} />
         <CashFlow data={ready} month={activeMonth} />
         </div>
+        <HomeSpending report={ready.spending} money={money} drill={drillSpending} changeMonth={setMonth} openSpending={() => setPage('Spending')}
+          recent={<TransactionList transactions={ready.transactions.filter(tx => ready.spending.eligible_ids.includes(tx.id)).slice(0, 5)} edit={editTransaction} empty="No posted spending this month." />} />
         <div className="dashboard-grid">
-          <section className="card"><div className="section-heading"><div><h2>Recent transactions</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => { setCategoryFilter(0); setAccountFilter(0); setSearch(''); setPage('Transactions') }}>View all <Icon name="right" /></button></div>
-            <TransactionList transactions={ready.transactions.slice(0, 5)} edit={editTransaction} />
-          </section>
+          <AssetSummary accounts={ready.accounts.filter(account => chartAccountIds?.includes(account.id))} loading={chartAccountIds === null} money={money} openAccounts={() => setPage('Accounts')} />
           <section className="card"><div className="section-heading"><div><h2>Budget progress</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => setPage('Budgets')}>View budgets <Icon name="right" /></button></div>
             <BudgetRows budgets={budgetRows} edit={editBudget} filter={filterCategory} />
           </section>
         </div>
       </>}
+      {ready && page === 'Spending' && <SpendingPage key={mode} report={ready.spending} money={money} drill={drillSpending} changeMonth={setMonth} sandbox={mode === 'sandbox'} />}
       {ready && page === 'Transactions' && <>
         <section className="card">
           <div className="section-heading"><div><h2>{activeMonth}</h2><small>{entries.length} entries</small></div></div>
+          {drilldown && <div className="drilldown-filter"><span>{drilldown.label}</span><button className="secondary small" onClick={() => setDrilldown(null)}>Clear spending filter</button></div>}
           <div className="filters">
             <input type="search" aria-label="Search transactions" placeholder="Search transactions" value={search} onChange={event => setSearch(event.target.value)} />
             <select aria-label="Filter account" value={accountFilter} onChange={event => setAccountFilter(Number(event.target.value))}>

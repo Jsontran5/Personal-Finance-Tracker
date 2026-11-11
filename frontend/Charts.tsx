@@ -79,9 +79,11 @@ export function Chart({ history, money, currency = 'USD', label = 'Recorded net 
   </div>
 }
 
-export function NetWorth({ accounts, history, mode, request, money, onStart }: {
-  accounts: Account[]; history: HistoryPoint[]; mode: 'personal' | 'sandbox'; request: Request; money: Money; onStart: () => void
+export function NetWorth({ accounts, history, mode, request, money, onStart, onSelectionChange }: {
+  accounts: Account[]; history: HistoryPoint[]; mode: 'personal' | 'sandbox'; request: Request; money: Money; onStart: () => void;
+  onSelectionChange: (ids: number[] | null) => void
 }) {
+  const [chartMode, setChartMode] = useState('net')
   const [excluded, setExcluded] = useState<number[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -98,6 +100,9 @@ export function NetWorth({ accounts, history, mode, request, money, onStart }: {
   const eligible = accounts.filter(account => account.include_in_net_worth && account.currency === 'USD')
   const selected = eligible.filter(account => !excluded?.includes(account.id))
   const path = '/chart-selection/' + mode
+  useEffect(() => {
+    onSelectionChange(excluded === null ? null : accounts.filter(account => account.include_in_net_worth && account.currency === 'USD' && !excluded.includes(account.id)).map(account => account.id))
+  }, [accounts, excluded, onSelectionChange])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -125,17 +130,21 @@ export function NetWorth({ accounts, history, mode, request, money, onStart }: {
     return {
       date: snapshot.date,
       value_minor: selected.every(account => balances.get(account.id) != null)
-        ? selected.reduce((sum, account) => sum + balances.get(account.id)!, 0) : null,
+        ? selected.reduce((sum, account) => {
+          const value = balances.get(account.id)!
+          return sum + (chartMode === 'assets' ? Math.max(value, 0) : chartMode === 'debt' ? Math.max(-value, 0) : value)
+        }, 0) : null,
     }
   })
 
   return <section className="card hero" aria-labelledby="net-worth-title">
     <div className="hero-header">
-      <div><h2 id="net-worth-title">Net worth</h2>
-        <strong className="hero-value numeric">{excluded !== null && complete ? money(assets - liabilities) : '—'}</strong>
+      <div><h2 id="net-worth-title">{chartMode === 'net' ? 'Net worth' : chartMode === 'assets' ? 'Assets' : 'Debt'}</h2>
+        <strong className="hero-value numeric">{excluded !== null && complete ? money(chartMode === 'assets' ? assets : chartMode === 'debt' ? liabilities : assets - liabilities) : '—'}</strong>
       </div>
       <span className="chip">USD · {mode === 'sandbox' ? 'Sandbox balances' : 'Manual balances'}</span>
     </div>
+    <div className="segmented net-worth-modes" aria-label="Balance chart measure">{[['net', 'Net worth'], ['assets', 'Assets'], ['debt', 'Debt']].map(([value, label]) => <button key={value} aria-pressed={chartMode === value} onClick={() => setChartMode(value)}>{label}</button>)}</div>
     {error && <p className="notice" role="alert">{error}{excluded === null && <button className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button>}</p>}
     {eligible.length > 0 && excluded !== null && <details ref={picker} className="account-picker" onKeyDown={event => {
       if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus() }
@@ -174,7 +183,8 @@ export function NetWorth({ accounts, history, mode, request, money, onStart }: {
       <button className="primary" onClick={onStart}>{mode === 'sandbox' ? 'Open Bank sync' : 'Add your first account'}</button>
     </div>}
     {excluded !== null && eligible.length > 0 && selected.length === 0 && <p className="empty">Select an account to view net worth.</p>}
-    {excluded !== null && selected.length > 0 && <Chart history={points} money={money} />}
+    {excluded !== null && selected.length > 0 && <Chart history={points} money={money} label={'Recorded ' + (chartMode === 'net' ? 'net worth' : chartMode)} />}
+    {excluded !== null && selected.length > 0 && points.filter(point => point.value_minor !== null).length === 1 && <p className="muted chart-gap-note">One recorded date so far. Trends appear as more balances are recorded.</p>}
     {selected.length > 0 && !complete && <p className="muted">A selected account has no current balance. Totals are incomplete.</p>}
     <div className="balance-summary">
       <div><span>Total assets</span><strong className="numeric">{excluded !== null && complete ? money(assets) : '—'}</strong></div>

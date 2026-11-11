@@ -4,9 +4,10 @@ Run with a Python installation containing websocket-client after npm run build.
 Screenshots go to ignored data/ui-qa; no provider requests are made.
 """
 import base64
+from calendar import monthrange
 from contextlib import closing
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 import socket
 import sqlite3
@@ -54,10 +55,16 @@ def run():
         database.with_suffix('.workspace').write_text('sandbox')
         with closing(sqlite3.connect(database.with_suffix('.plaid-sandbox.db'))) as db:
             assert db.execute('SELECT COUNT(*) FROM accounts WHERE active=1').fetchone()[0] == 14
-            # Densify the copied current month to exercise pagination deterministically.
+            # Populate elapsed days and a comparison month on the copy only.
             test_month = date.today().isoformat()[:7]
-            db.execute("UPDATE transactions SET date=? || '-11'", (test_month,))
-            db.execute("UPDATE transaction_details SET payload=json_set(payload,'$.date',?)", (test_month + '-11',))
+            through = date.today().day
+            db.execute("UPDATE transactions SET date=? || '-' || printf('%02d',? + rowid % ?)", (test_month, min(3, through), max(1, through - 2)))
+            previous_month = (date.today().replace(day=1) - timedelta(days=1)).isoformat()[:7]
+            db.execute("UPDATE transactions SET date=? || '-01' WHERE rowid IN (SELECT rowid FROM transactions ORDER BY rowid LIMIT 10)", (previous_month,))
+            account = db.execute("SELECT id FROM accounts WHERE type='depository' LIMIT 1").fetchone()[0]
+            db.execute("INSERT INTO transactions VALUES ('ui-refund',?,?,?,-12500,'USD','credit',0,0)", (account, test_month + '-02', 'Synthetic refund'))
+            db.execute("INSERT INTO preview_edits VALUES ('ui-refund','Synthetic refund','refund',NULL,'UI fixture only')")
+            db.execute("UPDATE transaction_details SET payload=json_set(payload,'$.date',(SELECT date FROM transactions WHERE transactions.id=transaction_details.transaction_id)) WHERE transaction_id IN (SELECT id FROM transactions)")
             db.commit()
         server_port, chrome_port = port(), port()
         server = subprocess.Popen([
@@ -133,11 +140,45 @@ def run():
                     ready("document.querySelector('.account-picker')")
                     before = js("document.querySelector('.hero').getBoundingClientRect().height")
                     screenshot(label + '-overview')
+                    js("document.querySelector('.net-worth-modes button:nth-child(2)').click()")
+                    assert js("document.querySelector('#net-worth-title').textContent") == 'Assets'
+                    js("document.querySelector('.net-worth-modes button:nth-child(3)').click()")
+                    assert js("document.querySelector('#net-worth-title').textContent") == 'Debt'
+                    js("document.querySelector('.net-worth-modes button:first-child').click()")
                     js("document.querySelector('.account-picker > summary').click()")
                     assert js("document.querySelector('.picker-scroll').clientHeight <= 301")
                     assert js("document.querySelector('.hero').getBoundingClientRect().height") == before
                     screenshot(label + '-selector')
                     js("document.querySelector('.picker-done').click()")
+                    js("document.querySelector('.home-spending').scrollIntoView({block:'start'})")
+                    screenshot(label + '-home-calendar')
+                    assert js("document.querySelectorAll('.home-spending .calendar-day').length") == monthrange(date.today().year, date.today().month)[1]
+                    js("document.querySelector('.asset-summary').scrollIntoView({block:'start'})")
+                    js("document.querySelector('.asset-table-details > summary').click()")
+                    screenshot(label + '-asset-table')
+                    nav('Spending')
+                    ready("document.querySelector('.metric-card')")
+                    report = js("fetch('/api/plaid/sandbox/preview?month='+document.querySelector('input[type=month]').value).then(r=>r.json()).then(d=>d.spending)")
+                    assert js("document.querySelector('.metric-card > strong').textContent") == js(f"new Intl.NumberFormat('en-US',{{style:'currency',currency:'USD'}}).format({report['net_minor']}/100)")
+                    screenshot(label + '-spending')
+                    js("document.querySelector('.analytics-grid').scrollIntoView({block:'start'})")
+                    screenshot(label + '-breakdowns')
+                    js("document.querySelector('.breakdown-row').click()")
+                    ready("document.querySelector('.drilldown-filter')")
+                    actual = js("[...document.querySelectorAll('.ledger-row')].map(row=>Number(row.dataset.transactionId))")
+                    assert set(actual).issubset(set(report['bank_categories'][0]['transaction_ids']))
+                    js("document.querySelector('.drilldown-filter button').click()")
+                    assert not js("Boolean(document.querySelector('.drilldown-filter'))")
+                    nav('Spending')
+                    change('select[aria-label="Category source"]', 'local')
+                    assert js("document.querySelector('select[aria-label=\"Category source\"]').value") == 'local'
+                    js("[...document.querySelectorAll('[aria-label=\"Spending display\"] button')].find(b=>b.textContent==='Calendar').click()")
+                    js("document.querySelector('.spending-main').scrollIntoView({block:'start'})")
+                    screenshot(label + '-spending-calendar')
+                    js("document.querySelector('.calendar-day:not(:disabled)').click()")
+                    ready("document.querySelector('.drilldown-filter')")
+                    assert 'Spending on' in js("document.querySelector('.drilldown-filter').textContent")
+                    screenshot(label + '-day-drilldown')
                     nav('Accounts')
                     assert js("document.querySelectorAll('.account-group').length") == 5
                     assert js("[...document.querySelectorAll('.account-identity small')].some(e=>e.textContent.includes('Certificate of deposit'))")
