@@ -1,5 +1,6 @@
-from datetime import date, timedelta
+from datetime import date
 import sqlite3
+from .spending import previous_month, spending_report
 
 LIABILITIES = {"credit", "loan"}
 
@@ -83,9 +84,8 @@ def record_net_worth(db: sqlite3.Connection, day: date):
     """, [(snapshot, a["id"], a["name"], a["kind"], a["balance_minor"]) for a in included])
 
 
-def overview(db: sqlite3.Connection, day: date, month: str):
-    accounts = account_balances(db, day)
-    transactions = [dict(row) for row in db.execute("""
+def month_transactions(db, month):
+    return [dict(row) for row in db.execute("""
         SELECT t.*, a.name AS account_name, a.currency, c.name AS category_name,
                d.name AS destination_name
         FROM transactions t JOIN accounts a ON a.id = t.account_id
@@ -93,17 +93,17 @@ def overview(db: sqlite3.Connection, day: date, month: str):
         LEFT JOIN accounts d ON d.id = t.destination_id
         WHERE t.date >= ? AND t.date <= ? ORDER BY t.date DESC, t.id DESC
     """, (month + "-01", month + "-31"))]
+
+
+def overview(db: sqlite3.Connection, day: date, month: str):
+    accounts = account_balances(db, day)
+    transactions = month_transactions(db, month)
+    prior = previous_month(month)
+    previous_transactions = month_transactions(db, prior) if prior else []
     income, spending, category_actual = monthly_activity(transactions)
     categories = [dict(row) for row in db.execute("SELECT * FROM categories ORDER BY name")]
     limits = dict(db.execute("SELECT category_id, limit_minor FROM monthly_budgets WHERE month=?", (month,)))
-    first_day = date.fromisoformat(month + "-01")
-    previous_month = (first_day - timedelta(days=1)).isoformat()[:7] if first_day > date.min else "0000-12"
-    previous_actual = dict(db.execute("""
-        SELECT t.category_id, SUM(CASE WHEN t.kind = 'expense' THEN t.amount_minor ELSE -t.amount_minor END)
-        FROM transactions t JOIN accounts a ON a.id = t.account_id
-        WHERE t.date >= ? AND t.date < ? AND t.kind IN ('expense','refund') AND a.currency = 'USD'
-        GROUP BY t.category_id
-    """, (previous_month + "-01", month + "-01")))
+    _, _, previous_actual = monthly_activity(previous_transactions)
     budgets = [{**c, "limit_minor": limits.get(c["id"]), "actual_minor": category_actual.get(c["id"], 0),
                 "previous_actual_minor": previous_actual.get(c["id"], 0)}
                for c in categories if c["kind"] == "expense"]
@@ -119,6 +119,7 @@ def overview(db: sqlite3.Connection, day: date, month: str):
         WHERE snapshot_id IN (SELECT MAX(id) FROM net_worth_snapshots GROUP BY effective_date)
     """))
     return {**totals(accounts), "accounts": accounts, "categories": categories, "budgets": budgets,
+            "spending": spending_report(transactions, previous_transactions, month, day),
             "transactions": transactions, "history": history, "income_minor": income,
             "spending_minor": spending, "cash_flow_minor": income - spending,
             "uncategorized_minor": category_actual.get(None, 0),

@@ -1,5 +1,5 @@
 """Dashboard projections and local edits for the isolated Plaid Sandbox store."""
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 import json
 from typing import Annotated, Literal
 
@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, StringConstraints
 
 from .db import connect
 from .ledger import attach_snapshot_accounts, monthly_activity, totals
+from .spending import previous_month, spending_report
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 Kind = Literal["expense", "income", "refund", "transfer", "investment"]
@@ -121,10 +122,12 @@ def preview_transactions(db, month):
           COALESCE(e.kind, CASE WHEN t.kind='credit' THEN 'refund' ELSE t.kind END) AS kind,
           COALESCE(e.merchant,t.name) AS merchant, COALESCE(e.notes,'') AS notes,
           t.date,t.currency,t.pending,a.name AS account_name,c.name AS category_name,
+          json_extract(d.payload,'$.personal_finance_category.primary') AS bank_category,
           NULL AS destination_name, CASE WHEN t.kind='credit' AND e.kind IS NULL THEN 1 ELSE 0 END AS needs_review
         FROM transactions t JOIN accounts a ON a.id=t.account_id
         LEFT JOIN preview_edits e ON e.transaction_id=t.id
         LEFT JOIN preview_categories c ON c.id=e.category_id
+        LEFT JOIN transaction_details d ON d.transaction_id=t.id
         WHERE t.removed=0 AND t.date>=? AND t.date<=?
         ORDER BY t.date DESC,t.rowid DESC
     """, (month + "-01", month + "-31"))]
@@ -136,9 +139,9 @@ def preview_overview(db, month):
     income, spending, actual = monthly_activity(transactions)
     categories = [dict(row) for row in db.execute("SELECT * FROM preview_categories ORDER BY name")]
     limits = dict(db.execute("SELECT category_id,limit_minor FROM preview_budgets WHERE month=?", (month,)))
-    first = date.fromisoformat(month + "-01")
-    previous = (first - timedelta(days=1)).isoformat()[:7] if first > date.min else "0000-12"
-    _, _, previous_actual = monthly_activity(preview_transactions(db, previous))
+    previous = previous_month(month)
+    previous_transactions = preview_transactions(db, previous) if previous else []
+    _, _, previous_actual = monthly_activity(previous_transactions)
     history = [dict(row) for row in db.execute("""
         SELECT id AS snapshot_id,date,assets_minor,liabilities_minor,assets_minor-liabilities_minor AS net_worth_minor
         FROM preview_snapshots WHERE id IN (SELECT MAX(id) FROM preview_snapshots GROUP BY date)
@@ -152,6 +155,7 @@ def preview_overview(db, month):
     """))
     return {
         **totals(accounts), "accounts": accounts, "transactions": transactions, "categories": categories,
+        "spending": spending_report(transactions, previous_transactions, month, date.today()),
         "budgets": [{**c, "limit_minor": limits.get(c["id"]), "actual_minor": actual.get(c["id"], 0),
                      "previous_actual_minor": previous_actual.get(c["id"], 0)}
                     for c in categories if c["kind"] == "expense"],
