@@ -33,12 +33,13 @@ export function SpendingCalendar({ report, money, drill, changeMonth }: { report
       {Array.from({ length: first }, (_, index) => <span key={'blank' + index} />)}
       {report.daily.map(day => {
         const level = day.net_minor === null ? 0 : Math.ceil(Math.abs(day.net_minor) / maximum * 4)
-        const amount = day.net_minor === null ? '—' : Math.abs(day.net_minor) >= 100000
-          ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 }).format(day.net_minor / 100) : money(day.net_minor)
+        const amount = day.net_minor === null ? '—' : new Intl.NumberFormat('en-US', {
+          style: 'currency', currency: 'USD', notation: Math.abs(day.net_minor) >= 100000 ? 'compact' : 'standard', maximumFractionDigits: 0,
+        }).format(day.net_minor / 100)
         return <button key={day.date} disabled={day.net_minor === null} className={'calendar-day heat-' + level + (day.net_minor !== null && day.net_minor < 0 ? ' refund-day' : '')}
           title={day.date + ' · ' + (day.net_minor === null ? 'No actual total' : money(day.net_minor))}
           aria-current={day.date === today ? 'date' : undefined} aria-label={day.date + ': ' + (day.net_minor === null ? 'Future date' : money(day.net_minor) + ' net spending, ' + day.transaction_ids.length + ' transactions')}
-          onClick={() => drill(day.transaction_ids, 'Spending on ' + day.date)}>
+          onClick={() => drill(day.transaction_ids, 'Spending on ' + day.date + ' · ' + money(day.net_minor!))}>
           <span>{day.day}</span><strong className="numeric">{amount}</strong>
         </button>
       })}
@@ -102,7 +103,7 @@ export function SpendingPage({ report, money, drill, changeMonth, sandbox }: { r
         <div className="segmented" aria-label="Spending display">{['trend', 'calendar'].map(item => <button key={item} aria-pressed={view === item} onClick={() => setView(item)}>{item === 'trend' ? 'Trend' : 'Calendar'}</button>)}</div></div>
       <div className="spend-comparison"><strong className={'numeric ' + (report.change_minor !== null && report.change_minor < 0 ? 'positive' : '')}>
         {report.change_minor === null ? 'No posted comparison activity' : (report.change_minor >= 0 ? '+' : '−') + money(Math.abs(report.change_minor)) + (report.change_percent !== null ? ` (${Math.abs(report.change_percent).toFixed(1)}% ${report.change_minor >= 0 ? 'more' : 'less'})` : '')}</strong>
-        <small>{report.comparison_month && `${monthLabel(report.comparison_month)} · `}{report.comparison_days ? `days 1–${report.comparison_days}` : 'No comparable elapsed days'}</small></div>
+        <small>{report.comparison_month && `${monthLabel(report.comparison_month)} · `}{report.comparison_days ? `days 1–${report.comparison_days}` : 'No comparable elapsed days'}{report.previous_minor !== null && ' · ' + money(report.previous_minor) + ' net'}</small></div>
       {view === 'trend' ? <SpendingTrend report={report} money={money} /> : <SpendingCalendar report={report} money={money} drill={drill} changeMonth={changeMonth} />}
       <p className="analytics-note">Recorded activity only. Pending entries, credits awaiting review, transfers, and investment activity are excluded. Imported history may be incomplete.</p>
     </section>
@@ -124,6 +125,6 @@ export function HomeSpending({ report, money, drill, changeMonth, recent, openSp
     <strong className="home-spend-value numeric">{money(report.net_minor)}</strong>
     <div className="home-spending-grid"><SpendingCalendar report={report} money={money} drill={drill} changeMonth={changeMonth} />
       <div className="recent-spending"><div className="section-heading"><h3>Recent spending</h3><button className="text-button" onClick={() => drill(report.eligible_ids, 'Posted spending · ' + monthLabel(report.month))}>View all</button></div>{recent}</div></div>
-    <p className="analytics-note">Select a day to see its transactions. Refunds reduce spending; blank future days have no actual totals.</p>
+    <p className="analytics-note">Calendar labels are rounded; select a day for exact amounts. Refunds reduce spending; blank future days have no actual totals.</p>
   </section>
 }

@@ -479,7 +479,7 @@ function App() {
       {ready && page === 'Transactions' && <>
         <section className="card">
           <div className="section-heading"><div><h2>{activeMonth}</h2><small>{entries.length} entries</small></div></div>
-          {drilldown && <div className="drilldown-filter"><span>{drilldown.label}</span><button className="secondary small" onClick={() => setDrilldown(null)}>Clear spending filter</button></div>}
+          {drilldown && <div className="drilldown-filter"><span>{drilldown.label}</span><div className="inline-actions"><button className="secondary small" onClick={() => setDrilldown(null)}>Clear spending filter</button><button className="secondary small" onClick={() => { setDrilldown(null); setPage('Spending') }}>Back to Spending</button></div></div>}
           <div className="filters">
             <input type="search" aria-label="Search transactions" placeholder="Search transactions" value={search} onChange={event => setSearch(event.target.value)} />
             <select aria-label="Filter account" value={accountFilter} onChange={event => setAccountFilter(Number(event.target.value))}>

@@ -239,8 +239,22 @@ def run():
             # Personal workspace remains usable with the grouped component.
             change('select[aria-label="Workspace"]', 'personal')
             ready("document.querySelector('h2')?.textContent==='Manual accounts'")
+            nav('Spending')
+            ready("document.querySelector('.spending-page .empty')")
+            assert js("document.querySelector('.metric-card > strong').textContent") == '$0.00'
+            screenshot('390-light-personal-empty-spending')
+            # Verify that a refund-only month renders below zero without fabricating spending.
+            with closing(sqlite3.connect(database.with_suffix('.plaid-sandbox.db'))) as db:
+                db.execute("UPDATE transactions SET removed=1 WHERE kind='expense' AND date LIKE ?", (test_month + '%',))
+                db.commit()
+            change('select[aria-label="Workspace"]', 'sandbox')
+            ready("document.querySelector('.metric-card > strong')?.textContent==='-$125.00'")
+            cdp('Emulation.setDeviceMetricsOverride', {'width': 1280, 'height': 1000, 'deviceScaleFactor': 1, 'mobile': False})
+            js("document.querySelector('.theme-toggle').click()")
+            ready("document.documentElement.dataset.theme==='dark'")
+            screenshot('1280-dark-refund-only-spending')
             print('\n'.join(results))
-            print('Selection persistence, account search, empty feed messaging and Personal isolation verified.')
+            print('Selection persistence, account search, spending drilldowns, refund-only charts, empty states and Personal isolation verified.')
             print('Screenshots:', OUTPUT)
         finally:
             if ws:
