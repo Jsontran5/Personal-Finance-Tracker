@@ -10,5 +10,5 @@ if not exist ".venv\Scripts\python.exe" (
   pause
   exit /b 1
 )
-".venv\Scripts\python.exe" -m finance
-if errorlevel 1 pause
+rem Hand the app its own Python console; do not leave a batch job waiting.
+start "Personal Finance" /d "%~dp0" "%~dp0.venv\Scripts\python.exe" -m finance

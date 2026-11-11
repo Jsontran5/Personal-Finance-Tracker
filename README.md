@@ -6,7 +6,9 @@ A local Windows ledger for manual transactions, budgets, account balances, and n
 
 1. Install Python 3.13 and Node.js 22.12 or later if needed.
 2. Run **Setup Finance.cmd** once to install dependencies and build the dashboard. This step needs internet access.
-3. Run **Start Finance.cmd** to open the app. Leave its window open while using the dashboard. Close the launcher window to stop the app. Normal use works offline.
+3. Double-click **Start Finance.cmd** to open the app in its own Python console. Leave that console open while using the dashboard. Press **Ctrl+C** there to stop it. Normal use works offline.
+
+From the VS Code PowerShell terminal, run `& .\.venv\Scripts\python.exe -m finance`, or use `.\Start Finance.ps1`. Both run directly in the terminal, so **Ctrl+C** stops the server without the batch-file **Terminate batch job (Y/N)?** prompt. Run the same command again to restart. If local PowerShell policy blocks the script, use the direct Python command.
 
 ## Record your finances
 
@@ -23,7 +25,7 @@ A local Windows ledger for manual transactions, budgets, account balances, and n
 
 ## Back up the database
 
-From the project folder, run `.venv\Scripts\python.exe -m finance.backup`. The command takes a consistent, integrity-checked copy in `backups/`. Treat the database and backups as private files. Project notes and checkpoints are in [context_docs](context_docs/README.md).
+From the project folder, run `.venv\Scripts\python.exe -m finance.backup`. The command takes a consistent, integrity-checked copy in `backups/`. Treat the database and backups as private files. Project notes and checkpoints stay in the local-only `context_docs/` folder.
 
 ## Try Plaid Sandbox
 
@@ -56,7 +58,7 @@ Plaid Sandbox supports credit cards and loans. The sample [credit-card testing p
 
 ## Local development
 
-The local Git repository tracks source, documentation, the dependency lockfile, and synthetic test profiles. Credentials, databases, backups, and generated files are ignored. See [Git workflow](context_docs/GIT_WORKFLOW.md).
+The local Git repository tracks source, the public README, the dependency lockfile, and synthetic test profiles. `context_docs/` and `context_folder/` are local-only and must never be committed or pushed. Credentials, databases, backups, and generated files are also ignored. Make small, frequent commits after each verified piece of work. Local Git hooks reject context files in commits and pushes.
 
 For the regression tests, install optional test dependencies with `.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`, then run `.venv\Scripts\python.exe -m unittest discover -s tests -v`. Build the dashboard with `npm.cmd run build`.
 

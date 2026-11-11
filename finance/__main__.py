@@ -29,7 +29,11 @@ def main():
         print(f"Finance is starting at http://{HOST}:{port}")
         threading.Thread(target=open_browser, args=(port,), daemon=True).start()
         config = uvicorn.Config(app, host=HOST, port=port, access_log=False, proxy_headers=False)
-        uvicorn.Server(config).run(sockets=[listener])
+        try:
+            uvicorn.Server(config).run(sockets=[listener])
+        except KeyboardInterrupt:
+            # Ctrl+C is normal shutdown, including Uvicorn versions that re-raise it.
+            pass
 
 
 if __name__ == "__main__":
