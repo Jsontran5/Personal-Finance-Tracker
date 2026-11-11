@@ -46,7 +46,9 @@ Net worth uses saved account balances. Recorded balance snapshots begin when pre
 
 Sandbox data and edits live in `data/finance.plaid-sandbox.db`. Restarting the app reuses its saved test connection. Resetting `data/finance.db` does not reset the test connection. Keep the `.env` file private and use the Sandbox secret here.
 
-Click a synced transaction to see its provider details, including original description, authorization dates, payment channel, category confidence, location, counterparties, and payment information where supplied. Expand **All provider fields** to inspect the complete saved transaction response. Decimal values in that local JSON are stored as exact strings.
+Accounts are grouped into cash/savings, investments/retirement, health savings, credit cards, and loans/credit lines, with other assets shown when needed. Search or filter groups, expand an account for freshness and balance history, and use the net worth account selector to filter chart totals. Account subtypes update on normal sync without creating another connection.
+
+Transactions display 25 entries per page. Click a synced transaction and expand **Provider transaction details** for supplied fields such as original description, authorization dates, payment channel, category confidence, location, counterparties, and payment information. Expand **Raw provider data** for the complete saved response. Decimal values in that local JSON are stored as exact strings.
 
 Use **Bank sync → Refresh transaction details** to replay the available history and fill in details for older imports. The saved Item and local transaction edits are retained. **Manage test accounts** reopens account selection on that Item so you can share additional eligible accounts. Accounts removed from sharing stop contributing to current balances while their existing transaction history is retained.
 
@@ -57,4 +59,6 @@ Plaid Sandbox supports credit cards and loans. The sample [credit-card testing p
 The local Git repository tracks source, documentation, the dependency lockfile, and synthetic test profiles. Credentials, databases, backups, and generated files are ignored. See [Git workflow](context_docs/GIT_WORKFLOW.md).
 
 For the regression tests, install optional test dependencies with `.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`, then run `.venv\Scripts\python.exe -m unittest discover -s tests -v`. Build the dashboard with `npm.cmd run build`.
+
+With Chrome installed and the 14-account Sandbox dataset available, run `.venv\Scripts\python.exe tests/check_account_ui.py` for the expanded-layout checks. It uses isolated database copies and writes screenshots under ignored `data/ui-qa`.
 

@@ -8,6 +8,19 @@ function display(value: unknown): string {
   return typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)
 }
 
+function supplied(value: unknown): boolean {
+  if (value === null || value === undefined || value === '') return false
+  if (Array.isArray(value)) return value.some(supplied)
+  if (typeof value === 'object') return Object.values(value).some(supplied)
+  return true
+}
+function readable(value: unknown): string {
+  if (Array.isArray(value)) return value.filter(supplied).map(readable).join('; ')
+  if (value && typeof value === 'object') return Object.entries(value).filter(([, item]) => supplied(item))
+    .map(([key, item]) => key.replaceAll('_', ' ') + ': ' + readable(item)).join('\n')
+  return display(value)
+}
+
 export function TransactionDetails({ id, request }: { id: number; request: Request }) {
   const [data, setData] = useState<Details>()
   const [error, setError] = useState('')
@@ -15,6 +28,7 @@ export function TransactionDetails({ id, request }: { id: number; request: Reque
   useEffect(() => {
     const controller = new AbortController()
     setError('')
+    setData(undefined)
     request<Details>('/plaid/sandbox/preview/transactions/' + id + '/details', 'GET', undefined, controller.signal)
       .then(setData)
       .catch(failure => { if (!controller.signal.aborted) setError(failure.message) })
@@ -31,17 +45,17 @@ export function TransactionDetails({ id, request }: { id: number; request: Reque
     ['Payment information', 'payment_meta'], ['Check number', 'check_number'],
     ['Website', 'website'], ['Pending', 'pending'],
   ]
-  return <section className="transaction-details" aria-label="Provider transaction details">
-    <h3>Provider transaction details</h3>
+  return <details className="transaction-details" aria-label="Provider transaction details">
+    <summary>Provider transaction details <span className="subtle">· optional</span></summary>
     {error && <p className="notice" role="alert">{error} <button type="button" className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button></p>}
     {!data && !error && <p role="status" className="muted">Loading details…</p>}
     {data && !provider && <p className="muted">This record was imported before full details were saved. Use Bank sync → Refresh transaction details to retrieve them.</p>}
     {provider && <>
       <p className="muted">Retrieved {data?.retrieved_at ? new Date(data.retrieved_at).toLocaleString() : 'at an unknown time'}. Availability varies by institution.</p>
       <dl className="transaction-fields">
-        {fields.map(([label, key]) => <div key={key}><dt>{label}</dt><dd>{display(provider[key])}</dd></div>)}
+        {fields.filter(([, key]) => supplied(provider[key])).map(([label, key]) => <div key={key}><dt>{label}</dt><dd>{readable(provider[key])}</dd></div>)}
       </dl>
-      <details><summary>All provider fields</summary><pre className="provider-json">{JSON.stringify(provider, null, 2)}</pre></details>
+      <details><summary>Raw provider data · all fields</summary><pre className="provider-json">{JSON.stringify(provider, null, 2)}</pre></details>
     </>}
-  </section>
+  </details>
 }

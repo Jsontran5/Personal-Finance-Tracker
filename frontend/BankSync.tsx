@@ -105,20 +105,20 @@ export function BankSync({ request, money, onChanged }: { request: Request; mone
       </div>}
     </section>
     {status && status.accounts.length > 0 && <section className="card stack">
-      <div className="section-heading"><h2>Test account balances</h2></div>
-      {status.accounts.map(account => <div className="history-row" key={account.id}>
+      <div className="section-heading"><div><h2>Test account balances</h2><small>{status.accounts.length} accounts · See Accounts for groups and charts.</small></div></div>
+      <div className="sync-scroll">{status.accounts.map(account => <div className="history-row" key={account.id}>
         <div><strong>{account.name}{account.mask && ' • ' + account.mask}</strong><br />
           <small>{account.source === 'fresh' ? 'Fresh when checked' : account.source === 'cached' ? 'Cached by Plaid' : 'Balance unavailable'}
             {account.checked_at && ' · checked ' + new Date(account.checked_at).toLocaleString()}</small></div>
         <strong className="numeric">{account.current_minor === null ? '—' : money(account.current_minor, account.currency ?? undefined)}</strong>
-      </div>)}
+      </div>)}</div>
     </section>}
     {status && status.transactions.length > 0 && <section className="card stack">
       <div className="section-heading"><div><h2>Recent test transactions</h2><small>Latest 50 entries</small></div></div>
-      {status.transactions.map(tx => <div className="history-row" key={tx.id}>
+      <div className="sync-scroll">{status.transactions.map(tx => <div className="history-row" key={tx.id}>
         <div><strong>{tx.name}</strong><br /><small>{tx.account_name} · {tx.date} · {tx.kind}{tx.pending && ' · Pending' || ''}</small></div>
         <strong className="numeric">{money(-tx.amount_minor, tx.currency)}</strong>
-      </div>)}
+      </div>)}</div>
     </section>}
   </>
 }

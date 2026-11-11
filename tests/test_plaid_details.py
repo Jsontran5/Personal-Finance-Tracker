@@ -42,6 +42,7 @@ class TransactionDetailsTests(TestCase):
                 initialize_preview(db)
                 db.execute("DROP TABLE transaction_details")
                 db.execute("ALTER TABLE accounts DROP COLUMN active")
+                db.execute("ALTER TABLE accounts DROP COLUMN subtype")
                 db.execute("PRAGMA user_version=1")
                 db.execute("INSERT INTO accounts VALUES ('card','Card',NULL,'credit','USD',-2000,'cached',NULL)")
                 db.execute(
@@ -61,7 +62,7 @@ class TransactionDetailsTests(TestCase):
                     "counterparties": [{"name": "Shop"}], "future_field": {"keep": True},
                 }
                 with connect(sandbox, write=True) as db:
-                    self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 2)
+                    self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 3)
                     self.assertEqual(db.execute("SELECT cursor FROM connection").fetchone()[0], "saved-cursor")
                     save_transactions(db, [tx], [], [])
 

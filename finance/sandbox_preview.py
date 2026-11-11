@@ -31,7 +31,11 @@ class BudgetEdit(BaseModel):
 
 def initialize_preview(db):
     version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version == 3:
+        return
     if version == 2:
+        db.execute("ALTER TABLE accounts ADD COLUMN subtype TEXT")
+        db.execute("PRAGMA user_version = 3")
         return
     if version == 1:
         db.execute("""
@@ -40,6 +44,7 @@ def initialize_preview(db):
         """)
         db.execute("ALTER TABLE accounts ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
         db.execute("PRAGMA user_version = 2")
+        initialize_preview(db)
         return
     if version != 0:
         raise RuntimeError("Unsupported Sandbox schema version.")
@@ -84,11 +89,12 @@ def initialize_preview(db):
 
 def preview_accounts(db):
     return [dict(row) for row in db.execute("""
-        SELECT rowid AS id, name,
-          CASE type WHEN 'depository' THEN 'checking' WHEN 'loan' THEN 'loan'
+        SELECT rowid AS id, name, type AS provider_type, subtype,
+          CASE type WHEN 'depository' THEN COALESCE(subtype,'depository') WHEN 'loan' THEN 'loan'
             WHEN 'credit' THEN 'credit' WHEN 'investment' THEN 'investment' ELSE 'other' END AS kind,
           currency, current_minor AS balance_minor, checked_at AS balance_date,
-          1 AS include_in_net_worth, source AS balance_source
+          1 AS include_in_net_worth, source AS balance_source,
+          (SELECT COUNT(*) FROM transactions t WHERE t.account_id=accounts.id AND t.removed=0) AS transaction_count
         FROM accounts WHERE active=1 ORDER BY rowid
     """)]
 

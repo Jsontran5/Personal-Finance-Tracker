@@ -109,14 +109,16 @@ def save_accounts(db, accounts, source):
         if current is not None and a["type"] in {"credit", "loan"}:
             current = -current
         db.execute("""
-            INSERT INTO accounts(id,name,mask,type,currency,current_minor,source,checked_at) VALUES (?,?,?,?,?,?,?,?)
+            INSERT INTO accounts(id,name,mask,type,currency,current_minor,source,checked_at,subtype) VALUES (?,?,?,?,?,?,?,?,?)
             ON CONFLICT(id) DO UPDATE SET name=excluded.name, mask=excluded.mask, type=excluded.type,
               currency=CASE WHEN excluded.current_minor IS NOT NULL THEN excluded.currency ELSE accounts.currency END,
               current_minor=COALESCE(excluded.current_minor,accounts.current_minor),
               source=COALESCE(excluded.source,accounts.source),
-              checked_at=COALESCE(excluded.checked_at,accounts.checked_at)
+              checked_at=COALESCE(excluded.checked_at,accounts.checked_at),
+              subtype=excluded.subtype
         """, (a["account_id"], a["name"], a.get("mask"), a["type"], currency, current,
-              source if current is not None else None, now().isoformat() if current is not None else None))
+              source if current is not None else None, now().isoformat() if current is not None else None,
+              a.get("subtype")))
 
 
 def changes(call, token, checkpoint):
@@ -341,6 +343,11 @@ def sandbox_router(database: Path, *, client_factory=plaid_client):
                 result = call("/accounts/get", access_token=token)
                 db.execute("UPDATE accounts SET active=0")
                 db.executemany("UPDATE accounts SET active=1 WHERE id=?", [(a["account_id"],) for a in result["accounts"]])
+                # Metadata changes must survive even when retaining a fresher balance observation.
+                db.executemany("UPDATE accounts SET name=?,mask=?,type=?,subtype=? WHERE id=?", [
+                    (a["name"], a.get("mask"), a["type"], a.get("subtype"), a["account_id"])
+                    for a in result["accounts"]
+                ])
                 # Keep the last explicit live observation rather than replace it with an older cache.
                 cached = [a for a in result["accounts"] if not db.execute(
                     "SELECT 1 FROM accounts WHERE id=? AND source='fresh'", (a["account_id"],)

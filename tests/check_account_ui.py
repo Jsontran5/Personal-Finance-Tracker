@@ -1,0 +1,217 @@
+"""Opt-in Chrome visual checks against an isolated copy of the Sandbox dataset.
+
+Run with a Python installation containing websocket-client after npm run build.
+Screenshots go to ignored data/ui-qa; no provider requests are made.
+"""
+import base64
+from contextlib import closing
+import json
+from datetime import date
+from pathlib import Path
+import socket
+import sqlite3
+import subprocess
+import tempfile
+import time
+import urllib.request
+
+import websocket
+
+ROOT = Path(__file__).resolve().parents[1]
+OUTPUT = ROOT / 'data' / 'ui-qa'
+CHROME = Path(r'C:\Program Files\Google\Chrome\Application\chrome.exe')
+
+
+def port():
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1', 0))
+        return listener.getsockname()[1]
+
+
+def wait_for(predicate, label):
+    deadline = time.monotonic() + 12
+    while time.monotonic() < deadline:
+        try:
+            result = predicate()
+            if result:
+                return result
+        except (OSError, ValueError):
+            pass
+        time.sleep(.1)
+    raise AssertionError('Timed out: ' + label)
+
+
+def run():
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='finance-ui-') as temporary:
+        folder = Path(temporary)
+        database = folder / 'data' / 'finance.db'
+        database.parent.mkdir()
+        for suffix in ('.db', '.plaid-sandbox.db'):
+            source = ROOT / 'data' / ('finance' + suffix)
+            with closing(sqlite3.connect(f'file:{source.as_posix()}?mode=ro', uri=True)) as current, closing(sqlite3.connect(database.with_suffix(suffix))) as copy:
+                current.backup(copy)
+        database.with_suffix('.workspace').write_text('sandbox')
+        with closing(sqlite3.connect(database.with_suffix('.plaid-sandbox.db'))) as db:
+            assert db.execute('SELECT COUNT(*) FROM accounts WHERE active=1').fetchone()[0] == 14
+            # Densify the copied current month to exercise pagination deterministically.
+            test_month = date.today().isoformat()[:7]
+            db.execute("UPDATE transactions SET date=? || '-11'", (test_month,))
+            db.execute("UPDATE transaction_details SET payload=json_set(payload,'$.date',?)", (test_month + '-11',))
+            db.commit()
+        server_port, chrome_port = port(), port()
+        server = subprocess.Popen([
+            str(ROOT / '.venv/Scripts/python.exe'), '-c',
+            'from pathlib import Path; import sys,uvicorn; from finance.api import create_app; '
+            'uvicorn.run(create_app(Path(sys.argv[1])),host="127.0.0.1",port=int(sys.argv[2]),access_log=False)',
+            str(database), str(server_port),
+        ], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+        chrome = None
+        ws = None
+        try:
+            url = f'http://127.0.0.1:{server_port}'
+            wait_for(lambda: urllib.request.urlopen(url, timeout=1).status == 200, 'server')
+            chrome = subprocess.Popen([
+                str(CHROME), '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+                '--remote-allow-origins=*', f'--remote-debugging-port={chrome_port}',
+                f'--user-data-dir={folder / "chrome"}', 'about:blank',
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+            targets = wait_for(lambda: json.load(urllib.request.urlopen(f'http://127.0.0.1:{chrome_port}/json/list')), 'Chrome')
+            ws = websocket.create_connection(next(item['webSocketDebuggerUrl'] for item in targets if item['type'] == 'page'), timeout=15)
+            sequence = 0
+            def cdp(method, params=None):
+                nonlocal sequence
+                sequence += 1
+                number = sequence
+                ws.send(json.dumps({'id': number, 'method': method, 'params': params or {}}))
+                while True:
+                    message = json.loads(ws.recv())
+                    if message.get('id') == number:
+                        if 'error' in message:
+                            raise AssertionError(message['error'])
+                        return message.get('result', {})
+
+            def js(expression):
+                result = cdp('Runtime.evaluate', {'expression': expression, 'returnByValue': True, 'awaitPromise': True})
+                if 'exceptionDetails' in result:
+                    raise AssertionError(result['exceptionDetails'])
+                return result.get('result', {}).get('value')
+
+            def ready(expression):
+                return wait_for(lambda: js('Boolean(' + expression + ')'), expression)
+
+            def nav(name):
+                js(f"[...document.querySelectorAll('nav button')].find(b=>b.textContent==={json.dumps(name)}).click()")
+                ready(f"document.querySelector('h1')?.textContent==={json.dumps(name)}")
+
+            def screenshot(name):
+                time.sleep(.15)
+                assert js('document.documentElement.scrollWidth <= innerWidth'), 'Horizontal overflow: ' + name
+                image = cdp('Page.captureScreenshot', {'format': 'png', 'captureBeyondViewport': False})
+                (OUTPUT / (name + '.png')).write_bytes(base64.b64decode(image['data']))
+
+            def change(selector, value):
+                if selector.startswith('input'):
+                    js(f"document.querySelector({json.dumps(selector)}).focus(); document.querySelector({json.dumps(selector)}).select()")
+                    cdp('Input.insertText', {'text': value})
+                    return
+                js(f"(()=>{{const e=document.querySelector({json.dumps(selector)}); const proto=e instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto,'value').set.call(e,{json.dumps(value)}); e.dispatchEvent(new Event('input',{{bubbles:true}})); e.dispatchEvent(new Event('change',{{bubbles:true}}));}})()")
+
+            cdp('Page.enable')
+            cdp('Runtime.enable')
+            cdp('Page.navigate', {'url': url})
+            ready("document.querySelector('.hero-value')?.textContent.includes('$')")
+            results = []
+            for width in (1920, 1280, 390):
+                cdp('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 1000 if width > 400 else 844, 'deviceScaleFactor': 1, 'mobile': False})
+                for theme in ('dark', 'light'):
+                    if js('document.documentElement.dataset.theme') != theme:
+                        js("document.querySelector('.theme-toggle').click()")
+                        ready(f"document.documentElement.dataset.theme==='{theme}' && !document.querySelector('.theme-toggle').disabled")
+                    label = f'{width}-{theme}'
+                    nav('Overview')
+                    ready("document.querySelector('.account-picker')")
+                    before = js("document.querySelector('.hero').getBoundingClientRect().height")
+                    screenshot(label + '-overview')
+                    js("document.querySelector('.account-picker > summary').click()")
+                    assert js("document.querySelector('.picker-scroll').clientHeight <= 301")
+                    assert js("document.querySelector('.hero').getBoundingClientRect().height") == before
+                    screenshot(label + '-selector')
+                    js("document.querySelector('.picker-done').click()")
+                    nav('Accounts')
+                    assert js("document.querySelectorAll('.account-group').length") == 5
+                    assert js("[...document.querySelectorAll('.account-identity small')].some(e=>e.textContent.includes('Certificate of deposit'))")
+                    screenshot(label + '-accounts')
+                    if width == 1920 and theme == 'dark':
+                        js("[...document.querySelectorAll('.account-summary')].find(e=>e.textContent.includes('Plaid Checking')).click()")
+                        js("document.querySelector('.compact-account[open] .account-expanded details > summary').click()")
+                        ready("document.querySelector('.compact-account[open] .balance-chart svg')")
+                        screenshot(label + '-balance-history')
+                    # Exercise collapsed loan group and its long account names.
+                    js("[...document.querySelectorAll('.group-summary')].find(e=>e.textContent.includes('Loans &')).click()")
+                    js("[...document.querySelectorAll('.account-summary')].find(e=>e.textContent.includes('Home Equity')).click()")
+                    js("[...document.querySelectorAll('.account-summary')].find(e=>e.textContent.includes('Home Equity')).scrollIntoView({block:'center'})")
+                    screenshot(label + '-loans')
+                    nav('Transactions')
+                    assert js("document.querySelectorAll('.ledger-row').length <= 25")
+                    assert js("document.querySelectorAll('select[aria-label=\"Filter account\"] optgroup').length") == 5
+                    screenshot(label + '-transactions')
+                    if width == 1920 and theme == 'dark':
+                        first = js("document.querySelector('.ledger-row').textContent")
+                        js("[...document.querySelectorAll('.pagination button')].find(e=>e.textContent==='Next').click()")
+                        assert js("document.querySelector('.ledger-row').textContent") != first
+                    js("document.querySelector('.ledger-row').click()")
+                    ready("document.querySelector('dialog[open] .transaction-details')")
+                    assert not js("document.querySelector('.transaction-details').open")
+                    screenshot(label + '-dialog')
+                    js("document.querySelector('.transaction-details > summary').click()")
+                    ready("document.querySelector('.transaction-fields')")
+                    assert not js("document.querySelector('.transaction-fields').textContent.includes('Not supplied')")
+                    js("document.querySelector('.transaction-details details > summary').click()")
+                    screenshot(label + '-provider')
+                    bounds = js("(()=>{const d=document.querySelector('dialog'),b=d.querySelector('button[type=submit]').getBoundingClientRect(),r=d.getBoundingClientRect();return {save:b.bottom<=r.bottom+1 && b.top>=r.top, fits:d.scrollWidth<=d.clientWidth+1}})()")
+                    assert bounds['save'] and bounds['fits'], str(bounds)
+                    js("document.querySelector('button[aria-label=Close]').click()")
+                    nav('Bank sync')
+                    ready("document.querySelectorAll('.sync-scroll').length===2")
+                    screenshot(label + '-sync')
+                    results.append(label + ': all layouts fit; groups, modal, selector and pagination verified')
+
+            # Group selection, persistence, search, and mortgage empty state on the copy only.
+            nav('Overview')
+            ready("document.querySelector('.account-picker > summary')")
+            js("document.querySelector('.account-picker > summary').click()")
+            js("document.querySelector('.picker-group legend input').click()")
+            ready("!document.querySelector('.picker-group legend input').disabled")
+            selected = js("document.querySelector('.account-picker > summary').textContent")
+            assert '9 of 14' in selected, selected
+            cdp('Page.reload')
+            ready("document.querySelector('.account-picker > summary')?.textContent.includes('9 of 14')")
+            nav('Transactions')
+            mortgage = js("[...document.querySelectorAll('select[aria-label=\"Filter account\"] option')].find(o=>o.textContent==='Plaid Mortgage').value")
+            change('select[aria-label="Filter account"]', mortgage)
+            ready("document.querySelector('.empty')?.textContent.includes('No spending transactions have been saved')")
+            screenshot('390-light-mortgage-empty')
+            nav('Accounts')
+            change('input[aria-label="Search accounts"]', 'Plaid CD')
+            ready("document.querySelectorAll('.compact-account').length===1")
+            # Personal workspace remains usable with the grouped component.
+            change('select[aria-label="Workspace"]', 'personal')
+            ready("document.querySelector('h2')?.textContent==='Manual accounts'")
+            print('\n'.join(results))
+            print('Selection persistence, account search, empty feed messaging and Personal isolation verified.')
+            print('Screenshots:', OUTPUT)
+        finally:
+            if ws:
+                ws.close()
+            for process in (chrome, server):
+                if process:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=8)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+
+
+if __name__ == '__main__':
+    run()

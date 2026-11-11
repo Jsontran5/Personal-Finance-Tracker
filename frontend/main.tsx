@@ -3,12 +3,13 @@ import { createRoot } from 'react-dom/client'
 import { Icon } from './icons'
 import { BankSync } from './BankSync'
 import { TransactionDetails } from './TransactionDetails'
+import { AccountList, type Account } from './AccountList'
+import { groupedAccounts } from './accounts'
 import { Chart, NetWorth, type HistoryPoint } from './Charts'
 import './styles.css'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
 type Category = { id: number; name: string; kind: 'expense' | 'income' }
-type Account = { id: number; name: string; kind: string; currency: string; balance_minor: number | null; balance_date: string | null; include_in_net_worth: number; balance_source?: string }
 type Entry = { id: number; account_id: number; destination_id: number | null; category_id: number | null; amount_minor: number; kind: Kind; merchant: string; notes: string; date: string }
 type Transaction = Entry & { currency: string; account_name: string; category_name: string | null; destination_name: string | null; pending?: number; needs_review?: number }
 type Template = Omit<Entry, 'date' | 'destination_id'> & { name: string }
@@ -162,8 +163,8 @@ function CashFlow({ data, month }: { data: Overview; month: string }) {
   </section>
 }
 
-function TransactionList({ transactions, edit }: { transactions: Transaction[]; edit: (tx: Transaction) => void }) {
-  if (!transactions.length) return <p className="empty">No transactions match this view.</p>
+function TransactionList({ transactions, edit, empty = 'No transactions match this view.' }: { transactions: Transaction[]; edit: (tx: Transaction) => void; empty?: string }) {
+  if (!transactions.length) return <p className="empty">{empty}</p>
   return <div className="ledger">
     {transactions.map(tx => <button className="ledger-row" key={tx.id} onClick={() => edit(tx)}>
       <span className={'row-icon row-' + tx.kind}><Icon name={tx.kind === 'transfer' ? 'transactions' : tx.kind === 'income' || tx.kind === 'refund' ? 'income' : 'expense'} /></span>
@@ -212,9 +213,9 @@ function BalanceHistory({ account, sandbox = false }: { account: Account; sandbo
     {error && <p role="alert">{error} <button className="secondary small" onClick={() => void load()}>Retry</button></p>}
     {loading && <p role="status" className="muted">Loading balances…</p>}
     {rows && <Chart history={points} money={money} currency={account.currency} label={'Recorded balance for ' + account.name} />}
-    {rows?.map(row => <div className="history-row" key={row.id}>
+    <div className="history-scroll">{rows?.map(row => <div className="history-row" key={row.id}>
       <span>{row.effective_date} · {sandbox ? row.notes : 'Manual balance' + (row.notes ? ' · ' + row.notes : '')}</span><strong className="numeric">{money(row.balance_minor, account.currency)}</strong>
-    </div>)}
+    </div>)}</div>
   </details>
 }
 
@@ -227,6 +228,7 @@ function App() {
   const [categoryFilter, setCategoryFilter] = useState(0)
   const [accountFilter, setAccountFilter] = useState(0)
   const [search, setSearch] = useState('')
+  const [transactionPage, setTransactionPage] = useState(0)
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -241,6 +243,8 @@ function App() {
   const [sandboxKind, setSandboxKind] = useState<Kind>('expense')
   const [sandboxCategory, setSandboxCategory] = useState(0)
   const previewPath = '/plaid/sandbox/preview'
+  useEffect(() => { setTransactionPage(0) }, [search, accountFilter, categoryFilter, month, mode])
+  useEffect(() => { window.scrollTo(0, 0) }, [page])
 
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -395,6 +399,15 @@ function App() {
   const entries = ready?.transactions.filter(tx => (!categoryFilter || tx.category_id === categoryFilter) &&
     (!accountFilter || tx.account_id === accountFilter) &&
     [tx.merchant, tx.account_name, tx.category_name, tx.notes].some(value => value?.toLowerCase().includes(search.trim().toLowerCase()))) ?? []
+  const pageSize = 25
+  const lastPage = Math.max(0, Math.ceil(entries.length / pageSize) - 1)
+  const currentPage = Math.min(transactionPage, lastPage)
+  const filteredAccount = ready?.accounts.find(account => account.id === accountFilter)
+  const emptyMessage = mode === 'sandbox' && filteredAccount?.transaction_count === 0
+    ? 'No spending transactions have been saved for this account. Its balance is tracked separately.' +
+      (filteredAccount.provider_type === 'investment' ? ' Holdings and investment activity are not integrated yet.' :
+        filteredAccount.provider_type === 'loan' ? ' Loan terms and payment details are not integrated yet.' : ' Availability varies by account and institution.')
+    : 'No transactions match this month and these filters. Try another month or clear the filters.'
 
   return <div className="shell">
     <aside className="sidebar">
@@ -456,14 +469,21 @@ function App() {
           <div className="filters">
             <input type="search" aria-label="Search transactions" placeholder="Search transactions" value={search} onChange={event => setSearch(event.target.value)} />
             <select aria-label="Filter account" value={accountFilter} onChange={event => setAccountFilter(Number(event.target.value))}>
-              <option value={0}>All accounts</option>{ready.accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+              <option value={0}>All accounts</option>{groupedAccounts(ready.accounts).map(group => <optgroup label={group.name} key={group.name}>
+                {group.accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+              </optgroup>)}
             </select>
             <select aria-label="Filter category" value={categoryFilter} onChange={event => setCategoryFilter(Number(event.target.value))}>
               <option value={0}>All categories</option>
               {ready.categories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}
             </select>
           </div>
-          <TransactionList transactions={entries} edit={editTransaction} />
+          <TransactionList transactions={entries.slice(currentPage * pageSize, (currentPage + 1) * pageSize)} edit={editTransaction} empty={emptyMessage} />
+          {entries.length > pageSize && <div className="pagination" aria-label="Transaction pages">
+            <span className="muted" role="status">{currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, entries.length)} of {entries.length}</span>
+            <div className="inline-actions"><button className="secondary small" disabled={currentPage === 0} onClick={() => setTransactionPage(currentPage - 1)}>Previous</button>
+              <button className="secondary small" disabled={currentPage === lastPage} onClick={() => setTransactionPage(currentPage + 1)}>Next</button></div>
+          </div>}
         </section>
         {mode === 'personal' && <section className="card stack"><div className="section-heading"><div><h2>Recurring templates</h2><small>Reuse a paycheck or regular expense.</small></div>
           <button className="secondary small" disabled={!ready.accounts.length} onClick={() => open({ type: 'transaction', template: true })}>New template</button></div>
@@ -482,24 +502,12 @@ function App() {
         <BudgetRows budgets={ready.budgets} compare edit={editBudget} filter={filterCategory} />
         <p className="muted">Uncategorized spending: {money(ready.uncategorized_minor)}</p>
       </section>}
-      {ready && page === 'Accounts' && <section className="card">
-        <div className="section-heading"><div><h2>{mode === 'sandbox' ? 'Sandbox accounts' : 'Manual accounts'}</h2><small>Latest saved balances · {today()}</small></div>
-          {mode === 'personal' && <button className="primary" onClick={() => open({ type: 'account' })}>＋ Add account</button>}</div>
-        {!ready.accounts.length && <p className="empty">No accounts yet.</p>}
-        {ready.accounts.some(account => account.currency !== 'USD') && <p className="notice">Balances in other currencies are shown separately from USD totals.</p>}
-        {ready.accounts.map(account => <article className="account-row" key={account.id}>
-          <div className="account-heading"><div><h3>{account.name}</h3><small>{accountKinds[account.kind as keyof typeof accountKinds]} · {account.currency}
-            {account.id === ready.primary_account_id && ' · Primary'}{!account.include_in_net_worth && ' · Excluded from net worth'}</small></div>
-            <strong className="numeric">{account.balance_minor === null ? '—' : money(account.balance_minor, account.currency)}</strong></div>
-          <p className="muted">{mode === 'sandbox'
-            ? (account.balance_source === 'fresh' ? 'Fresh when checked' : account.balance_source === 'cached' ? 'Cached by Plaid' : 'Balance unavailable') +
-              (account.balance_date ? ' · Checked ' + new Date(account.balance_date).toLocaleString() : '')
-            : 'Recorded ' + account.balance_date + ' · Includes later ledger activity'}</p>
+      {ready && page === 'Accounts' && <AccountList key={mode} accounts={ready.accounts} sandbox={mode === 'sandbox'} primary={ready.primary_account_id}
+        money={money} add={() => open({ type: 'account' })} details={account => <>
           {mode === 'personal' && <div className="inline-actions"><button className="secondary small" onClick={() => open({ type: 'balance', account })}>Record balance</button>
             <button className="secondary small" onClick={() => open({ type: 'account', account })}>Edit account</button></div>}
           <BalanceHistory key={revision} account={account} sandbox={mode === 'sandbox'} />
-        </article>)}
-      </section>}
+        </>} />}
       {page === 'Bank sync' && <BankSync request={request} money={money} onChanged={() => setRevision(value => value + 1)} />}
     </main>
     {dialog && data && <Modal title={
@@ -554,7 +562,7 @@ function App() {
             <label>Notes<textarea name="notes" maxLength={2000} defaultValue={dialog.entry.notes} /></label>
             <TransactionDetails id={dialog.entry.id} request={request} />
           </>}
-          <div className="form-actions"><button className="primary" type="submit">Save</button></div>
+          <div className="form-actions"><button className="secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="primary" type="submit">Save</button></div>
         </fieldset></form>}
     </Modal>}
   </div>

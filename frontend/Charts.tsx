@@ -1,4 +1,5 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { groupedAccounts, type GroupAccount } from './accounts'
 
 type Money = (value: number, currency?: string) => string
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
@@ -8,7 +9,7 @@ export type HistoryPoint = {
   net_worth_minor: number
   accounts: { account_id: number; balance_minor: number | null }[]
 }
-type Account = { id: number; name: string; currency: string; include_in_net_worth: number; balance_minor: number | null }
+type Account = GroupAccount & { id: number; name: string; currency: string; include_in_net_worth: number; balance_minor: number | null }
 
 export function Chart({ history, money, currency = 'USD', label = 'Recorded net worth' }: {
   history: ChartPoint[]; money: Money; currency?: string; label?: string
@@ -85,6 +86,15 @@ export function NetWorth({ accounts, history, mode, request, money, onStart }: {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
+  const [search, setSearch] = useState('')
+  const picker = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      if (picker.current && !picker.current.contains(event.target as Node)) picker.current.open = false
+    }
+    document.addEventListener('pointerdown', closeOutside)
+    return () => document.removeEventListener('pointerdown', closeOutside)
+  }, [])
   const eligible = accounts.filter(account => account.include_in_net_worth && account.currency === 'USD')
   const selected = eligible.filter(account => !excluded?.includes(account.id))
   const path = '/chart-selection/' + mode
@@ -127,15 +137,34 @@ export function NetWorth({ accounts, history, mode, request, money, onStart }: {
       <span className="chip">USD · {mode === 'sandbox' ? 'Sandbox balances' : 'Manual balances'}</span>
     </div>
     {error && <p className="notice" role="alert">{error}{excluded === null && <button className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button>}</p>}
-    {eligible.length > 0 && excluded !== null && <details className="account-picker">
+    {eligible.length > 0 && excluded !== null && <details ref={picker} className="account-picker" onKeyDown={event => {
+      if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus() }
+    }}>
       <summary>Accounts · {selected.length} of {eligible.length}</summary>
       <div className="account-options">
-        <button className="secondary small" disabled={busy} onClick={() => void saveSelection([])}>All accounts</button>
-        {eligible.map(account => <label className="checkbox" key={account.id}>
-          <input type="checkbox" checked={!excluded.includes(account.id)} disabled={busy} onChange={event =>
-            void saveSelection(event.target.checked ? excluded.filter(id => id !== account.id) : [...excluded, account.id])} />
-          {account.name}
-        </label>)}
+        <div className="picker-toolbar"><input type="search" aria-label="Search chart accounts" placeholder="Find an account" value={search} onChange={event => setSearch(event.target.value)} />
+          <button className="secondary small" disabled={busy} onClick={() => void saveSelection([])}>Select all</button>
+          <button className="secondary small" disabled={busy} onClick={() => void saveSelection(eligible.map(account => account.id))}>Clear</button></div>
+        <div className="picker-scroll">
+        {groupedAccounts(eligible).map(group => {
+          const visible = group.accounts.filter(account => account.name.toLowerCase().includes(search.toLowerCase()))
+          if (!visible.length) return null
+          const ids = group.accounts.map(account => account.id)
+          const count = group.accounts.filter(account => !excluded.includes(account.id)).length
+          return <fieldset key={group.name} className="picker-group">
+            <legend><label className="checkbox"><input type="checkbox" disabled={busy} checked={count === ids.length}
+              ref={input => { if (input) input.indeterminate = count > 0 && count < ids.length }}
+              onChange={event => void saveSelection(event.target.checked ? excluded.filter(id => !ids.includes(id)) : excluded.concat(ids.filter(id => !excluded.includes(id))))} />
+              {group.name} <span className="subtle">{count}/{ids.length}</span></label></legend>
+            {visible.map(account => <label className="checkbox" key={account.id}>
+              <input type="checkbox" checked={!excluded.includes(account.id)} disabled={busy} onChange={event =>
+                void saveSelection(event.target.checked ? excluded.filter(id => id !== account.id) : [...excluded, account.id])} />{account.name}
+            </label>)}
+          </fieldset>
+        })}
+        {!eligible.some(account => account.name.toLowerCase().includes(search.toLowerCase())) && <p className="muted">No matching accounts.</p>}
+        </div>
+        <button className="secondary small picker-done" onClick={() => { if (picker.current) { picker.current.open = false; picker.current.querySelector('summary')?.focus() } }}>Done</button>
       </div>
     </details>}
     {excluded === null && !error && <p className="muted">Loading chart selection…</p>}
