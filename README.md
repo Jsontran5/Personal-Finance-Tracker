@@ -46,3 +46,15 @@ Net worth uses saved account balances. Recorded balance snapshots begin when pre
 
 Sandbox data and edits live in `data/finance.plaid-sandbox.db`. Restarting the app reuses its saved test connection. Resetting `data/finance.db` does not reset the test connection. Keep the `.env` file private and use the Sandbox secret here.
 
+Click a synced transaction to see its provider details, including original description, authorization dates, payment channel, category confidence, location, counterparties, and payment information where supplied. Expand **All provider fields** to inspect the complete saved transaction response. Decimal values in that local JSON are stored as exact strings.
+
+Use **Bank sync → Refresh transaction details** to replay the available history and fill in details for older imports. The saved Item and local transaction edits are retained. **Manage test accounts** reopens account selection on that Item so you can share additional eligible accounts. Accounts removed from sharing stop contributing to current balances while their existing transaction history is retained.
+
+Plaid Sandbox supports credit cards and loans. The sample [credit-card testing profile](sandbox_profiles/credit-card-testing.json) was verified against Plaid Sandbox. Import it as a custom user in Dashboard → Build → Sandbox Studio. Editing a custom profile does not change an existing Item. This app currently stores one Sandbox Item, so a separate profile connection needs a future scenario selector or a separate isolated test database.
+
+## Local development
+
+The local Git repository tracks source, documentation, the dependency lockfile, and synthetic test profiles. Credentials, databases, backups, and generated files are ignored. See [Git workflow](context_docs/GIT_WORKFLOW.md).
+
+For the regression tests, install optional test dependencies with `.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`, then run `.venv\Scripts\python.exe -m unittest discover -s tests -v`. Build the dashboard with `npm.cmd run build`.
+

@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "seed": "personal-finance-credit-tests",
+  "roll_dates_forward": true,
+  "override_accounts": [
+    {
+      "type": "depository",
+      "subtype": "checking",
+      "starting_balance": 2500,
+      "currency": "USD",
+      "meta": { "name": "Test checking" }
+    },
+    {
+      "type": "depository",
+      "subtype": "savings",
+      "starting_balance": 5000,
+      "currency": "USD",
+      "meta": { "name": "Test savings" }
+    },
+    {
+      "type": "credit",
+      "subtype": "credit card",
+      "starting_balance": 450,
+      "currency": "USD",
+      "meta": { "name": "Test credit card" }
+    },
+    {
+      "type": "loan",
+      "subtype": "student",
+      "starting_balance": 12000,
+      "currency": "USD",
+      "meta": { "name": "Test student loan" }
+    }
+  ]
+}

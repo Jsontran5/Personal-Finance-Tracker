@@ -211,6 +211,13 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .form-grid .full { grid-column: 1 / -1; }
 .subtle { color: var(--muted); font-weight: 400; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.transaction-details { border-top: 1px solid var(--line); padding-top: 14px; min-width: 0; }
+.transaction-details > p { margin: 7px 0; }
+.transaction-fields { margin: 12px 0; display: grid; gap: 10px; }
+.transaction-fields > div { display: grid; grid-template-columns: 125px minmax(0, 1fr); gap: 10px; }
+.transaction-fields dt { color: var(--muted); font-size: .8rem; }
+.transaction-fields dd { margin: 0; font-size: .83rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.provider-json { max-height: 320px; overflow: auto; padding: 10px; background: var(--field); font-size: .75rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 @media (max-width: 1050px) {
   .shell { grid-template-columns: 182px minmax(0, 1fr); }

@@ -109,7 +109,7 @@ def save_accounts(db, accounts, source):
         if current is not None and a["type"] in {"credit", "loan"}:
             current = -current
         db.execute("""
-            INSERT INTO accounts VALUES (?,?,?,?,?,?,?,?)
+            INSERT INTO accounts(id,name,mask,type,currency,current_minor,source,checked_at) VALUES (?,?,?,?,?,?,?,?)
             ON CONFLICT(id) DO UPDATE SET name=excluded.name, mask=excluded.mask, type=excluded.type,
               currency=CASE WHEN excluded.current_minor IS NOT NULL THEN excluded.currency ELSE accounts.currency END,
               current_minor=COALESCE(excluded.current_minor,accounts.current_minor),
@@ -127,6 +127,7 @@ def changes(call, token, checkpoint):
         try:
             while True:
                 page = call("/transactions/sync", access_token=token, count=500,
+                            options={"include_original_description": True, "personal_finance_category_version": "v2"},
                             **({"cursor": cursor} if cursor else {}))
                 added.extend(page["added"])
                 modified.extend(page["modified"])
@@ -146,6 +147,10 @@ def changes(call, token, checkpoint):
 def save_transactions(db, added, modified, removed):
     superseded = []
     for tx in added + modified:
+        db.execute("""
+            INSERT INTO transaction_details VALUES (?,?,?)
+            ON CONFLICT(transaction_id) DO UPDATE SET payload=excluded.payload,retrieved_at=excluded.retrieved_at
+        """, (tx["transaction_id"], json.dumps(tx, default=str, ensure_ascii=False), now().isoformat()))
         currency = tx.get("iso_currency_code")
         amount = minor(tx["amount"], currency)
         if amount is None:
@@ -215,11 +220,12 @@ def sandbox_router(database: Path, *, client_factory=plaid_client):
         if not path.exists():
             return {"configured": bool(keys()), "connection": None, "pending_session": None,
                     "accounts": [], "transactions": []}
+        initialize()
         with connect(path) as db:
             connection = db.execute("""
                 SELECT history_status,synced_at,balance_checked_at,needs_reauth FROM connection WHERE id=1
             """).fetchone()
-            accounts = [dict(row) for row in db.execute("SELECT * FROM accounts ORDER BY name,id")]
+            accounts = [dict(row) for row in db.execute("SELECT * FROM accounts WHERE active=1 ORDER BY name,id")]
             transactions = [dict(row) for row in db.execute("""
                 SELECT t.id,t.date,t.name,t.amount_minor,t.currency,t.kind,t.pending,a.name AS account_name
                 FROM transactions t JOIN accounts a ON a.id=t.account_id
@@ -242,7 +248,8 @@ def sandbox_router(database: Path, *, client_factory=plaid_client):
                 existing = db.execute("SELECT expiration FROM link WHERE id=1").fetchone()
                 if existing and datetime.fromisoformat(existing["expiration"]) > now():
                     raise HTTPException(409, "A Link session is already open. Clear it before starting another.")
-                options = {"access_token": protect(connection["token"], False).decode()} if reconnect else {
+                options = {"access_token": protect(connection["token"], False).decode(),
+                           "update": {"account_selection_enabled": True}} if reconnect else {
                     "products": ["transactions"], "additional_consented_products": ["investments", "liabilities"],
                     "transactions": {"days_requested": 730},
                 }
@@ -307,7 +314,9 @@ def sandbox_router(database: Path, *, client_factory=plaid_client):
             raise upstream(error) from None
 
     @router.post("/sync")
-    def sync(fresh: bool = False):
+    def sync(fresh: bool = False, details: bool = False):
+        if fresh and details:
+            raise HTTPException(422, "Choose either balance refresh or transaction details.")
         call = client()
         initialize()
         try:
@@ -328,8 +337,10 @@ def sandbox_router(database: Path, *, client_factory=plaid_client):
                     db.execute("UPDATE connection SET balance_checked_at=? WHERE id=1", (now().isoformat(),))
                     record_preview_snapshot(db)
                     return {"updated": "balances"}
-                cursor, history, added, modified, removed = changes(call, token, connection["cursor"])
+                cursor, history, added, modified, removed = changes(call, token, None if details else connection["cursor"])
                 result = call("/accounts/get", access_token=token)
+                db.execute("UPDATE accounts SET active=0")
+                db.executemany("UPDATE accounts SET active=1 WHERE id=?", [(a["account_id"],) for a in result["accounts"]])
                 # Keep the last explicit live observation rather than replace it with an older cache.
                 cached = [a for a in result["accounts"] if not db.execute(
                     "SELECT 1 FROM accounts WHERE id=? AND source='fresh'", (a["account_id"],)

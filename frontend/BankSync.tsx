@@ -56,10 +56,10 @@ export function BankSync({ request, money, onChanged }: { request: Request; mone
     })
   }
 
-  function sync(fresh: boolean) {
+  function sync(fresh: boolean, details = false) {
     void action(async () => {
       const result = await request<{ added?: number; modified?: number; removed?: number }>(
-        path + '/sync' + (fresh ? '?fresh=true' : ''), 'POST')
+        path + '/sync' + (fresh ? '?fresh=true' : details ? '?details=true' : ''), 'POST')
       setStatus(await request<Status>(path))
       onChanged()
       setMessage(fresh ? 'Balance check complete. Each row shows its latest available observation.'
@@ -96,6 +96,10 @@ export function BankSync({ request, money, onChanged }: { request: Request; mone
         {connection && !connection.needs_reauth && !pending && <>
           <button className="primary" disabled={busy} onClick={() => sync(false)}>Sync now</button>
           <button className="secondary" disabled={busy} onClick={() => sync(true)}>Refresh balances</button>
+          <button className="secondary" disabled={busy} onClick={() => sync(false, true)}>Refresh transaction details</button>
+          <button className="secondary" disabled={busy} onClick={() => void action(async () => {
+            setSession(await request<Session>(path + '/link?reconnect=true', 'POST'))
+          })}>Manage test accounts</button>
         </>}
         {busy && <span role="status" className="muted">Working…</span>}
       </div>}

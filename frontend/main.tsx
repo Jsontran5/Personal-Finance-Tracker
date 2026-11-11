@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type Reac
 import { createRoot } from 'react-dom/client'
 import { Icon } from './icons'
 import { BankSync } from './BankSync'
+import { TransactionDetails } from './TransactionDetails'
 import { Chart, NetWorth, type HistoryPoint } from './Charts'
 import './styles.css'
 
@@ -551,6 +552,7 @@ function App() {
               {data.categories.filter(category => category.kind === (sandboxKind === 'income' ? 'income' : 'expense')).map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
             </select></label>}
             <label>Notes<textarea name="notes" maxLength={2000} defaultValue={dialog.entry.notes} /></label>
+            <TransactionDetails id={dialog.entry.id} request={request} />
           </>}
           <div className="form-actions"><button className="primary" type="submit">Save</button></div>
         </fieldset></form>}

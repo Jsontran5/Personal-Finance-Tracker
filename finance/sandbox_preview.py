@@ -1,5 +1,6 @@
 """Dashboard projections and local edits for the isolated Plaid Sandbox store."""
 from datetime import date, datetime, timedelta, timezone
+import json
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -30,7 +31,15 @@ class BudgetEdit(BaseModel):
 
 def initialize_preview(db):
     version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version == 2:
+        return
     if version == 1:
+        db.execute("""
+            CREATE TABLE transaction_details (
+              transaction_id TEXT PRIMARY KEY,payload TEXT NOT NULL,retrieved_at TEXT NOT NULL)
+        """)
+        db.execute("ALTER TABLE accounts ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
+        db.execute("PRAGMA user_version = 2")
         return
     if version != 0:
         raise RuntimeError("Unsupported Sandbox schema version.")
@@ -70,6 +79,7 @@ def initialize_preview(db):
             ("Paycheck", "income"), ("Other income", "income"),
         ])
     db.execute("PRAGMA user_version = 1")
+    initialize_preview(db)
 
 
 def preview_accounts(db):
@@ -79,7 +89,7 @@ def preview_accounts(db):
             WHEN 'credit' THEN 'credit' WHEN 'investment' THEN 'investment' ELSE 'other' END AS kind,
           currency, current_minor AS balance_minor, checked_at AS balance_date,
           1 AS include_in_net_worth, source AS balance_source
-        FROM accounts ORDER BY rowid
+        FROM accounts WHERE active=1 ORDER BY rowid
     """)]
 
 
@@ -94,7 +104,7 @@ def record_preview_snapshot(db):
     """, (recorded_at, date.today().isoformat(), summary["assets_minor"], summary["liabilities_minor"])).lastrowid
     db.execute("""
         INSERT INTO preview_snapshot_accounts
-        SELECT ?,id,name,currency,current_minor,source,checked_at FROM accounts
+        SELECT ?,id,name,currency,current_minor,source,checked_at FROM accounts WHERE active=1
     """, (snapshot,))
 
 
@@ -193,6 +203,20 @@ def sandbox_preview_router(database, initialize_sandbox):
                   category_id=excluded.category_id,notes=excluded.notes
             """, (row["id"], item.merchant, item.kind, item.category_id, item.notes))
         return {"id": row_id}
+
+    @router.get("/transactions/{row_id}/details")
+    def transaction_details(row_id: int):
+        initialize()
+        with connect(path) as db:
+            row = db.execute("""
+                SELECT d.payload,d.retrieved_at FROM transactions t
+                LEFT JOIN transaction_details d ON d.transaction_id=t.id
+                WHERE t.rowid=? AND t.removed=0
+            """, (row_id,)).fetchone()
+            if row is None:
+                raise HTTPException(404, "Transaction no longer available.")
+            return {"provider": json.loads(row["payload"]) if row["payload"] else None,
+                    "retrieved_at": row["retrieved_at"]}
 
     @router.get("/accounts/{row_id}/balances")
     def account_history(row_id: int):
