@@ -5,6 +5,8 @@ data/
 backups/
 __pycache__/
 .pytest_cache/
+context_docs/
+context_folder/
 .env
 .env.*
 !.env.example
