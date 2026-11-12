@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException
 from .db import connect
 from .plaid_vault import protect
 from .sandbox_preview import initialize_preview, record_preview_snapshot, sandbox_preview_router
+from .review import apply_rules
 
 LOG = logging.getLogger("uvicorn.error")
 SCHEMA = (
@@ -187,6 +188,11 @@ def save_transactions(db, added, modified, removed):
                     SELECT ?,merchant,kind,category_id,notes FROM preview_edits
                     WHERE transaction_id=? AND EXISTS (SELECT 1 FROM transactions WHERE id=?)
                 """, (tx["transaction_id"], tx["pending_transaction_id"], tx["transaction_id"]))
+                db.execute("""INSERT OR IGNORE INTO transaction_reviews
+                    SELECT ?,state,origin,updated_at FROM transaction_reviews WHERE transaction_id=?
+                    AND EXISTS (SELECT 1 FROM transactions WHERE id=?)""",
+                           (tx['transaction_id'], tx['pending_transaction_id'], tx['transaction_id']))
+    apply_rules(db, True, [tx['transaction_id'] for tx in added + modified])
 
 
 def sandbox_router(database: Path, *, client_factory=plaid_client):

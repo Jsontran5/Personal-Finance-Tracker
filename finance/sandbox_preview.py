@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from .db import connect
 from .ledger import attach_snapshot_accounts, monthly_activity, totals
 from .spending import previous_month, spending_report
+from .review import initialize_review, mark, review_router
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 Kind = Literal["expense", "income", "refund", "transfer", "investment"]
@@ -32,11 +33,16 @@ class BudgetEdit(BaseModel):
 
 def initialize_preview(db):
     version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version == 4:
+        return
     if version == 3:
+        initialize_review(db)
+        db.execute('PRAGMA user_version = 4')
         return
     if version == 2:
         db.execute("ALTER TABLE accounts ADD COLUMN subtype TEXT")
         db.execute("PRAGMA user_version = 3")
+        initialize_preview(db)
         return
     if version == 1:
         db.execute("""
@@ -179,6 +185,8 @@ def sandbox_preview_router(database, initialize_sandbox):
             if not db.execute("SELECT 1 FROM preview_snapshots LIMIT 1").fetchone():
                 record_preview_snapshot(db)
 
+    router.include_router(review_router(path, sandbox=True, initialize=initialize))
+
     def require_category(db, category_id, kind):
         row = db.execute("SELECT kind FROM preview_categories WHERE id=?", (category_id,)).fetchone()
         if row is None or row["kind"] != kind:
@@ -212,6 +220,7 @@ def sandbox_preview_router(database, initialize_sandbox):
                 ON CONFLICT(transaction_id) DO UPDATE SET merchant=excluded.merchant,kind=excluded.kind,
                   category_id=excluded.category_id,notes=excluded.notes
             """, (row["id"], item.merchant, item.kind, item.category_id, item.notes))
+            mark(db, row['id'])
         return {"id": row_id}
 
     @router.get("/transactions/{row_id}/details")

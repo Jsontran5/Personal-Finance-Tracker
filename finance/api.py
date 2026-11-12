@@ -15,6 +15,7 @@ from starlette.staticfiles import StaticFiles
 from .db import DATABASE, ROOT, connect, initialize
 from .ledger import LIABILITIES, overview, record_net_worth
 from .plaid_sandbox import sandbox_router
+from .review import apply_rules, mark, review_router
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 Notes = Annotated[str, StringConstraints(max_length=2000)]
@@ -153,6 +154,7 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
     app.include_router(sandbox_router(database))
+    app.include_router(review_router(database, after_write=lambda db: record_net_worth(db, date.today())), prefix='/api')
 
     @app.middleware("http")
     async def protect_local_writes(request: Request, call_next):
@@ -315,6 +317,7 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
                 INSERT INTO transactions(account_id,destination_id,category_id,kind,amount_minor,date,merchant,notes)
                 VALUES (:account_id,:destination_id,:category_id,:kind,:amount_minor,:date,:merchant,:notes)
             """, item.model_dump(mode="json")).lastrowid
+            apply_rules(db, False, [tx_id])
             record_net_worth(db, today)
         return {"id": tx_id}
 
@@ -330,6 +333,7 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
             """, {**item.model_dump(mode="json"), "id": tx_id})
             if not result.rowcount:
                 raise HTTPException(404, "Transaction not found.")
+            mark(db, tx_id)
             record_net_worth(db, today)
         return {"id": tx_id}
 

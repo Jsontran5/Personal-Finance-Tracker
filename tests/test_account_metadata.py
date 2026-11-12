@@ -32,7 +32,7 @@ class AccountMetadataTests(TestCase):
                 self.assertEqual(tuple(before), tuple(after))
                 self.assertEqual(preview_accounts(db)[0]['kind'], 'depository')
                 self.assertIsNone(preview_accounts(db)[0]['subtype'])
-                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 3)
+                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 4)
 
     def test_normal_sync_updates_metadata_without_replacing_fresh_balance(self):
         calls = []
