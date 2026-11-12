@@ -12,6 +12,10 @@ From the VS Code PowerShell terminal, run `& .\.venv\Scripts\python.exe -m finan
 
 ## Record your finances
 
+- Transactions has separate **Needs review**, **Uncategorized**, and **Reviewed** views. An initial backfill does not require reviewing every transaction: ambiguous credits and entries you flag form the review queue. Unclassified credits stay out of cash flow until given an explicit type; an uncategorized purchase still counts toward spending. Manually flagging a purchase does not remove it from financial totals.
+- Choose **All saved dates** to handle historical exceptions together, or use **Reporting month**. Select a page or all filtered matches, then preview bulk classification, acknowledgement, or flags before applying. Pending entries and incompatible money directions are skipped with reasons. Personal transfers need a destination in the individual editor.
+- **New merchant rule** previews exact imported-merchant matches across all saved dates, optionally scoped to one account and current type. Existing individual edits are preserved. **Also apply to future imports** is off by default. Enable it when you want the rule reused on later syncs (or compatible new uncategorized manual entries). Rules can be disabled without undoing existing classifications. More specific account rules take priority; previews show at most 50 sample rows, with full match/applicable counts. Narrow rules with more than 10,000 matches to an account.
+
 - Use the **Dark mode** switch in the sidebar to change the appearance. The app remembers your choice on this computer.
 - Add an account with its opening balance. For debt accounts, enter the amount owed as a positive number.
 - Press **Alt+N** for Quick Add. Enter an amount, choose the account and type, then enter the merchant or source. Log credit card purchases as expenses and payments as transfers to the card.
