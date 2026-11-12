@@ -126,7 +126,7 @@ def preview_transactions(db, month):
         SELECT t.rowid AS id, a.rowid AS account_id, NULL AS destination_id,
           e.category_id, ABS(t.amount_minor) AS amount_minor,
           COALESCE(e.kind, CASE WHEN t.kind='credit' THEN 'refund' ELSE t.kind END) AS kind,
-          COALESCE(e.merchant,t.name) AS merchant, COALESCE(e.notes,'') AS notes,
+          COALESCE(e.merchant,t.name) AS merchant, t.name AS source_merchant, COALESCE(e.notes,'') AS notes,
           t.date,t.currency,t.pending,a.name AS account_name,c.name AS category_name,
           json_extract(d.payload,'$.personal_finance_category.primary') AS bank_category,
           NULL AS destination_name, CASE WHEN t.kind='credit' AND e.kind IS NULL THEN 1 ELSE 0 END AS needs_review

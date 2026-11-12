@@ -336,6 +336,25 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .asset-table td.numeric, .asset-table th:last-child { text-align: right; }
 .asset-table small { display: block; margin-top: 4px; font-size: .73rem; }
 .asset-table th { color: var(--muted); font-weight: 500; }
+.transaction-review { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.review-heading { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px; }
+.review-heading label { max-width: 100%; }
+.review-selection { margin-top: 14px; display: grid; gap: 10px; }
+.bulk-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--blue-tint); }
+.selectable-ledger-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; align-items: center; border-bottom: 1px solid var(--line); }
+.selectable-ledger-row .ledger-row { border-bottom: 0; }
+.selectable-ledger-row > input { justify-self: start; }
+.merchant-rules { margin-top: 13px; font-size: .82rem; }
+.merchant-rules summary { cursor: pointer; color: var(--muted); }
+.rules-scroll { max-height: 250px; overflow: auto; }
+.rule-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+.rule-row > div { min-width: 0; overflow-wrap: anywhere; }
+.rule-row small { display: block; margin-top: 5px; }
+.review-preview { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.review-preview > p { margin: 8px 0; }
+.preview-scroll { max-height: 260px; overflow: auto; }
+.preview-row { display: grid; gap: 5px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: .8rem; overflow-wrap: anywhere; }
+.preview-row > span { color: var(--blue); font-size: .76rem; }
 
 @media (max-width: 1050px) {
   .home-spending-grid { grid-template-columns: minmax(0, 1fr); }

@@ -8,12 +8,13 @@ import { groupedAccounts } from './accounts'
 import { Chart, NetWorth, type HistoryPoint } from './Charts'
 import { HomeSpending, SpendingPage, type SpendingReport } from './Spending'
 import { AssetSummary } from './AssetSummary'
+import { TransactionReview } from './TransactionReview'
 import './styles.css'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
 type Category = { id: number; name: string; kind: 'expense' | 'income' }
 type Entry = { id: number; account_id: number; destination_id: number | null; category_id: number | null; amount_minor: number; kind: Kind; merchant: string; notes: string; date: string }
-type Transaction = Entry & { currency: string; account_name: string; category_name: string | null; destination_name: string | null; pending?: number; needs_review?: number }
+type Transaction = Entry & { currency: string; account_name: string; category_name: string | null; destination_name: string | null; pending?: number; needs_review?: number; source_merchant?: string }
 type Template = Omit<Entry, 'date' | 'destination_id'> & { name: string }
 type Budget = Category & { limit_minor: number | null; actual_minor: number; previous_actual_minor: number }
 type Point = HistoryPoint
@@ -166,17 +167,20 @@ function CashFlow({ data, month }: { data: Overview; month: string }) {
   </section>
 }
 
-function TransactionList({ transactions, edit, empty = 'No transactions match this view.' }: { transactions: Transaction[]; edit: (tx: Transaction) => void; empty?: string }) {
+function TransactionList({ transactions, edit, empty = 'No transactions match this view.', selected = [], toggle, statuses = {} }: { transactions: Transaction[]; edit: (tx: Transaction) => void; empty?: string; selected?: number[]; toggle?: (id: number) => void; statuses?: Record<number, string> }) {
   if (!transactions.length) return <p className="empty">{empty}</p>
   return <div className="ledger">
-    {transactions.map(tx => <button className="ledger-row" data-transaction-id={tx.id} key={tx.id} onClick={() => edit(tx)}>
+    {transactions.map(tx => {
+      const row = <button className="ledger-row" data-transaction-id={tx.id} key={tx.id} onClick={() => edit(tx)}>
       <span className={'row-icon row-' + tx.kind}><Icon name={tx.kind === 'transfer' ? 'transactions' : tx.kind === 'income' || tx.kind === 'refund' ? 'income' : 'expense'} /></span>
-      <span className="row-main"><strong>{tx.merchant}</strong><small>{tx.account_name}{tx.destination_name && ' → ' + tx.destination_name} · {tx.date}{tx.pending ? ' · Pending' : ''}{tx.needs_review ? ' · Review credit type' : ''}</small></span>
+      <span className="row-main"><strong>{tx.merchant}</strong><small>{tx.account_name}{tx.destination_name && ' → ' + tx.destination_name} · {tx.date}{tx.pending ? ' · Pending' : ''}{tx.needs_review ? ' · Review credit type' : statuses[tx.id] === 'needs_review' ? ' · Flagged' : statuses[tx.id] === 'reviewed' ? ' · Reviewed' : ''}</small></span>
       <span className="chip row-category">{tx.needs_review ? 'Review credit' : tx.category_name ?? kinds[tx.kind]}</span>
       <span className={'numeric ' + (tx.kind === 'income' || tx.kind === 'refund' ? 'positive' : '')}>
         {tx.kind === 'expense' ? '−' : tx.kind === 'income' || tx.kind === 'refund' ? '+' : ''}{money(tx.amount_minor, tx.currency)}
       </span>
-    </button>)}
+    </button>
+      return toggle ? <div className="selectable-ledger-row" key={tx.id}><input type="checkbox" aria-label={'Select ' + tx.merchant + ' ' + tx.date} checked={selected.includes(tx.id)} onChange={() => toggle(tx.id)} />{row}</div> : row
+    })}
   </div>
 }
 
@@ -234,6 +238,12 @@ function App() {
   const [transactionPage, setTransactionPage] = useState(0)
   const [drilldown, setDrilldown] = useState<{ ids: number[]; label: string } | null>(null)
   const [chartAccountIds, setChartAccountIds] = useState<number[] | null>(null)
+  const [reviewFilter, setReviewFilter] = useState('all')
+  const [reviewStatuses, setReviewStatuses] = useState<Record<number, string>>({})
+  const [selectedTransactions, setSelectedTransactions] = useState<number[]>([])
+  const [reviewMessage, setReviewMessage] = useState('')
+  const [allReviewDates, setAllReviewDates] = useState(false)
+  const [reviewHistory, setReviewHistory] = useState<Transaction[]>([])
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -251,6 +261,8 @@ function App() {
   useEffect(() => { setTransactionPage(0) }, [search, accountFilter, categoryFilter, month, mode])
   useEffect(() => { window.scrollTo(0, 0) }, [page])
   useEffect(() => { setDrilldown(null) }, [month, mode])
+  useEffect(() => { setSelectedTransactions([]); setTransactionPage(0) }, [month, mode, search, accountFilter, categoryFilter, reviewFilter, drilldown, allReviewDates])
+  useEffect(() => { setReviewFilter('all'); setReviewStatuses({}); setReviewMessage(''); setAllReviewDates(false); setReviewHistory([]) }, [month, mode])
 
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -355,6 +367,8 @@ function App() {
   }
 
   function filterCategory(id: number) {
+    setAllReviewDates(false)
+    setReviewFilter('all')
     setDrilldown(null)
     setCategoryFilter(id)
     setAccountFilter(0)
@@ -404,9 +418,12 @@ function App() {
   }
   const editBudget = (budget: Budget) => open({ type: 'budget', budget })
   const drillSpending = (ids: number[], label: string) => {
+    setAllReviewDates(false)
+    setReviewFilter('all')
     setDrilldown({ ids, label }); setCategoryFilter(0); setAccountFilter(0); setSearch(''); setTransactionPage(0); setPage('Transactions')
   }
-  const entries = ready?.transactions.filter(tx => (!categoryFilter || tx.category_id === categoryFilter) &&
+  const entries = (allReviewDates ? reviewHistory : ready?.transactions)?.filter(tx => (!categoryFilter || tx.category_id === categoryFilter) &&
+    (reviewFilter === 'all' || (reviewFilter === 'uncategorized' ? tx.category_id === null && ['expense', 'income', 'refund'].includes(tx.kind) : reviewStatuses[tx.id] === reviewFilter)) &&
     (!drilldown || drilldown.ids.includes(tx.id)) &&
     (!accountFilter || tx.account_id === accountFilter) &&
     [tx.merchant, tx.account_name, tx.category_name, tx.notes].some(value => value?.toLowerCase().includes(search.trim().toLowerCase()))) ?? []
@@ -427,7 +444,7 @@ function App() {
         <option value="personal">Personal</option><option value="sandbox">Sandbox preview</option>
       </select></label>
       <nav aria-label="Finance sections">{pages.map((item, index) =>
-        <button key={item} aria-current={page === item ? 'page' : undefined} onClick={() => { setPage(item); setDrilldown(null); setCategoryFilter(0); setAccountFilter(0); setSearch('') }}>
+        <button key={item} aria-current={page === item ? 'page' : undefined} onClick={() => { setPage(item); setAllReviewDates(false); setReviewFilter('all'); setDrilldown(null); setCategoryFilter(0); setAccountFilter(0); setSearch('') }}>
           <Icon name={icons[index]} />{item}
         </button>)}</nav>
       <div className="sidebar-footer">
@@ -448,7 +465,7 @@ function App() {
           'Bank sync': 'Connect and refresh a test bank through Plaid.',
         }[page]}</p></div>
         <div className="toolbar">
-          {page !== 'Accounts' && <input type="month" aria-label="Reporting month" value={month} onChange={event => { if (event.target.value) setMonth(event.target.value) }} />}
+          {page !== 'Accounts' && <input type="month" aria-label="Reporting month" value={month} disabled={page === 'Transactions' && allReviewDates} onChange={event => { if (event.target.value) setMonth(event.target.value) }} />}
           {mode === 'sandbox' ? <button className="primary" onClick={() => setPage('Bank sync')}>Bank sync</button>
             : <button className="primary with-icon" disabled={!data} onClick={quickAdd}><Icon name="plus" />Add transaction</button>}
         </div>
@@ -478,7 +495,11 @@ function App() {
       {ready && page === 'Spending' && <SpendingPage key={mode} report={ready.spending} money={money} drill={drillSpending} changeMonth={setMonth} sandbox={mode === 'sandbox'} />}
       {ready && page === 'Transactions' && <>
         <section className="card">
-          <div className="section-heading"><div><h2>{activeMonth}</h2><small>{entries.length} entries</small></div></div>
+          <div className="section-heading"><div><h2>{allReviewDates ? 'All saved dates' : activeMonth}</h2><small>{entries.length} entries</small></div></div>
+          {reviewMessage && <p className="notice" role="status">{reviewMessage}</p>}
+          <TransactionReview<Transaction> key={mode} path={(mode === 'sandbox' ? previewPath : '') + '/review'} request={request} transactions={ready.transactions} categories={ready.categories} accounts={ready.accounts} allDates={allReviewDates} setAllDates={setAllReviewDates} onHistory={setReviewHistory}
+            selected={selectedTransactions} setSelected={setSelectedTransactions} pageIds={entries.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map(tx => tx.id)} matchingIds={entries.map(tx => tx.id)} filter={reviewFilter} setFilter={setReviewFilter} onStatuses={setReviewStatuses}
+            complete={message => { setReviewMessage(message); setRevision(value => value + 1) }} />
           {drilldown && <div className="drilldown-filter"><span>{drilldown.label}</span><div className="inline-actions"><button className="secondary small" onClick={() => setDrilldown(null)}>Clear spending filter</button><button className="secondary small" onClick={() => { setDrilldown(null); setPage('Spending') }}>Back to Spending</button></div></div>}
           <div className="filters">
             <input type="search" aria-label="Search transactions" placeholder="Search transactions" value={search} onChange={event => setSearch(event.target.value)} />
@@ -492,7 +513,8 @@ function App() {
               {ready.categories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}
             </select>
           </div>
-          <TransactionList transactions={entries.slice(currentPage * pageSize, (currentPage + 1) * pageSize)} edit={editTransaction} empty={emptyMessage} />
+          <TransactionList transactions={entries.slice(currentPage * pageSize, (currentPage + 1) * pageSize)} edit={editTransaction} empty={emptyMessage} selected={selectedTransactions} statuses={reviewStatuses}
+            toggle={id => setSelectedTransactions(value => value.includes(id) ? value.filter(item => item !== id) : [...value, id])} />
           {entries.length > pageSize && <div className="pagination" aria-label="Transaction pages">
             <span className="muted" role="status">{currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, entries.length)} of {entries.length}</span>
             <div className="inline-actions"><button className="secondary small" disabled={currentPage === 0} onClick={() => setTransactionPage(currentPage - 1)}>Previous</button>

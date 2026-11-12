@@ -93,7 +93,8 @@ def matches(row, merchant, account_id, kind):
 def reason(db, row, action, sandbox, rule=False):
     if row['pending']:
         return 'Pending: wait until posted'
-    if rule and (row['origin'] == 'user' or (row['has_edit'] and row['origin'] != 'rule') or (not sandbox and row['category_id'] is not None and row['origin'] != 'rule')):
+    protected = (row['has_edit'] and row['origin'] != 'rule') if sandbox else (row['origin'] == 'user' or (row['category_id'] is not None and row['origin'] != 'rule'))
+    if rule and protected:
         return 'Individual edit preserved'
     if action.operation == 'review':
         return 'Classify ambiguous credit first' if row['needs_review'] else None
@@ -127,10 +128,16 @@ def write_action(db, row, action, sandbox, origin='user'):
 def apply_rules(db, sandbox, source_ids):
     if not source_ids:
         return
+    wanted = {str(identifier) for identifier in source_ids}
+    if sandbox:
+        # A provider correction must not leave an automatic income/refund override on a debit (or vice versa).
+        for row in review_rows(db, sandbox):
+            if str(row['source_id']) in wanted and row['origin'] == 'rule' and ((row['amount_minor'] > 0 and row['kind'] in {'income', 'refund'}) or (row['amount_minor'] < 0 and row['kind'] == 'expense')):
+                db.execute('DELETE FROM preview_edits WHERE transaction_id=?', (row['source_id'],))
+                db.execute('DELETE FROM transaction_reviews WHERE transaction_id=?', (row['source_id'],))
     rules = [dict(row) for row in db.execute('SELECT * FROM merchant_rules WHERE active=1 ORDER BY account_id IS NULL,id')]
     if not rules:
         return
-    wanted = {str(identifier) for identifier in source_ids}
     for row in review_rows(db, sandbox):
         if str(row['source_id']) not in wanted:
             continue
@@ -182,7 +189,14 @@ def review_router(database, sandbox=False, initialize=None, after_write=None):
         with connect(database) as db:
             rows = review_rows(db, sandbox)
             counts = {name: sum(status(row) == name for row in rows) for name in ['needs_review', 'reviewed', 'not_required']}
+            categories = dict(db.execute('SELECT id,name FROM ' + ('preview_categories' if sandbox else 'categories')))
+            accounts = dict(db.execute('SELECT id,name FROM accounts'))
+            fields = ['id', 'account_id', 'destination_id', 'category_id', 'kind', 'currency', 'merchant', 'notes', 'date', 'account_name', 'pending', 'needs_review', 'source_merchant']
+            items = [{**{key: row[key] for key in fields}, 'amount_minor': abs(row['amount_minor']),
+                      'category_name': categories.get(row['category_id']), 'destination_name': accounts.get(row['destination_id']),
+                      'review_status': status(row)} for row in rows]
             return {'counts': counts, 'uncategorized': sum(row['category_id'] is None and row['kind'] in {'expense', 'income', 'refund'} for row in rows),
+                    'items': items,
                     'rows': [{'id': row['id'], 'review_status': status(row)} for row in rows],
                     'rules': [dict(row) for row in db.execute('SELECT * FROM merchant_rules ORDER BY id')]}
 
@@ -234,6 +248,11 @@ def review_router(database, sandbox=False, initialize=None, after_write=None):
             raise HTTPException(422, 'Supply active as true or false.')
         prepare()
         with connect(database, write=True) as db:
+            if enabled['active']:
+                current = db.execute('SELECT * FROM merchant_rules WHERE id=?', (rule_id,)).fetchone()
+                if current and db.execute('SELECT 1 FROM merchant_rules WHERE merchant=? AND account_id IS ? AND match_kind=? AND active=1 AND id<>?',
+                                          (current['merchant'], current['account_id'], current['match_kind'], rule_id)).fetchone():
+                    raise HTTPException(409, 'Disable the other active rule with this exact match first.')
             if not db.execute('UPDATE merchant_rules SET active=? WHERE id=?', (int(enabled['active']), rule_id)).rowcount:
                 raise HTTPException(404, 'Rule not found.')
         return {'id': rule_id}

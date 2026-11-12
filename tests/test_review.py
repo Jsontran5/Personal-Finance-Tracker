@@ -107,3 +107,39 @@ class ReviewTests(TestCase):
             posted = {**self.tx('posted'), 'pending_transaction_id': 'purchase'}
             save_transactions(db, [posted], [], [])
             self.assertEqual(db.execute("SELECT state FROM transaction_reviews WHERE transaction_id='posted'").fetchone()[0], 'flagged')
+
+    def test_review_acknowledgement_alone_does_not_block_sandbox_categorization(self):
+        purchase = next(row['id'] for row in self.rows() if not row['pending'] and not row['needs_review'])
+        self.apply({'ids': [purchase], 'action': {'operation': 'review'}})
+        payload = {'action': {'kind': 'expense', 'category_id': 1, 'rule': {'merchant': 'COFFEE SHOP', 'match_kind': 'expense'}}}
+        self.assertEqual(self.apply(payload).json()['applied'], 1)
+
+    def test_personal_rules_apply_to_new_uncategorized_entries_and_preserve_explicit_categories(self):
+        client = self.client
+        account = client.post('/api/accounts', json={'name': 'Personal', 'kind': 'checking', 'currency': 'USD',
+                                                    'opening_balance_minor': 100000, 'date': '2026-01-01'}).json()['id']
+        tx = {'account_id': account, 'kind': 'expense', 'amount_minor': 1000, 'merchant': 'Coffee shop', 'date': '2026-11-01'}
+        first = client.post('/api/transactions', json=tx).json()['id']
+        body = {'action': {'kind': 'expense', 'category_id': 1, 'rule': {'merchant': 'Coffee shop', 'match_kind': 'expense', 'future': True}}}
+        preview = client.post('/api/review/preview', json=body).json()
+        self.assertEqual(client.post('/api/review/apply', json={**body, 'preview_token': preview['preview_token']}).status_code, 200)
+        new = client.post('/api/transactions', json=tx).json()['id']
+        protected = client.post('/api/transactions', json={**tx, 'category_id': 2}).json()['id']
+        rows = client.get('/api/overview?month=2026-11').json()['transactions']
+        self.assertEqual({row['id']: row['category_id'] for row in rows}, {first: 1, new: 1, protected: 2})
+        body = {'ids': [new], 'action': {'kind': 'transfer'}}
+        result = client.post('/api/review/preview', json=body).json()
+        self.assertEqual(result['applicable'], 0)
+        self.assertIn('destination', result['rows'][0]['skip_reason'])
+
+    def test_provider_direction_correction_invalidates_only_automatic_override(self):
+        payload = {'action': {'kind': 'income', 'category_id': 9, 'rule': {
+            'merchant': 'COFFEE SHOP', 'match_kind': 'refund', 'future': True,
+        }}}
+        self.assertEqual(self.apply(payload).json()['applied'], 1)
+        with connect(self.path, write=True) as db:
+            save_transactions(db, [], [self.tx('credit', 20)], [])
+            self.assertIsNone(db.execute("SELECT 1 FROM preview_edits WHERE transaction_id='credit'").fetchone())
+        overview = self.client.get('/api/plaid/sandbox/preview?month=2026-11').json()
+        self.assertEqual(overview['income_minor'], 0)
+        self.assertEqual(overview['spending_minor'], 3000)
