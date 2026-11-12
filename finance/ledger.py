@@ -1,6 +1,7 @@
 from datetime import date
 import sqlite3
 from .spending import previous_month, spending_report
+from .transfers import project_transfers
 
 LIABILITIES = {"credit", "loan"}
 
@@ -9,7 +10,7 @@ def monthly_activity(transactions):
     income = spending = 0
     category_actual = {}
     for tx in transactions:
-        if tx["currency"] != "USD" or tx.get("pending") or tx.get("needs_review"):
+        if tx["currency"] != "USD" or tx.get("pending") or tx.get("needs_review") or tx.get('transfer_pair_id'):
             continue
         if tx["kind"] == "income":
             income += tx["amount_minor"]
@@ -85,14 +86,14 @@ def record_net_worth(db: sqlite3.Connection, day: date):
 
 
 def month_transactions(db, month):
-    return [dict(row) for row in db.execute("""
+    return project_transfers(db, [dict(row) for row in db.execute("""
         SELECT t.*, a.name AS account_name, a.currency, c.name AS category_name,
                d.name AS destination_name
         FROM transactions t JOIN accounts a ON a.id = t.account_id
         LEFT JOIN categories c ON c.id = t.category_id
         LEFT JOIN accounts d ON d.id = t.destination_id
         WHERE t.date >= ? AND t.date <= ? ORDER BY t.date DESC, t.id DESC
-    """, (month + "-01", month + "-31"))]
+    """, (month + "-01", month + "-31"))], False)
 
 
 def overview(db: sqlite3.Connection, day: date, month: str):

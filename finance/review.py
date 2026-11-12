@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .db import connect
+from .transfers import project_transfers, transfer_router, has_confirmed_link
 
 KINDS = Literal['expense', 'income', 'refund', 'transfer', 'investment']
 
@@ -49,10 +50,12 @@ def review_rows(db, sandbox):
           0 AS pending,0 AS needs_review,0 AS has_edit,t.destination_id,r.state,r.origin,a.name AS account_name
           FROM transactions t JOIN accounts a ON a.id=t.account_id
           LEFT JOIN transaction_reviews r ON r.transaction_id=CAST(t.id AS TEXT)"""
-    return [dict(row) for row in db.execute(sql + ' ORDER BY t.date DESC,t.rowid DESC')]
+    return project_transfers(db, [dict(row) for row in db.execute(sql + ' ORDER BY t.date DESC,t.rowid DESC')], sandbox)
 
 
 def status(row):
+    if row['state'] != 'flagged' and row.get('transfer_pair_id'):
+        return 'reviewed'
     return 'needs_review' if row['needs_review'] or row['state'] == 'flagged' else 'reviewed' if row['state'] == 'reviewed' else 'not_required'
 
 
@@ -100,6 +103,8 @@ def reason(db, row, action, sandbox, rule=False):
         return 'Classify ambiguous credit first' if row['needs_review'] else None
     if action.operation == 'flag':
         return None
+    if has_confirmed_link(db, row['source_id']):
+        return 'Unlink confirmed transfer before changing classification'
     if action.kind is None:
         return 'Choose a transaction type'
     if sandbox and ((row['amount_minor'] > 0 and action.kind in {'income', 'refund'}) or (row['amount_minor'] < 0 and action.kind == 'expense')):
@@ -158,6 +163,7 @@ def apply_rules(db, sandbox, source_ids):
 
 def review_router(database, sandbox=False, initialize=None, after_write=None):
     router = APIRouter(prefix='/review')
+    router.include_router(transfer_router(database, sandbox, initialize))
 
     def prepare():
         if initialize:
@@ -191,7 +197,7 @@ def review_router(database, sandbox=False, initialize=None, after_write=None):
             counts = {name: sum(status(row) == name for row in rows) for name in ['needs_review', 'reviewed', 'not_required']}
             categories = dict(db.execute('SELECT id,name FROM ' + ('preview_categories' if sandbox else 'categories')))
             accounts = dict(db.execute('SELECT id,name FROM accounts'))
-            fields = ['id', 'account_id', 'destination_id', 'category_id', 'kind', 'currency', 'merchant', 'notes', 'date', 'account_name', 'pending', 'needs_review', 'source_merchant']
+            fields = ['id', 'account_id', 'destination_id', 'category_id', 'kind', 'currency', 'merchant', 'notes', 'date', 'account_name', 'pending', 'needs_review', 'source_merchant', 'transfer_pair_id', 'transfer_kind', 'transfer_role', 'transfer_other_account']
             items = [{**{key: row[key] for key in fields}, 'amount_minor': abs(row['amount_minor']),
                       'category_name': categories.get(row['category_id']), 'destination_name': accounts.get(row['destination_id']),
                       'review_status': status(row)} for row in rows]

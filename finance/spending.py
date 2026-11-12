@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 
 def eligible_spending(tx):
-    return (tx['currency'] == 'USD' and not tx.get('pending') and not tx.get('needs_review')
+    return (tx['currency'] == 'USD' and not tx.get('pending') and not tx.get('needs_review') and not tx.get('transfer_pair_id')
             and tx['kind'] in {'expense', 'refund'})
 
 

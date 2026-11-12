@@ -42,6 +42,11 @@ def initialize(path: Path):
             from .review import initialize_review
             initialize_review(db)
             db.execute('PRAGMA user_version = 2')
-        elif version != 2:
+            version = 2
+        if version == 2:
+            from .transfers import initialize_transfers
+            initialize_transfers(db)
+            db.execute('PRAGMA user_version = 3')
+        elif version != 3:
             raise RuntimeError(f"Unsupported database version: {version}")
 

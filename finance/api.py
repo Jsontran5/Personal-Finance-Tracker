@@ -16,6 +16,7 @@ from .db import DATABASE, ROOT, connect, initialize
 from .ledger import LIABILITIES, overview, record_net_worth
 from .plaid_sandbox import sandbox_router
 from .review import apply_rules, mark, review_router
+from .transfers import require_unlinked
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 Notes = Annotated[str, StringConstraints(max_length=2000)]
@@ -325,6 +326,7 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
     def edit_transaction(tx_id: int, item: Transaction):
         today = date.today()
         with connect(database, write=True) as db:
+            require_unlinked(db, tx_id)
             validate_transaction(db, item, today)
             result = db.execute("""
                 UPDATE transactions SET account_id=:account_id,destination_id=:destination_id,
@@ -340,6 +342,7 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
     @app.delete("/api/transactions/{tx_id}")
     def remove_transaction(tx_id: int):
         with connect(database, write=True) as db:
+            require_unlinked(db, tx_id)
             if not db.execute("DELETE FROM transactions WHERE id=?", (tx_id,)).rowcount:
                 raise HTTPException(404, "Transaction not found.")
             record_net_worth(db, date.today())

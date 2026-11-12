@@ -62,7 +62,7 @@ class TransactionDetailsTests(TestCase):
                     "counterparties": [{"name": "Shop"}], "future_field": {"keep": True},
                 }
                 with connect(sandbox, write=True) as db:
-                    self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 4)
+                    self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 5)
                     self.assertEqual(db.execute("SELECT cursor FROM connection").fetchone()[0], "saved-cursor")
                     save_transactions(db, [tx], [], [])
 

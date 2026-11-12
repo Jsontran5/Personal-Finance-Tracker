@@ -10,6 +10,7 @@ from .db import connect
 from .ledger import attach_snapshot_accounts, monthly_activity, totals
 from .spending import previous_month, spending_report
 from .review import initialize_review, mark, review_router
+from .transfers import initialize_transfers, project_transfers, require_unlinked
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 Kind = Literal["expense", "income", "refund", "transfer", "investment"]
@@ -33,11 +34,16 @@ class BudgetEdit(BaseModel):
 
 def initialize_preview(db):
     version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version == 5:
+        return
     if version == 4:
+        initialize_transfers(db)
+        db.execute('PRAGMA user_version = 5')
         return
     if version == 3:
         initialize_review(db)
         db.execute('PRAGMA user_version = 4')
+        initialize_preview(db)
         return
     if version == 2:
         db.execute("ALTER TABLE accounts ADD COLUMN subtype TEXT")
@@ -122,7 +128,7 @@ def record_preview_snapshot(db):
 
 
 def preview_transactions(db, month):
-    return [dict(row) for row in db.execute("""
+    return project_transfers(db, [dict(row) for row in db.execute("""
         SELECT t.rowid AS id, a.rowid AS account_id, NULL AS destination_id,
           e.category_id, ABS(t.amount_minor) AS amount_minor,
           COALESCE(e.kind, CASE WHEN t.kind='credit' THEN 'refund' ELSE t.kind END) AS kind,
@@ -136,7 +142,7 @@ def preview_transactions(db, month):
         LEFT JOIN transaction_details d ON d.transaction_id=t.id
         WHERE t.removed=0 AND t.date>=? AND t.date<=?
         ORDER BY t.date DESC,t.rowid DESC
-    """, (month + "-01", month + "-31"))]
+    """, (month + "-01", month + "-31"))], True)
 
 
 def preview_overview(db, month):
@@ -207,6 +213,7 @@ def sandbox_preview_router(database, initialize_sandbox):
             row = db.execute("SELECT id,amount_minor FROM transactions WHERE rowid=? AND removed=0", (row_id,)).fetchone()
             if row is None:
                 raise HTTPException(404, "Transaction no longer available. Refresh this view.")
+            require_unlinked(db, row['id'])
             if (row["amount_minor"] > 0 and item.kind in {"income", "refund"}) or (
                 row["amount_minor"] < 0 and item.kind == "expense"
             ):
