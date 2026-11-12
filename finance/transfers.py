@@ -23,7 +23,9 @@ def transfer_rows(db, sandbox):
     if sandbox:
         sql = """SELECT t.rowid AS id,t.id AS source_id,a.rowid AS account_id,t.account_id AS source_account,
           a.name AS account_name,a.type AS account_type,t.amount_minor,t.currency,t.date,t.pending,t.removed,
+          CASE WHEN t.kind='transfer' THEN 1 ELSE 0 END AS transfer_hint,
           COALESCE(e.kind,CASE WHEN t.kind='credit' THEN 'refund' ELSE t.kind END) AS kind,
+          CASE WHEN t.kind='credit' AND e.kind IS NULL THEN 1 ELSE 0 END AS needs_review,
           COALESCE(e.merchant,t.name) AS merchant,COALESCE(e.notes,'') AS notes,c.name AS category_name
           FROM transactions t JOIN accounts a ON a.id=t.account_id
           LEFT JOIN preview_edits e ON e.transaction_id=t.id LEFT JOIN preview_categories c ON c.id=e.category_id"""
@@ -31,7 +33,7 @@ def transfer_rows(db, sandbox):
         sql = """SELECT t.id,t.id AS source_id,t.account_id,t.account_id AS source_account,
           a.name AS account_name,a.kind AS account_type,
           CASE WHEN t.kind IN ('income','refund') THEN -t.amount_minor ELSE t.amount_minor END AS amount_minor,
-          a.currency,t.date,0 AS pending,0 AS removed,t.kind,t.merchant,t.notes,c.name AS category_name
+          a.currency,t.date,0 AS pending,0 AS removed,0 AS transfer_hint,0 AS needs_review,t.kind,t.merchant,t.notes,c.name AS category_name
           FROM transactions t JOIN accounts a ON a.id=t.account_id LEFT JOIN categories c ON c.id=t.category_id
           WHERE t.kind NOT IN ('transfer','investment')"""
     return [{**dict(row), 'source_id': str(row['source_id'])} for row in db.execute(sql)]
@@ -48,11 +50,16 @@ def compatible(outgoing, incoming):
             and outgoing['amount_minor'] > 0 and outgoing['amount_minor'] == -incoming['amount_minor']
             and outgoing['source_account'] != incoming['source_account'] and outgoing['currency'] is not None
             and outgoing['currency'] == incoming['currency'] and gap <= 5
+            and outgoing['account_type'] != 'loan' and incoming['account_type'] != 'loan'
             and outgoing['kind'] != 'investment' and incoming['kind'] != 'investment')
 
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def likely(outgoing, incoming):
+    return any(row['transfer_hint'] for row in (outgoing, incoming)) or any(word in (outgoing['merchant'] + ' ' + incoming['merchant']).casefold() for word in ['transfer', 'payment', 'autopay'])
 
 
 def signature(outgoing, incoming):
@@ -90,12 +97,14 @@ def project_transfers(db, transactions, sandbox):
 
 
 def view_pair(out, inc):
-    fields = ['id', 'account_id', 'account_name', 'account_type', 'merchant', 'date', 'currency', 'kind', 'category_name', 'notes']
+    fields = ['id', 'account_id', 'account_name', 'account_type', 'merchant', 'date', 'currency', 'kind', 'category_name', 'notes', 'needs_review']
     def leg(row):
         return {**{key: row[key] for key in fields}, 'amount_minor': abs(row['amount_minor'])}
     days = abs((date.fromisoformat(out['date']) - date.fromisoformat(inc['date'])).days)
     kind = 'card_payment' if inc['account_type'] == 'credit' and out['account_type'] != 'credit' else 'transfer'
     clues = ['Equal amount and currency', 'Different accounts', f'Posted {days} day(s) apart']
+    if any(row['transfer_hint'] for row in (out, inc)):
+        clues.append('A source entry is classified as a transfer')
     if any(word in (out['merchant'] + ' ' + inc['merchant']).casefold() for word in ['transfer', 'payment', 'autopay']):
         clues.append('Transfer/payment wording in a description')
     return {'outgoing': leg(out), 'incoming': leg(inc), 'kind': kind, 'reasons': clues}
@@ -142,7 +151,7 @@ def transfer_router(database, sandbox=False, initialize=None):
                 bucket.sort(key=lambda row: row['date'])
             candidates = []
             truncated = False
-            for out in sorted(rows, key=lambda row: row['date'], reverse=True):
+            for out in sorted(rows, key=lambda row: (row['date'], row['id']), reverse=True):
                 if out['amount_minor'] <= 0 or out['source_id'] in occupied or out['pending'] or out['removed']:
                     continue
                 bucket = buckets.get((out['currency'], out['amount_minor']), [])
@@ -150,7 +159,7 @@ def transfer_router(database, sandbox=False, initialize=None):
                 day = date.fromisoformat(out['date']).toordinal()
                 options = sorted(bucket[bisect_left(dates, day - 5):bisect_right(dates, day + 5)], key=lambda row: abs(date.fromisoformat(row['date']).toordinal() - day))
                 for inc in options:
-                    if compatible(out, inc) and dismissed.get((out['source_id'], inc['source_id'])) != signature(out, inc):
+                    if compatible(out, inc) and likely(out, inc) and dismissed.get((out['source_id'], inc['source_id'])) != signature(out, inc):
                         candidates.append(view_pair(out, inc))
                         if len(candidates) >= 500:
                             truncated = True
@@ -175,7 +184,7 @@ def transfer_router(database, sandbox=False, initialize=None):
         with connect(database) as db:
             out, inc = pair(db, request)
             return {'pair': view_pair(out, inc), 'preview_token': digest([out, inc]),
-                    'effect': 'Both entries are excluded from income and spending while this link remains valid. Original types, categories, notes and balances are retained. Unlink restores normal reporting.'}
+                    'effect': 'Confirming excludes both entries from income and spending while this link remains valid. Original types, categories, notes and balances are retained. Unlink restores normal reporting.'}
 
     @router.post('/confirm')
     def confirm(request: PairRequest):

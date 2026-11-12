@@ -113,6 +113,12 @@ class TransferTests(TestCase):
         }).json()
         self.assertEqual(result['applicable'], 0)
 
+    def test_unrelated_equal_purchase_and_refund_do_not_create_suggestion(self):
+        with connect(self.path, write=True) as db:
+            save_transactions(db, [self.tx('ordinary', 'checking', 250, name='Coffee shop'), self.tx('refund', 'card', -250, name='Clothing shop refund')], [], [])
+        result = self.client.get(self.prefix).json()
+        self.assertEqual(len(result['suggestions']), 1)
+
     def test_personal_pairs_keep_both_account_balances_and_original_categories(self):
         ids = []
         for name in ['Manual checking', 'Manual saving']:

@@ -64,6 +64,13 @@ def run():
             account = db.execute("SELECT id FROM accounts WHERE type='depository' LIMIT 1").fetchone()[0]
             db.execute("INSERT INTO transactions VALUES ('ui-refund',?,?,?,-12500,'USD','credit',0,0)", (account, test_month + '-02', 'Synthetic refund'))
             db.execute("INSERT INTO preview_edits VALUES ('ui-refund','Synthetic refund','refund',NULL,'UI fixture only')")
+            card = db.execute("SELECT id FROM accounts WHERE type='credit' LIMIT 1").fetchone()[0]
+            saving = db.execute("SELECT id FROM accounts WHERE subtype='savings' LIMIT 1").fetchone()[0]
+            for identifier, acct, amount, kind in [('ui-pair-out', account, 11001, 'expense'), ('ui-pair-card', card, -11001, 'credit'), ('ui-pair-alternative', saving, -11001, 'credit')]:
+                observed = test_month + f'-{date.today().day:02}'
+                db.execute('INSERT INTO transactions VALUES (?,?,?,?,?,\'USD\',?,0,0)', (identifier, acct, observed, 'QA card payment ' + identifier, amount, kind))
+                payload = {'date': observed, 'name': 'QA card payment ' + identifier, 'amount': amount / 100, 'iso_currency_code': 'USD', 'pending': False, 'personal_finance_category': {'primary': 'TRANSFER_OUT' if amount > 0 else 'TRANSFER_IN'}}
+                db.execute('INSERT INTO transaction_details VALUES (?,?,?)', (identifier, json.dumps(payload), '2026-11-11T00:00:00Z'))
             db.execute("UPDATE transaction_details SET payload=json_set(payload,'$.date',(SELECT date FROM transactions WHERE transactions.id=transaction_details.transaction_id)) WHERE transaction_id IN (SELECT id FROM transactions)")
             db.commit()
         server_port, chrome_port = port(), port()
@@ -188,6 +195,11 @@ def run():
                         js("document.querySelector('.compact-account[open] .account-expanded details > summary').click()")
                         ready("document.querySelector('.compact-account[open] .balance-chart svg')")
                         screenshot(label + '-balance-history')
+                        js("[...document.querySelectorAll('.compact-account[open] button')].find(b=>b.textContent.includes('View account transactions')).click()")
+                        ready("document.querySelector('h1')?.textContent==='Transactions' && document.querySelector('input[type=month]').disabled")
+                        assert js("document.querySelector('select[aria-label=\"Filter account\"]').value") != '0'
+                        screenshot(label + '-account-transaction-shortcut')
+                        nav('Accounts')
                     # Exercise collapsed loan group and its long account names.
                     js("[...document.querySelectorAll('.group-summary')].find(e=>e.textContent.includes('Loans &')).click()")
                     js("[...document.querySelectorAll('.account-summary')].find(e=>e.textContent.includes('Home Equity')).click()")
@@ -198,6 +210,36 @@ def run():
                     assert js("document.querySelectorAll('select[aria-label=\"Filter account\"] optgroup').length") == 5
                     ready("document.querySelector('select[aria-label=\"Review filter\"]')?.disabled===false")
                     screenshot(label + '-transactions')
+                    ready("document.querySelector('.transfer-panel > summary')")
+                    js("document.querySelector('.transfer-panel > summary').click()")
+                    ready("document.querySelector('.transfer-match')")
+                    transfer_data = js("fetch('/api/plaid/sandbox/preview/review/transfers').then(r=>r.json())")
+                    transfer = next(item for item in transfer_data['suggestions'] if item['outgoing']['merchant'].endswith('ui-pair-out') and item['kind'] == 'card_payment')
+                    selector = '.transfer-match[data-outgoing-id="' + str(transfer['outgoing']['id']) + '"][data-incoming-id="' + str(transfer['incoming']['id']) + '"]'
+                    js("document.querySelector('.transfer-panel').scrollIntoView({block:'start'})")
+                    screenshot(label + '-transfer-suggestions')
+                    js('document.querySelector(' + json.dumps(selector) + ').querySelector("button.primary").click()')
+                    ready("document.querySelector('dialog[open] #transfer-dialog-title')")
+                    screenshot(label + '-transfer-confirmation')
+                    js("document.querySelector('dialog .form-actions .primary').click()")
+                    ready("!document.querySelector('dialog[open]')")
+                    ready("document.querySelector('.transfer-panel > summary')?.textContent.includes('1 linked')")
+                    js("[...document.querySelectorAll('[aria-label=\"Transfer match view\"] button')].find(b=>b.textContent==='Linked').click()")
+                    screenshot(label + '-linked-transfer')
+                    js("[...document.querySelectorAll('.transfer-panel .transfer-match button')].find(b=>b.textContent==='Unlink pair').click()")
+                    ready("document.querySelector('dialog[open] #transfer-dialog-title')")
+                    js("document.querySelector('dialog .form-actions .primary').click()")
+                    ready("!document.querySelector('dialog[open]') && document.querySelector('.transfer-panel > summary')?.textContent.includes('0 linked')")
+                    js("[...document.querySelectorAll('[aria-label=\"Transfer match view\"] button')].find(b=>b.textContent==='Suggestions').click()")
+                    js('document.querySelector(' + json.dumps(selector) + ').querySelector("button.secondary").click()')
+                    ready("document.querySelector('.transfer-panel > summary')?.textContent.includes('1 suggestions')")
+                    js("[...document.querySelectorAll('[aria-label=\"Transfer match view\"] button')].find(b=>b.textContent==='Dismissed').click()")
+                    screenshot(label + '-dismissed-transfer')
+                    js("document.querySelector('.transfer-panel .transfer-match button').click()")
+                    ready("document.querySelector('dialog[open] #transfer-dialog-title')")
+                    js("document.querySelector('dialog .form-actions .primary').click()")
+                    ready("!document.querySelector('dialog[open]') && document.querySelector('.transfer-panel > summary')?.textContent.includes('2 suggestions')")
+                    js("document.querySelector('.transfer-panel > summary').click()")
                     change('select[aria-label="Review date scope"]', 'all')
                     change('select[aria-label="Review filter"]', 'needs_review')
                     assert js("document.querySelector('input[type=month]').disabled")
@@ -206,9 +248,10 @@ def run():
                     change('select[aria-label="Review date scope"]', 'month')
                     # Classify one posted purchase via the full preview/confirmation flow.
                     ready("document.querySelector('.ledger-row .row-expense')")
-                    first_id = js("document.querySelector('.ledger-row .row-expense').closest('.ledger-row').dataset.transactionId")
-                    first_merchant = js("document.querySelector('.ledger-row .row-expense').closest('.ledger-row').querySelector('.row-main strong').textContent")
-                    js("document.querySelector('.ledger-row .row-expense').closest('.selectable-ledger-row').querySelector('input').click()")
+                    first_id = js("[...document.querySelectorAll('.ledger-row')].find(row=>row.querySelector('.row-expense') && !row.textContent.includes('QA card payment')).dataset.transactionId")
+                    first_selector = '.ledger-row[data-transaction-id="' + first_id + '"]'
+                    first_merchant = js('document.querySelector(' + json.dumps(first_selector) + ').querySelector(".row-main strong").textContent')
+                    js('document.querySelector(' + json.dumps(first_selector) + ').closest(".selectable-ledger-row").querySelector("input").click()')
                     js("[...document.querySelectorAll('.bulk-actions button')].find(b=>b.textContent==='Classify selected').click()")
                     ready("document.querySelector('dialog[open] select[aria-label=\"Bulk category\"]')")
                     change('select[aria-label="Bulk type"]', 'expense')
@@ -289,7 +332,7 @@ def run():
             screenshot('390-light-personal-empty-spending')
             # Verify that a refund-only month renders below zero without fabricating spending.
             with closing(sqlite3.connect(database.with_suffix('.plaid-sandbox.db'))) as db:
-                db.execute("UPDATE transactions SET removed=1 WHERE kind='expense' AND date LIKE ?", (test_month + '%',))
+                db.execute("UPDATE transactions SET removed=1 WHERE id<>'ui-refund' AND date LIKE ?", (test_month + '%',))
                 db.commit()
             change('select[aria-label="Workspace"]', 'sandbox')
             ready("document.querySelector('.metric-card > strong')?.textContent==='-$125.00'")

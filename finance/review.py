@@ -201,7 +201,7 @@ def review_router(database, sandbox=False, initialize=None, after_write=None):
             items = [{**{key: row[key] for key in fields}, 'amount_minor': abs(row['amount_minor']),
                       'category_name': categories.get(row['category_id']), 'destination_name': accounts.get(row['destination_id']),
                       'review_status': status(row)} for row in rows]
-            return {'counts': counts, 'uncategorized': sum(row['category_id'] is None and row['kind'] in {'expense', 'income', 'refund'} for row in rows),
+            return {'counts': counts, 'uncategorized': sum(not row['transfer_pair_id'] and row['category_id'] is None and row['kind'] in {'expense', 'income', 'refund'} for row in rows),
                     'items': items,
                     'rows': [{'id': row['id'], 'review_status': status(row)} for row in rows],
                     'rules': [dict(row) for row in db.execute('SELECT * FROM merchant_rules ORDER BY id')]}

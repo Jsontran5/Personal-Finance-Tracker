@@ -9,11 +9,13 @@ import { Chart, NetWorth, type HistoryPoint } from './Charts'
 import { HomeSpending, SpendingPage, type SpendingReport } from './Spending'
 import { AssetSummary } from './AssetSummary'
 import { TransactionReview } from './TransactionReview'
+import { TransferReview } from './TransferReview'
+import { SyncFreshness } from './SyncFreshness'
 import './styles.css'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
 type Category = { id: number; name: string; kind: 'expense' | 'income' }
-type Entry = { id: number; account_id: number; destination_id: number | null; category_id: number | null; amount_minor: number; kind: Kind; merchant: string; notes: string; date: string }
+type Entry = { id: number; account_id: number; destination_id: number | null; category_id: number | null; amount_minor: number; kind: Kind; merchant: string; notes: string; date: string; transfer_pair_id?: number | null; transfer_kind?: string | null; transfer_other_account?: string | null }
 type Transaction = Entry & { currency: string; account_name: string; category_name: string | null; destination_name: string | null; pending?: number; needs_review?: number; source_merchant?: string }
 type Template = Omit<Entry, 'date' | 'destination_id'> & { name: string }
 type Budget = Category & { limit_minor: number | null; actual_minor: number; previous_actual_minor: number }
@@ -119,7 +121,7 @@ function EntryForm({ data, state, save, remove, busy }: {
   }
 
   return <form onSubmit={submit}>
-    <fieldset disabled={busy}>
+    <fieldset disabled={busy || !!entry?.transfer_pair_id}>
       <div className="form-grid">
         <label>Amount ({currency})<input name="amount" inputMode="decimal" required data-autofocus defaultValue={entry ? editableMoney(entry.amount_minor, currency) : ''} placeholder="0.00" /></label>
         <label>Type<select value={kind} onChange={event => { setKind(event.target.value as Kind); setCategoryId(0); setDestinationId(0) }}>
@@ -172,9 +174,9 @@ function TransactionList({ transactions, edit, empty = 'No transactions match th
   return <div className="ledger">
     {transactions.map(tx => {
       const row = <button className="ledger-row" data-transaction-id={tx.id} key={tx.id} onClick={() => edit(tx)}>
-      <span className={'row-icon row-' + tx.kind}><Icon name={tx.kind === 'transfer' ? 'transactions' : tx.kind === 'income' || tx.kind === 'refund' ? 'income' : 'expense'} /></span>
-      <span className="row-main"><strong>{tx.merchant}</strong><small>{tx.account_name}{tx.destination_name && ' → ' + tx.destination_name} · {tx.date}{tx.pending ? ' · Pending' : ''}{tx.needs_review ? ' · Review credit type' : statuses[tx.id] === 'needs_review' ? ' · Flagged' : statuses[tx.id] === 'reviewed' ? ' · Reviewed' : ''}</small></span>
-      <span className="chip row-category">{tx.needs_review ? 'Review credit' : tx.category_name ?? kinds[tx.kind]}</span>
+      <span className={'row-icon row-' + tx.kind}><Icon name={tx.transfer_pair_id || tx.kind === 'transfer' ? 'transactions' : tx.kind === 'income' || tx.kind === 'refund' ? 'income' : 'expense'} /></span>
+      <span className="row-main"><strong>{tx.merchant}</strong><small>{tx.account_name}{tx.destination_name && ' → ' + tx.destination_name} · {tx.date}{tx.transfer_pair_id && ' · Linked to ' + tx.transfer_other_account}{tx.pending ? ' · Pending' : ''}{tx.needs_review ? ' · Review credit type' : statuses[tx.id] === 'needs_review' ? ' · Flagged' : statuses[tx.id] === 'reviewed' ? ' · Reviewed' : ''}</small></span>
+      <span className="chip row-category">{tx.transfer_pair_id ? tx.transfer_kind === 'card_payment' ? 'Card payment' : 'Linked transfer' : tx.needs_review ? 'Review credit' : tx.category_name ?? kinds[tx.kind]}</span>
       <span className={'numeric ' + (tx.kind === 'income' || tx.kind === 'refund' ? 'positive' : '')}>
         {tx.kind === 'expense' ? '−' : tx.kind === 'income' || tx.kind === 'refund' ? '+' : ''}{money(tx.amount_minor, tx.currency)}
       </span>
@@ -244,6 +246,7 @@ function App() {
   const [reviewMessage, setReviewMessage] = useState('')
   const [allReviewDates, setAllReviewDates] = useState(false)
   const [reviewHistory, setReviewHistory] = useState<Transaction[]>([])
+  const [transferFocus, setTransferFocus] = useState<number | null>(null)
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -423,7 +426,7 @@ function App() {
     setDrilldown({ ids, label }); setCategoryFilter(0); setAccountFilter(0); setSearch(''); setTransactionPage(0); setPage('Transactions')
   }
   const entries = (allReviewDates ? reviewHistory : ready?.transactions)?.filter(tx => (!categoryFilter || tx.category_id === categoryFilter) &&
-    (reviewFilter === 'all' || (reviewFilter === 'uncategorized' ? tx.category_id === null && ['expense', 'income', 'refund'].includes(tx.kind) : reviewStatuses[tx.id] === reviewFilter)) &&
+    (reviewFilter === 'all' || (reviewFilter === 'uncategorized' ? !tx.transfer_pair_id && tx.category_id === null && ['expense', 'income', 'refund'].includes(tx.kind) : reviewStatuses[tx.id] === reviewFilter)) &&
     (!drilldown || drilldown.ids.includes(tx.id)) &&
     (!accountFilter || tx.account_id === accountFilter) &&
     [tx.merchant, tx.account_name, tx.category_name, tx.notes].some(value => value?.toLowerCase().includes(search.trim().toLowerCase()))) ?? []
@@ -431,11 +434,12 @@ function App() {
   const lastPage = Math.max(0, Math.ceil(entries.length / pageSize) - 1)
   const currentPage = Math.min(transactionPage, lastPage)
   const filteredAccount = ready?.accounts.find(account => account.id === accountFilter)
+  const linkedEntry = dialog?.type === 'sandbox-transaction' ? dialog.entry : dialog?.type === 'transaction' ? dialog.entry : undefined
   const emptyMessage = mode === 'sandbox' && filteredAccount?.transaction_count === 0
     ? 'No spending transactions have been saved for this account. Its balance is tracked separately.' +
       (filteredAccount.provider_type === 'investment' ? ' Holdings and investment activity are not integrated yet.' :
         filteredAccount.provider_type === 'loan' ? ' Loan terms and payment details are not integrated yet.' : ' Availability varies by account and institution.')
-    : 'No transactions match this month and these filters. Try another month or clear the filters.'
+    : allReviewDates ? 'No saved transactions match these filters.' : 'No transactions match this month and these filters. Try another month or clear the filters.'
 
   return <div className="shell">
     <aside className="sidebar">
@@ -463,7 +467,7 @@ function App() {
           Budgets: 'Plan category spending and compare it with last month.',
           Accounts: 'Track balances across the accounts you own.',
           'Bank sync': 'Connect and refresh a test bank through Plaid.',
-        }[page]}</p></div>
+        }[page]}</p>{mode === 'sandbox' && <SyncFreshness request={request} revision={revision} open={() => setPage('Bank sync')} />}</div>
         <div className="toolbar">
           {page !== 'Accounts' && <input type="month" aria-label="Reporting month" value={month} disabled={page === 'Transactions' && allReviewDates} onChange={event => { if (event.target.value) setMonth(event.target.value) }} />}
           {mode === 'sandbox' ? <button className="primary" onClick={() => setPage('Bank sync')}>Bank sync</button>
@@ -497,6 +501,8 @@ function App() {
         <section className="card">
           <div className="section-heading"><div><h2>{allReviewDates ? 'All saved dates' : activeMonth}</h2><small>{entries.length} entries</small></div></div>
           {reviewMessage && <p className="notice" role="status">{reviewMessage}</p>}
+          <TransferReview path={(mode === 'sandbox' ? previewPath : '') + '/review/transfers'} request={request} money={money} revision={ready.transactions} focusId={transferFocus} setFocusId={setTransferFocus}
+            complete={message => { setReviewMessage(message); setRevision(value => value + 1) }} />
           <TransactionReview<Transaction> key={mode} path={(mode === 'sandbox' ? previewPath : '') + '/review'} request={request} transactions={ready.transactions} categories={ready.categories} accounts={ready.accounts} allDates={allReviewDates} setAllDates={setAllReviewDates} onHistory={setReviewHistory}
             selected={selectedTransactions} setSelected={setSelectedTransactions} pageIds={entries.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map(tx => tx.id)} matchingIds={entries.map(tx => tx.id)} filter={reviewFilter} setFilter={setReviewFilter} onStatuses={setReviewStatuses}
             complete={message => { setReviewMessage(message); setRevision(value => value + 1) }} />
@@ -540,6 +546,7 @@ function App() {
       </section>}
       {ready && page === 'Accounts' && <AccountList key={mode} accounts={ready.accounts} sandbox={mode === 'sandbox'} primary={ready.primary_account_id}
         money={money} add={() => open({ type: 'account' })} details={account => <>
+          <button className="secondary small" onClick={() => { setPage('Transactions'); setAllReviewDates(true); setAccountFilter(account.id); setCategoryFilter(0); setReviewFilter('all'); setSearch(''); setDrilldown(null) }}>View account transactions →</button>
           {mode === 'personal' && <div className="inline-actions"><button className="secondary small" onClick={() => open({ type: 'balance', account })}>Record balance</button>
             <button className="secondary small" onClick={() => open({ type: 'account', account })}>Edit account</button></div>}
           <BalanceHistory key={revision} account={account} sandbox={mode === 'sandbox'} />
@@ -555,8 +562,9 @@ function App() {
         : dialog.template ? 'New template' : dialog.entry && 'date' in dialog.entry ? 'Edit transaction' : 'Add transaction'
     } close={() => { if (!busy) setDialog(null) }}>
       {formError && <p className="notice" role="alert">{formError}</p>}
+      {!!linkedEntry?.transfer_pair_id && <p className="notice">This entry belongs to a confirmed transfer. Unlink the pair before changing its classification.<button type="button" className="secondary small" onClick={() => { setTransferFocus(linkedEntry.transfer_pair_id!); setDialog(null); setPage('Transactions') }}>Manage linked pair</button></p>}
       {dialog.type === 'transaction' ? <EntryForm data={data} state={dialog} save={save} remove={remove} busy={busy} /> :
-        <form onSubmit={submitDialog}><fieldset disabled={busy}>
+        <form onSubmit={submitDialog}><fieldset disabled={busy || !!linkedEntry?.transfer_pair_id}>
           {dialog.type === 'account' && <>
             <label>Name<input data-autofocus name="name" required maxLength={120} defaultValue={dialog.account?.name} placeholder="e.g. Everyday checking" /></label>
             {!dialog.account && <>
