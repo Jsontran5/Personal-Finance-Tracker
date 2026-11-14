@@ -17,6 +17,7 @@ from .plaid_vault import protect
 from .sandbox_preview import initialize_preview, record_preview_snapshot, sandbox_preview_router
 from .review import apply_rules
 from .investments import fetch_activity, history_start, save_holdings, save_activity, project_investments, project_activity
+from .scenarios import sandbox_path
 
 LOG = logging.getLogger("uvicorn.error")
 SCHEMA = (
@@ -81,7 +82,7 @@ def plaid_client(keys):
                     except (ValueError, OSError):
                         result = {}
                 code = result.get("error_code", "UPSTREAM_ERROR")
-                LOG.info("Plaid Sandbox %s failed request_id=%s", path, result.get("request_id"))
+                LOG.info("Plaid Sandbox %s failed code=%s request_id=%s", path, code, result.get("request_id"))
                 if error.code not in {429, 500, 502, 503, 504} and code not in {
                     "INSTITUTION_DOWN", "INSTITUTION_NOT_RESPONDING", "RATE_LIMIT_EXCEEDED",
                 }:
@@ -196,9 +197,9 @@ def save_transactions(db, added, modified, removed):
     apply_rules(db, True, [tx['transaction_id'] for tx in added + modified])
 
 
-def sandbox_router(database: Path, *, client_factory=plaid_client):
-    path = database.with_suffix(".plaid-sandbox.db")
-    router = APIRouter(prefix="/api/plaid/sandbox")
+def sandbox_router(database: Path, *, client_factory=plaid_client, scenario='banking'):
+    path = sandbox_path(database, scenario)
+    router = APIRouter(prefix='/api/plaid/investments-sandbox' if scenario == 'investments' else '/api/plaid/sandbox')
 
     def keys():
         return credentials(database.parent.parent)
@@ -222,6 +223,8 @@ def sandbox_router(database: Path, *, client_factory=plaid_client):
             return HTTPException(409, "Reconnect the existing Sandbox Item.")
         if error.code == "PRODUCT_NOT_READY":
             return HTTPException(409, "Plaid is preparing history. Try again shortly.")
+        if error.code in {'INVALID_FIELD', 'PRODUCTS_NOT_SUPPORTED', 'INVALID_PRODUCT'}:
+            return HTTPException(409, f'Plaid could not start this request ({error.code}). Check product support for this test institution. Your saved connection is unchanged; the terminal includes the request ID.')
         return HTTPException(502, "Plaid Sandbox request failed. Check the terminal for the request ID.")
 
     @router.get("")
@@ -258,10 +261,10 @@ def sandbox_router(database: Path, *, client_factory=plaid_client):
                 if existing and datetime.fromisoformat(existing["expiration"]) > now():
                     raise HTTPException(409, "A Link session is already open. Clear it before starting another.")
                 options = {"access_token": protect(connection["token"], False).decode(),
-                           "additional_consented_products": ["investments", "liabilities"],
                            "update": {"account_selection_enabled": True}} if reconnect else {
-                    "products": ["transactions"], "additional_consented_products": ["investments", "liabilities"],
-                    "transactions": {"days_requested": 730},
+                    **({'products': ['investments']} if scenario == 'investments' else {
+                        "products": ["transactions"], "additional_consented_products": ["investments", "liabilities"],
+                        "transactions": {"days_requested": 730}}),
                 }
                 result = call("/link/token/create", retry=False, client_name="Personal Finance Sandbox",
                               language="en", country_codes=["US"], user={"client_user_id": "local-finance-owner"},
@@ -325,6 +328,8 @@ def sandbox_router(database: Path, *, client_factory=plaid_client):
 
     @router.post("/sync")
     def sync(fresh: bool = False, details: bool = False):
+        if scenario == 'investments' and not fresh:
+            raise HTTPException(409, 'Use Investments to sync holdings and activity for this scenario.')
         if fresh and details:
             raise HTTPException(422, "Choose either balance refresh or transaction details.")
         call = client()
@@ -434,6 +439,10 @@ def sandbox_router(database: Path, *, client_factory=plaid_client):
                 raise HTTPException(409, 'Investments access or consent is unavailable. Check Plaid product access and update consent for the existing Item; do not create a duplicate connection.') from None
             raise upstream(error) from None
 
-    router.include_router(sandbox_preview_router(database, initialize))
+    router.include_router(sandbox_preview_router(database, initialize, path=path))
     return router
+
+
+def investment_sandbox_router(database):
+    return sandbox_router(database, scenario='investments')
 

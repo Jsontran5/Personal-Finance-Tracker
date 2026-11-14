@@ -14,10 +14,11 @@ from starlette.staticfiles import StaticFiles
 
 from .db import DATABASE, ROOT, connect, initialize, database_lock
 from .ledger import LIABILITIES, overview, record_net_worth
-from .plaid_sandbox import sandbox_router
+from .plaid_sandbox import sandbox_router, investment_sandbox_router
 from .review import apply_rules, mark, review_router
 from .transfers import require_unlinked
 from .recovery import backup_router
+from .scenarios import Scenario, sandbox_path, chart_path
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 Notes = Annotated[str, StringConstraints(max_length=2000)]
@@ -82,6 +83,10 @@ class Appearance(BaseModel):
 
 class Workspace(BaseModel):
     mode: Literal["personal", "sandbox"]
+
+
+class SandboxScenario(BaseModel):
+    scenario: Scenario
 
 
 class ChartSelection(BaseModel):
@@ -156,6 +161,7 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
     app.include_router(sandbox_router(database))
+    app.include_router(investment_sandbox_router(database))
     app.include_router(review_router(database, after_write=lambda db: record_net_worth(db, date.today())), prefix='/api')
     app.include_router(backup_router(database))
 
@@ -209,18 +215,35 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
             saved = "personal"
         return {"mode": "sandbox" if saved == "sandbox" else "personal"}
 
+    @app.get('/api/sandbox-scenario', response_model=SandboxScenario)
+    def get_scenario():
+        try:
+            saved = database.with_suffix('.sandbox-scenario').read_text(encoding='ascii').strip()
+        except (FileNotFoundError, UnicodeError):
+            saved = 'banking'
+        return {'scenario': 'investments' if saved == 'investments' else 'banking'}
+
+    @app.put('/api/sandbox-scenario', response_model=SandboxScenario)
+    def set_scenario(item: SandboxScenario):
+        from .recovery import atomic_write
+        try:
+            atomic_write(database.with_suffix('.sandbox-scenario'), item.scenario.encode('ascii'))
+        except OSError:
+            raise HTTPException(503, 'Could not save the Sandbox scenario. Try again.') from None
+        return item
+
     @app.get("/api/chart-selection/{mode}", response_model=ChartSelection)
-    def get_chart_selection(mode: Literal["personal", "sandbox"]):
-        path = database.with_suffix(f".{mode}-chart.json")
+    def get_chart_selection(mode: Literal["personal", "sandbox", "sandbox_investments"]):
+        path = chart_path(database, mode)
         try:
             return ChartSelection.model_validate_json(path.read_text(encoding="utf-8"))
         except (FileNotFoundError, ValueError):
             return ChartSelection()
 
     @app.put("/api/chart-selection/{mode}", response_model=ChartSelection)
-    def set_chart_selection(mode: Literal["personal", "sandbox"], item: ChartSelection):
-        with database_lock(database if mode == 'personal' else database.with_suffix('.plaid-sandbox.db')):
-            path = database.with_suffix(f".{mode}-chart.json")
+    def set_chart_selection(mode: Literal["personal", "sandbox", "sandbox_investments"], item: ChartSelection):
+        with database_lock(database if mode == 'personal' else sandbox_path(database, 'investments' if mode == 'sandbox_investments' else 'banking')):
+            path = chart_path(database, mode)
             temporary = None
             selection = ChartSelection(excluded_account_ids=sorted(set(item.excluded_account_ids)))
             try:

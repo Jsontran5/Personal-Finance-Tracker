@@ -16,9 +16,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .db import connect, database_lock, initialize
+from .scenarios import sandbox_path, chart_path
 
 MAX_SIZE = 256 * 1024 * 1024
-VERSIONS = {'personal': 3, 'sandbox': 6}
+VERSIONS = {'personal': 3, 'sandbox': 6, 'sandbox_investments': 6}
 
 
 def checksum(path):
@@ -76,6 +77,7 @@ def migrate(path, mode):
 
 def validate_current_schema(path, mode, directory):
     """Compare all required table/column types with a newly initialized reference."""
+    mode = 'sandbox' if mode == 'sandbox_investments' else mode
     reference = directory / 'reference.db'
     if mode == 'sandbox':
         from .plaid_sandbox import SCHEMA
@@ -141,10 +143,10 @@ class BackupStore:
         self.guard = database.parent / 'backup-management'
 
     def target(self, mode):
-        return self.database if mode == 'personal' else self.database.with_suffix('.plaid-sandbox.db')
+        return self.database if mode == 'personal' else sandbox_path(self.database, 'investments' if mode == 'sandbox_investments' else 'banking')
 
     def preference(self, mode):
-        return self.database.with_suffix('.' + mode + '-chart.json')
+        return chart_path(self.database, mode)
 
     def resolve(self, identifier):
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,179}', identifier) or not identifier.endswith(('.db', '.finance-backup.zip')):
@@ -178,7 +180,7 @@ class BackupStore:
             if copy.stat().st_size > MAX_SIZE - 131072:
                 raise ValueError('Workspace exceeds the 256 MB backup size limit.')
             info = check_database(copy)
-            if info['workspace'] != mode:
+            if info['workspace'] != ('sandbox' if mode == 'sandbox_investments' else mode):
                 raise ValueError('Source database workspace does not match.')
             validate_current_schema(copy, mode, folder)
             selection = self.preference(mode)
@@ -197,7 +199,7 @@ class BackupStore:
                 bundle.writestr('manifest.json', json.dumps(manifest))
                 bundle.writestr('settings.json', settings_bytes)
             archive.replace(self.directory / identifier)
-            return {'id': identifier, 'created_at': manifest['created_at'], **info, 'recovery': recovery}
+            return {'id': identifier, 'created_at': manifest['created_at'], **info, 'workspace': mode, 'recovery': recovery}
 
     @contextmanager
     def staged(self, identifier):
@@ -227,8 +229,11 @@ class BackupStore:
                 copy.write_bytes(source.read_bytes())
             info = check_database(copy)
             mode = info['workspace']
-            if manifest and (manifest.get('workspace') != mode or manifest.get('schema_version') != info['schema_version']):
+            declared = manifest.get('workspace') if manifest else mode
+            if manifest and (declared not in VERSIONS or ('sandbox' if declared == 'sandbox_investments' else declared) != mode or manifest.get('schema_version') != info['schema_version']):
                 raise ValueError('Backup manifest does not match its database.')
+            mode = declared
+            info['workspace'] = mode
             migrate(copy, mode)
             validate_current_schema(copy, mode, folder)
             check_database(copy)
@@ -278,7 +283,7 @@ class BackupStore:
         with database_lock(self.guard), self.staged(identifier) as (source, copy, info, manifest, settings):
             mode = info['workspace']
             with database_lock(self.target(mode)):
-                policy, _ = self.bank_policy(copy, self.target(mode)) if mode == 'sandbox' else ('not_applicable', None)
+                policy, _ = self.bank_policy(copy, self.target(mode)) if mode != 'personal' else ('not_applicable', None)
                 current = check_database(self.target(mode)) if self.target(mode).is_file() else None
                 return {'id': identifier, **info, 'restored_schema_version': VERSIONS[mode],
                         'created_at': manifest.get('created_at') if manifest else None,
@@ -303,13 +308,13 @@ class BackupStore:
                 if preview_token != self.token(source, mode):
                     raise ValueError('Backup or current workspace changed. Preview the restore again.')
                 if not target.is_file():
-                    if mode == 'sandbox':
+                    if mode != 'personal':
                         from .plaid_sandbox import SCHEMA
                         with connect(target, write=True) as db:
                             for statement in SCHEMA:
                                 db.execute(statement)
                     migrate(target, mode)
-                if mode == 'sandbox':
+                if mode != 'personal':
                     policy, current = self.bank_policy(copy, target)
                     if current:
                         with connect(copy, write=True) as db:
@@ -344,7 +349,7 @@ class BackupStore:
 
 
 class CreateBackup(BaseModel):
-    workspace: Literal['personal', 'sandbox']
+    workspace: Literal['personal', 'sandbox', 'sandbox_investments']
 
 
 class RestoreBackup(BaseModel):

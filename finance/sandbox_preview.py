@@ -186,8 +186,8 @@ def preview_overview(db, month):
     }
 
 
-def sandbox_preview_router(database, initialize_sandbox):
-    path = database.with_suffix(".plaid-sandbox.db")
+def sandbox_preview_router(database, initialize_sandbox, *, path=None):
+    path = path or database.with_suffix(".plaid-sandbox.db")
     router = APIRouter(prefix="/preview")
 
     def initialize():
