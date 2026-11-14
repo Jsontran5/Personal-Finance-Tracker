@@ -117,6 +117,11 @@ class RecoveryTests(TestCase):
             for name, content in data.items():
                 changed.writestr(name, content)
         self.assertEqual(self.client.get('/api/backups/preview', params={'id': identifier}).status_code, 422)
+        from finance.backup import create_backup
+        future = create_backup(self.database, self.store.directory)
+        with connect(future, write=True) as db:
+            db.execute('PRAGMA user_version=999')
+        self.assertEqual(self.client.get('/api/backups/preview', params={'id': future.name}).status_code, 422)
 
     def test_preferences_failure_rolls_database_back_to_original(self):
         self.account('Original')
@@ -165,3 +170,45 @@ class RecoveryTests(TestCase):
     def test_existing_write_guards_protect_restore_endpoints(self):
         response = self.client.post('/api/backups', json={'workspace': 'personal'}, headers={'x-finance-request': ''})
         self.assertEqual(response.status_code, 403)
+
+    def test_missing_sandbox_can_be_restored_and_empty_recovery_keeps_authorization(self):
+        sandbox = self.database.with_suffix('.plaid-sandbox.db')
+        token = protect(b'saved-test-token', True)
+        with connect(sandbox, write=True) as db:
+            db.execute('INSERT INTO connection(id,item_id,token,cursor) VALUES (1,?,?,?)', ('saved-item', token, 'saved-cursor'))
+        identifier = self.backup('sandbox')
+        sandbox.unlink()
+        preview = self.preview(identifier)
+        self.assertIsNone(preview['current_counts'])
+        self.assertEqual(preview['bank_policy'], 'restore_saved_authorization')
+        result = self.restore(preview)
+        self.assertEqual(result.status_code, 200, result.text)
+        recovery = self.preview(result.json()['recovery_backup'])
+        self.assertEqual(recovery['bank_policy'], 'keep_authorization_reset_feed')
+        self.assertEqual(self.restore(recovery).status_code, 200)
+        with connect(sandbox) as db:
+            self.assertEqual(tuple(db.execute('SELECT item_id,token,cursor FROM connection').fetchone()), ('saved-item', token, None))
+
+    def test_workspace_lock_serializes_other_database_writers(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event
+        from finance.db import database_lock
+        started = Event()
+        def writer():
+            started.set()
+            with connect(self.database, write=True) as db:
+                db.execute("INSERT INTO categories(name,kind) VALUES ('Lock test','expense')")
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with database_lock(self.database):
+                pending = pool.submit(writer)
+                self.assertTrue(started.wait(2))
+                self.assertFalse(pending.done())
+            pending.result(timeout=5)
+        with connect(self.database) as db:
+            self.assertIsNotNone(db.execute("SELECT 1 FROM categories WHERE name='Lock test'").fetchone())
+
+    def test_oversized_snapshot_does_not_publish_an_unrestorable_bundle(self):
+        with patch('finance.recovery.MAX_SIZE', 1024):
+            response = self.client.post('/api/backups', json={'workspace': 'personal'})
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(self.store.list(), [])

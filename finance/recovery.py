@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import time
 import zipfile
 
 from fastapi import APIRouter, HTTPException
@@ -38,7 +39,11 @@ def readonly(path):
 
 def snapshot(source, destination):
     with closing(sqlite3.connect(source.resolve().as_uri() + '?mode=ro', uri=True)) as original, closing(sqlite3.connect(destination)) as target:
-        original.backup(target, pages=256, sleep=.01)
+        deadline = time.monotonic() + 30
+        def progress(status, remaining, total):
+            if status != sqlite3.SQLITE_DONE and time.monotonic() > deadline:
+                raise TimeoutError('Database snapshot timed out. Close other database tools and retry.')
+        original.backup(target, pages=256, progress=progress, sleep=.01)
 
 
 def check_database(path):
@@ -160,6 +165,8 @@ class BackupStore:
             folder = Path(temporary)
             copy = folder / 'database.sqlite'
             snapshot(source, copy)
+            if copy.stat().st_size > MAX_SIZE - 131072:
+                raise ValueError('Workspace exceeds the 256 MB backup size limit.')
             info = check_database(copy)
             if info['workspace'] != mode:
                 raise ValueError('Source database workspace does not match.')
@@ -167,6 +174,8 @@ class BackupStore:
             selection = self.preference(mode)
             settings = valid_selection(json.loads(selection.read_text(encoding='utf-8'))) if selection.is_file() else {'excluded_account_ids': []}
             settings_bytes = json.dumps(settings, sort_keys=True).encode()
+            if len(settings_bytes) > 65536:
+                raise ValueError('Account-selection settings exceed the supported backup size.')
             created = datetime.now(timezone.utc)
             manifest = {'format_version': 1, 'workspace': mode, 'created_at': created.isoformat(),
                         'schema_version': info['schema_version'], 'database_sha256': checksum(copy),
@@ -226,6 +235,11 @@ class BackupStore:
                     raise ValueError('Finish or cancel the current bank authorization in Bank sync before restoring.')
                 row = db.execute('SELECT * FROM connection WHERE id=1').fetchone()
                 current = dict(row) if row else None
+        if current and not saved:
+            with readonly(candidate) as db:
+                empty = not db.execute('SELECT 1 FROM accounts LIMIT 1').fetchone() and not db.execute('SELECT 1 FROM transactions LIMIT 1').fetchone()
+            if empty:
+                return 'keep_authorization_reset_feed', current
         if current and (not saved or current['item_id'] != saved['item_id']):
             raise ValueError('This backup belongs to a different or unconnected Sandbox Item. Choose a backup of the currently connected Item.')
         if current:
@@ -261,7 +275,13 @@ class BackupStore:
                         'file_date': datetime.fromtimestamp(source.stat().st_mtime, timezone.utc).isoformat(),
                         'legacy': manifest is None, 'restores_chart_selection': settings is not None,
                         'current_counts': current['counts'] if current else None, 'bank_policy': policy,
-                        'preview_token': self.token(source, mode), 'confirmation': 'RESTORE ' + mode.upper()}
+                        'preview_token': self.token(source, mode), 'confirmation': 'RESTORE ' + mode.upper(),
+                        'contents': self.contents(copy)}
+
+    def contents(self, path):
+        with readonly(path) as db:
+            return {'accounts': [dict(row) for row in db.execute('SELECT name,currency FROM accounts ORDER BY rowid LIMIT 8')],
+                    'transaction_dates': dict(db.execute('SELECT MIN(date) AS first,MAX(date) AS last FROM transactions').fetchone())}
 
     def restore(self, identifier, preview_token, confirmation):
         with database_lock(self.guard), self.staged(identifier) as (source, copy, info, manifest, settings):
@@ -273,13 +293,22 @@ class BackupStore:
                 if preview_token != self.token(source, mode):
                     raise ValueError('Backup or current workspace changed. Preview the restore again.')
                 if not target.is_file():
-                    raise ValueError('Initialize this workspace before restoring so a recovery backup can be made.')
+                    if mode == 'sandbox':
+                        from .plaid_sandbox import SCHEMA
+                        with connect(target, write=True) as db:
+                            for statement in SCHEMA:
+                                db.execute(statement)
+                    migrate(target, mode)
                 if mode == 'sandbox':
                     policy, current = self.bank_policy(copy, target)
                     if current:
                         with connect(copy, write=True) as db:
-                            db.execute('UPDATE connection SET item_id=?,token=?,needs_reauth=?,balance_checked_at=? WHERE id=1',
-                                       (current['item_id'], current['token'], current['needs_reauth'], current['balance_checked_at']))
+                            if db.execute('SELECT 1 FROM connection WHERE id=1').fetchone():
+                                db.execute('UPDATE connection SET item_id=?,token=?,needs_reauth=?,balance_checked_at=? WHERE id=1',
+                                           (current['item_id'], current['token'], current['needs_reauth'], current['balance_checked_at']))
+                            else:
+                                db.execute('INSERT INTO connection(id,item_id,token,needs_reauth,balance_checked_at) VALUES (1,?,?,?,?)',
+                                           (current['item_id'], current['token'], current['needs_reauth'], current['balance_checked_at']))
                     with connect(copy, write=True) as db:
                         db.execute('DELETE FROM link')
                 recovery = self.create(mode, recovery=True)
@@ -321,7 +350,7 @@ def backup_router(database):
     def guarded(work):
         try:
             return work()
-        except (ValueError, sqlite3.DatabaseError, zipfile.BadZipFile, KeyError, UnicodeError) as error:
+        except (ValueError, sqlite3.DatabaseError, zipfile.BadZipFile, KeyError, UnicodeError, TypeError, OverflowError) as error:
             if isinstance(error, sqlite3.DatabaseError) and getattr(error, 'sqlite_errorcode', None) in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}:
                 raise HTTPException(409, 'The workspace is busy. Wait for other operations to finish and try again.') from None
             detail = str(error) if isinstance(error, ValueError) else 'Backup validation failed. The file may be damaged or incompatible.'

@@ -1,5 +1,6 @@
 const paths = {
   logo: 'M3 16l5-5 4 4 8-8m-6 0h6v6',
+  backup: 'M4 4h16v16H4z M8 4v6h8V4 M8 20v-6h8v6',
   overview: 'M3 3h7v9H3z M14 3h7v5h-7z M3 16h7v5H3z M14 12h7v9h-7z',
   transactions: 'M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4',
   budgets: 'M11 3a9 9 0 1 0 10 10H11z M15 3v6h6a7 7 0 0 0-6-6z',

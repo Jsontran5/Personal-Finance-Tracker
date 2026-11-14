@@ -12,6 +12,7 @@ context_folder/
 !.env.example
 *.db
 *.db-*
+*.finance-backup.zip
 *.sqlite
 *.sqlite-*
 *.log
