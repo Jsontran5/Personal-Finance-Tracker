@@ -3,15 +3,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
-import json
 
 from fastapi.testclient import TestClient
 from finance.api import create_app
 from finance.db import connect
-from finance.investments import fetch_activity, history_start, project_investments, save_activity
+from finance.investments import history_start, save_activity
 from finance.plaid_sandbox import PlaidError, sandbox_router
 from finance.plaid_vault import protect
-from finance.recovery import BackupStore
 
 
 def positions():
@@ -169,7 +167,6 @@ class InvestmentTests(TestCase):
     def test_snapshot_backup_restore_and_schema5_migration(self):
         self.sync()
         self.sync(True)
-        store = BackupStore(self.database)
         saved = self.client.post('/api/backups', json={'workspace': 'sandbox'}).json()
         with connect(self.path, write=True) as db:
             db.execute('DELETE FROM investment_holdings')

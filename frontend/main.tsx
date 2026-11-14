@@ -13,6 +13,7 @@ import { TransferReview } from './TransferReview'
 import { SyncFreshness } from './SyncFreshness'
 import { BackupRestore } from './BackupRestore'
 import { DeleteTransaction } from './DeleteTransaction'
+import { Investments } from './Investments'
 import './styles.css'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
@@ -31,7 +32,7 @@ type Overview = {
   pending_count?: number; missing_balance_count?: number; review_count?: number;
   spending: SpendingReport;
 }
-type Page = 'Overview' | 'Spending' | 'Transactions' | 'Budgets' | 'Accounts' | 'Bank sync' | 'Backup & restore'
+type Page = 'Overview' | 'Spending' | 'Transactions' | 'Budgets' | 'Accounts' | 'Bank sync' | 'Backup & restore' | 'Investments'
 type Theme = 'dark' | 'light'
 type Mode = 'personal' | 'sandbox'
 type DialogState =
@@ -42,8 +43,8 @@ type DialogState =
   | { type: 'category' }
   | { type: 'sandbox-transaction'; entry: Transaction }
 
-const pages: Page[] = ['Overview', 'Spending', 'Transactions', 'Budgets', 'Accounts', 'Bank sync', 'Backup & restore']
-const icons = ['overview', 'expense', 'transactions', 'budgets', 'accounts', 'transactions', 'backup'] as const
+const pages: Page[] = ['Overview', 'Spending', 'Transactions', 'Budgets', 'Accounts', 'Investments', 'Bank sync', 'Backup & restore']
+const icons = ['overview', 'expense', 'transactions', 'budgets', 'accounts', 'logo', 'transactions', 'backup'] as const
 const kinds: Record<Kind, string> = { expense: 'Expense', income: 'Income', refund: 'Refund', transfer: 'Transfer', investment: 'Investment activity' }
 const accountKinds = { checking: 'Checking', savings: 'Savings', cash: 'Cash', investment: 'Investment', credit: 'Credit card', loan: 'Loan', property: 'Property', other: 'Other asset' }
 const currencies = ['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'CHF', 'JPY']
@@ -480,19 +481,20 @@ function App() {
           Transactions: 'Browse your ledger and recurring templates.',
           Budgets: 'Plan category spending and compare it with last month.',
           Accounts: 'Track balances across the accounts you own.',
+          Investments: 'See your holdings, allocation, and investment activity.',
           'Bank sync': 'Connect and refresh a test bank through Plaid.',
           'Backup & restore': 'Save local checkpoints and recover a workspace.',
         }[page]}</p>{mode === 'sandbox' && page !== 'Backup & restore' && <SyncFreshness request={request} revision={revision} open={() => setPage('Bank sync')} />}</div>
         <div className="toolbar">
-          {page !== 'Accounts' && page !== 'Backup & restore' && <input type="month" aria-label="Reporting month" value={month} disabled={page === 'Transactions' && allReviewDates} onChange={event => { if (event.target.value) setMonth(event.target.value) }} />}
-          {page === 'Backup & restore' ? null : mode === 'sandbox' ? <button className="primary" onClick={() => setPage('Bank sync')}>Bank sync</button>
+          {page !== 'Accounts' && page !== 'Backup & restore' && page !== 'Investments' && <input type="month" aria-label="Reporting month" value={month} disabled={page === 'Transactions' && allReviewDates} onChange={event => { if (event.target.value) setMonth(event.target.value) }} />}
+          {page === 'Backup & restore' || page === 'Investments' ? null : mode === 'sandbox' ? <button className="primary" onClick={() => setPage('Bank sync')}>Bank sync</button>
             : <button className="primary with-icon" disabled={!data} onClick={quickAdd}><Icon name="plus" />Add transaction</button>}
         </div>
       </header>
       {themeError && <p role="alert" className="notice">{themeError}</p>}
       {modeError && <p role="alert" className="notice">{modeError}</p>}
       {mode === 'sandbox' && page !== 'Backup & restore' && <p className="notice sandbox-banner"><strong>Sandbox preview</strong> · Test accounts, categories, and budgets. Spending uses posted activity.</p>}
-      {mode === 'sandbox' && page !== 'Backup & restore' && !!ready?.review_count && <p className="notice">{ready.review_count} credit entries need classification as income, refunds, or transfers before they count toward cash flow.</p>}
+      {mode === 'sandbox' && page !== 'Backup & restore' && page !== 'Investments' && !!ready?.review_count && <p className="notice">{ready.review_count} credit entries need classification as income, refunds, or transfers before they count toward cash flow.</p>}
       {mode === 'sandbox' && page !== 'Backup & restore' && !!ready?.missing_balance_count && <p className="notice">{ready.missing_balance_count} accounts have no reported balance and are excluded from net worth.</p>}
       {error && <p role="alert" className="notice">{error} <button className="secondary small" onClick={() => setRevision(value => value + 1)}>Retry</button></p>}
       {!ready && !error && <p className="muted" role="status">Loading your ledger…</p>}
@@ -567,6 +569,7 @@ function App() {
           <BalanceHistory key={revision} account={account} sandbox={mode === 'sandbox'} />
         </>} />}
       {page === 'Bank sync' && <BankSync request={request} money={money} onChanged={() => setRevision(value => value + 1)} />}
+      {page === 'Investments' && <Investments key={mode} sandbox={mode === 'sandbox'} request={request} money={money} openBank={() => setPage('Bank sync')} onChanged={() => setRevision(value => value + 1)} />}
       {page === 'Backup & restore' && <BackupRestore request={request} initialWorkspace={mode ?? 'personal'} onRestored={() => {
         setData(undefined); setDialog(null); setSelectedTransactions([]); setReviewHistory([]); setReviewStatuses({}); setChartAccountIds(null)
         setAllReviewDates(false); setDrilldown(null); setAccountFilter(0); setCategoryFilter(0); setSearch(''); setTransferFocus(null); setReviewMessage(''); setRevision(value => value + 1)

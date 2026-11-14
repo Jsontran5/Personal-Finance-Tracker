@@ -428,9 +428,9 @@ def sandbox_router(database: Path, *, client_factory=plaid_client):
         except ValueError as error:
             raise HTTPException(409, str(error)) from None
         except PlaidError as error:
-            if error.code in {'PRODUCT_NOT_SUPPORTED', 'NO_INVESTMENT_ACCOUNTS', 'NO_ACCOUNTS'}:
-                raise HTTPException(409, 'This connection has no supported investment data. Saved data has been retained.') from None
-            if error.code in {'ADDITIONAL_CONSENT_REQUIRED', 'ACCESS_NOT_GRANTED', 'PRODUCTS_NOT_SUPPORTED', 'INVALID_PRODUCT'}:
+            if error.code in {'PRODUCT_NOT_SUPPORTED', 'PRODUCTS_NOT_SUPPORTED', 'NO_INVESTMENT_ACCOUNTS', 'NO_ACCOUNTS'}:
+                raise HTTPException(409, 'This test bank does not provide supported investment data. Saved data and bank sync are unchanged. Use an investment-capable Sandbox institution in a separate test setup; do not replace your saved connection.') from None
+            if error.code in {'ADDITIONAL_CONSENT_REQUIRED', 'ACCESS_NOT_GRANTED', 'INVALID_PRODUCT'}:
                 raise HTTPException(409, 'Investments access or consent is unavailable. Check Plaid product access and update consent for the existing Item; do not create a duplicate connection.') from None
             raise upstream(error) from None
 

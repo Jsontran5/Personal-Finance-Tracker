@@ -53,6 +53,7 @@ def run():
             with closing(sqlite3.connect(f'file:{source.as_posix()}?mode=ro', uri=True)) as current, closing(sqlite3.connect(database.with_suffix(suffix))) as copy:
                 current.backup(copy)
         database.with_suffix('.workspace').write_text('sandbox')
+        subprocess.run([str(ROOT / '.venv/Scripts/python.exe'), '-m', 'tests.seed_investment_ui', str(database.with_suffix('.plaid-sandbox.db'))], cwd=ROOT, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
         with closing(sqlite3.connect(database.with_suffix('.plaid-sandbox.db'))) as db:
             assert db.execute('SELECT COUNT(*) FROM accounts WHERE active=1').fetchone()[0] == 14
             # Populate elapsed days and a comparison month on the copy only.
@@ -144,6 +145,37 @@ def run():
                         js("document.querySelector('.theme-toggle').click()")
                         ready(f"document.documentElement.dataset.theme==='{theme}' && !document.querySelector('.theme-toggle').disabled")
                     label = f'{width}-{theme}'
+                    nav('Investments')
+                    ready("document.querySelectorAll('.investment-holdings > details').length===12")
+                    screenshot(label + '-investments')
+                    js("document.querySelector('.investment-records').scrollIntoView({block:'start'})")
+                    js("document.querySelector('.investment-row > summary').click()")
+                    js("document.querySelector('.investment-provider > summary').click()")
+                    assert js("document.querySelector('.investment-provider pre').clientHeight <= 261")
+                    screenshot(label + '-investment-holding-details')
+                    investment_account = js("document.querySelector('select[aria-label=\"Investment account\"] option:nth-child(2)').value")
+                    change('select[aria-label="Investment account"]', investment_account)
+                    ready("document.querySelectorAll('.investment-holdings > details').length===9")
+                    change('select[aria-label="Investment account"]', '')
+                    ready("document.querySelectorAll('.investment-holdings > details').length===12")
+                    js("[...document.querySelectorAll('.investment-records .pagination button')].find(b=>b.textContent==='Next').click()")
+                    ready("document.querySelectorAll('.investment-holdings > details').length===6")
+                    js("[...document.querySelectorAll('.investment-records .pagination button')].find(b=>b.textContent==='Previous').click()")
+                    change('input[aria-label="Search investments"]', 'QA17')
+                    ready("document.querySelectorAll('.investment-holdings > details').length===1")
+                    change('input[aria-label="Search investments"]', '')
+                    js("[...document.querySelectorAll('.investment-records .segmented button')].find(b=>b.textContent==='Activity').click()")
+                    ready("document.querySelectorAll('.investment-records > .investment-row').length===25")
+                    js("document.querySelector('.investment-records > .investment-row > summary').click()")
+                    screenshot(label + '-investment-activity')
+                    change('select[aria-label="Investment activity type"]', 'sell')
+                    ready("document.querySelectorAll('.investment-records > .investment-row').length===8")
+                    change('select[aria-label="Investment activity type"]', '')
+                    ready("document.querySelectorAll('.investment-records > .investment-row').length===25")
+                    js("[...document.querySelectorAll('.investment-records .pagination button')].find(b=>b.textContent==='Next').click()")
+                    ready("document.querySelectorAll('.investment-records > .investment-row').length===7")
+                    js("document.querySelector('.investment-history-help > summary').click()")
+                    screenshot(label + '-investment-history')
                     nav('Overview')
                     ready("document.querySelector('.account-picker')")
                     before = js("document.querySelector('.hero').getBoundingClientRect().height")
@@ -433,6 +465,7 @@ def run():
                     assert not remaining
             print('\n'.join(results))
             print('Deletion acknowledgement, safe keyboard defaults, draft preservation, reset, error/retry and confirmed deletion verified in both themes at desktop/narrow widths.')
+            print('Investment holdings/activity, account/security/type filters, both paginated lists, value history and bounded provider details verified in both themes at desktop/narrow widths.')
             print('Selection persistence, account search, spending drilldowns, refund-only charts, empty states and Personal isolation verified.')
             print('Screenshots:', OUTPUT)
         finally:
