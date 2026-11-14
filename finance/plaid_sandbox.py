@@ -1,5 +1,5 @@
 """Read-only Plaid Sandbox integration, isolated from the manual ledger."""
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import json
 import logging
@@ -10,12 +10,13 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from .db import connect
 from .plaid_vault import protect
 from .sandbox_preview import initialize_preview, record_preview_snapshot, sandbox_preview_router
 from .review import apply_rules
+from .investments import fetch_activity, history_start, save_holdings, save_activity, project_investments, project_activity
 
 LOG = logging.getLogger("uvicorn.error")
 SCHEMA = (
@@ -69,7 +70,7 @@ def plaid_client(keys):
         attempts = 3 if retry else 1
         for attempt in range(attempts):
             try:
-                with urlopen(request, timeout=12) as response:
+                with urlopen(request, timeout=120 if path.startswith('/investments/') else 12) as response:
                     result = json.load(response, parse_float=Decimal)
                 LOG.info("Plaid Sandbox %s request_id=%s", path, result.get("request_id"))
                 return result
@@ -257,6 +258,7 @@ def sandbox_router(database: Path, *, client_factory=plaid_client):
                 if existing and datetime.fromisoformat(existing["expiration"]) > now():
                     raise HTTPException(409, "A Link session is already open. Clear it before starting another.")
                 options = {"access_token": protect(connection["token"], False).decode(),
+                           "additional_consented_products": ["investments", "liabilities"],
                            "update": {"account_selection_enabled": True}} if reconnect else {
                     "products": ["transactions"], "additional_consented_products": ["investments", "liabilities"],
                     "transactions": {"days_requested": 730},
@@ -365,6 +367,71 @@ def sandbox_router(database: Path, *, client_factory=plaid_client):
                 record_preview_snapshot(db)
                 return {"updated": "transactions", "added": len(added), "modified": len(modified), "removed": len(removed)}
         except PlaidError as error:
+            raise upstream(error) from None
+
+    @router.get('/investments')
+    def investment_positions():
+        if not path.exists():
+            return {'state': None, 'accounts': [], 'holdings': [], 'history': []}
+        initialize()
+        with connect(path) as db:
+            return project_investments(db)
+
+    @router.get('/investments/activity')
+    def investment_activity(account: str | None = None, start: date | None = None, end: date | None = None,
+                            search: str = Query('', max_length=120), kind: str | None = None,
+                            page: int = Query(1, ge=1, le=100000)):
+        if start and end and start > end:
+            raise HTTPException(422, 'Start date must be before end date.')
+        if not path.exists():
+            return {'rows': [], 'total': 0, 'page': page, 'page_size': 25}
+        initialize()
+        with connect(path) as db:
+            return project_activity(db, account, start.isoformat() if start else None,
+                                    end.isoformat() if end else None, search, kind, page)
+
+    @router.post('/investments/sync')
+    def sync_investments(activity: bool = False, full: bool = False):
+        call = client()
+        initialize()
+        try:
+            with connect(path, write=True) as db:
+                connection = db.execute('SELECT * FROM connection WHERE id=1').fetchone()
+                if not connection:
+                    raise HTTPException(404, 'Connect a test bank first.')
+                if connection['needs_reauth']:
+                    raise HTTPException(409, 'Reconnect the existing Item first.')
+                state = db.execute('SELECT * FROM investment_state WHERE id=1').fetchone()
+                last = state['activity_at' if activity else 'holdings_at'] if state else None
+                if last and (now() - datetime.fromisoformat(last)).total_seconds() < 30:
+                    raise HTTPException(429, 'Wait 30 seconds between investment syncs.')
+                token = protect(connection['token'], False).decode()
+                stamp = now().isoformat()
+                if activity:
+                    # Reconcile an overlap for recent corrections; initial sync backfills two years.
+                    start = max(history_start(date.today()), date.fromisoformat(state['activity_end']) - timedelta(days=7)) if not full and state and state['activity_end'] else history_start(date.today())
+                    end = date.today().isoformat()
+                    rows = fetch_activity(call, token, start.isoformat(), end)
+                    known = {row[0] for row in db.execute('SELECT id FROM accounts')}
+                    if any(tx['account_id'] not in known for tx, _ in rows):
+                        raise HTTPException(409, 'Sync holdings first to load the investment accounts.')
+                    save_activity(db, rows, start.isoformat(), end, stamp)
+                    return {'updated': 'activity', 'count': len(rows)}
+                result = call('/investments/holdings/get', access_token=token)
+                # Preserve an explicit fresh balance, just as the normal bank sync does.
+                cached = [a for a in result['accounts'] if a['type'] == 'investment' and not db.execute(
+                    "SELECT 1 FROM accounts WHERE id=? AND source='fresh'", (a['account_id'],)).fetchone()]
+                save_accounts(db, cached, 'cached')
+                save_holdings(db, result, stamp)
+                record_preview_snapshot(db)
+                return {'updated': 'holdings', 'count': len(result['holdings'])}
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from None
+        except PlaidError as error:
+            if error.code in {'PRODUCT_NOT_SUPPORTED', 'NO_INVESTMENT_ACCOUNTS', 'NO_ACCOUNTS'}:
+                raise HTTPException(409, 'This connection has no supported investment data. Saved data has been retained.') from None
+            if error.code in {'ADDITIONAL_CONSENT_REQUIRED', 'ACCESS_NOT_GRANTED', 'PRODUCTS_NOT_SUPPORTED', 'INVALID_PRODUCT'}:
+                raise HTTPException(409, 'Investments access or consent is unavailable. Check Plaid product access and update consent for the existing Item; do not create a duplicate connection.') from None
             raise upstream(error) from None
 
     router.include_router(sandbox_preview_router(database, initialize))

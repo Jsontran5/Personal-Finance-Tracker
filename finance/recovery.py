@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from .db import connect, database_lock, initialize
 
 MAX_SIZE = 256 * 1024 * 1024
-VERSIONS = {'personal': 3, 'sandbox': 5}
+VERSIONS = {'personal': 3, 'sandbox': 6}
 
 
 def checksum(path):
@@ -95,6 +95,13 @@ def validate_current_schema(path, mode, directory):
                 raise ValueError('Backup columns do not match the supported workspace schema.')
         if mode == 'sandbox' and candidate.execute('SELECT 1 FROM transaction_details WHERE NOT json_valid(payload) LIMIT 1').fetchone():
             raise ValueError('Saved transaction metadata is not valid JSON.')
+        if mode == 'sandbox':
+            for table, columns in [('investment_holdings', ['payload', 'security']),
+                                   ('investment_activity', ['payload', 'security']),
+                                   ('investment_observations', ['accounts'])]:
+                for column in columns:
+                    if candidate.execute(f'SELECT 1 FROM {table} WHERE NOT json_valid({column}) LIMIT 1').fetchone():
+                        raise ValueError('Saved investment metadata is not valid JSON.')
     # Exercise the application projections before touching live data.
     with connect(path) as db:
         if mode == 'personal':
@@ -103,6 +110,9 @@ def validate_current_schema(path, mode, directory):
         else:
             from .sandbox_preview import preview_overview
             preview_overview(db, date.today().isoformat()[:7])
+            from .investments import project_investments, project_activity
+            project_investments(db)
+            project_activity(db, None, None, None, '', None, 1)
 
 
 def valid_selection(value):
