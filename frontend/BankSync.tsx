@@ -13,7 +13,7 @@ type Status = {
 type Session = { session: string; url: string }
 const path = '/plaid/sandbox'
 
-export function BankSync({ request, money, onChanged }: { request: Request; money: (value: number, currency?: string) => string; onChanged: () => void }) {
+export function BankSync({ request, money, onChanged, investmentScenario, openInvestments }: { request: Request; money: (value: number, currency?: string) => string; onChanged: () => void; investmentScenario: boolean; openInvestments: () => void }) {
   const [status, setStatus] = useState<Status>()
   const [session, setSession] = useState<Session>()
   const [busy, setBusy] = useState(false)
@@ -52,7 +52,7 @@ export function BankSync({ request, money, onChanged }: { request: Request; mone
       }
       setSession(undefined)
       setStatus(await request<Status>(path))
-      setMessage(result.status === 'connected' ? 'Connected. Select Sync now to fetch test data.' : 'The Plaid session ended. Start a new test session.')
+      setMessage(result.status === 'connected' ? investmentScenario ? 'Connected. Open Investments to sync holdings and activity.' : 'Connected. Select Sync now to fetch test data.' : 'The Plaid session ended. Start a new test session.')
     })
   }
 
@@ -70,17 +70,18 @@ export function BankSync({ request, money, onChanged }: { request: Request; mone
   const connection = status?.connection
   return <>
     <section className="card">
-      <div className="section-heading"><div><h2>Plaid Sandbox</h2><small>Test data is stored separately from your personal ledger.</small></div><span className="chip">TEST MODE</span></div>
+      <div className="section-heading"><div><h2>{investmentScenario ? 'Investment test connection' : 'Banking test connection'}</h2><small>Each scenario has its own saved connection and data.</small></div><span className="chip">TEST MODE</span></div>
+      {investmentScenario && <p className="muted">For a new test connection, choose First Platypus Bank and use user_good / pass_good. Investments is required for this scenario. Your banking scenario stays saved.</p>}
       {!status && !error && <p role="status" className="muted">Loading bank sync…</p>}
       {status && !status.configured && <p className="notice">Set your local Plaid Sandbox credentials to connect. See the project README for setup.</p>}
       {error && <p role="alert" className="notice">{error}</p>}
       {message && <p role="status" className="notice">{message}</p>}
       {connection && <p className="muted">{connection.needs_reauth ? 'Reauthorization required.'
         : connection.synced_at ? 'Last transaction sync: ' + new Date(connection.synced_at).toLocaleString()
-        : 'Connected. Transaction sync has not run.'}{connection.history_status === 'INITIAL_UPDATE_COMPLETE'
+        : investmentScenario ? 'Connected. Open Investments for holdings and activity.' : 'Connected. Transaction sync has not run.'}{connection.history_status === 'INITIAL_UPDATE_COMPLETE'
         ? ' Historical data is still loading.' : ''}</p>}
       {status?.configured && <div className="inline-actions bank-actions">
-        {!pending && (!connection || connection.needs_reauth) &&
+        {!pending && (!connection || !!connection.needs_reauth) &&
           <button className="primary" disabled={busy} onClick={() => void action(async () => {
             setSession(await request<Session>(path + '/link' + (connection ? '?reconnect=true' : ''), 'POST'))
           })}>{connection ? 'Reconnect test bank' : 'Connect a test bank'}</button>}
@@ -94,9 +95,9 @@ export function BankSync({ request, money, onChanged }: { request: Request; mone
           })}>Cancel</button>
         </>}
         {connection && !connection.needs_reauth && !pending && <>
-          <button className="primary" disabled={busy} onClick={() => sync(false)}>Sync now</button>
+          {investmentScenario ? <button className="primary" disabled={busy} onClick={openInvestments}>View investments</button> : <button className="primary" disabled={busy} onClick={() => sync(false)}>Sync now</button>}
           <button className="secondary" disabled={busy} onClick={() => sync(true)}>Refresh balances</button>
-          <button className="secondary" disabled={busy} onClick={() => sync(false, true)}>Refresh transaction details</button>
+          {!investmentScenario && <button className="secondary" disabled={busy} onClick={() => sync(false, true)}>Refresh transaction details</button>}
           <button className="secondary" disabled={busy} onClick={() => void action(async () => {
             setSession(await request<Session>(path + '/link?reconnect=true', 'POST'))
           })}>Manage test accounts</button>

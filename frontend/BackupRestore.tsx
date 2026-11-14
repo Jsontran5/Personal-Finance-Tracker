@@ -2,17 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
 type Backup = { id: string; size_bytes: number; file_date: string; format: string }
-type Counts = { accounts: number; transactions: number; active_transactions?: number }
-type Preview = { id: string; workspace: 'personal' | 'sandbox'; schema_version: number; restored_schema_version: number;
+type Counts = { accounts: number; transactions: number; active_transactions?: number; holdings?: number; investment_activity?: number }
+type BackupWorkspace = 'personal' | 'sandbox' | 'sandbox_investments'
+type Preview = { id: string; workspace: BackupWorkspace; schema_version: number; restored_schema_version: number;
   counts: Counts; current_counts: Counts | null; created_at: string | null; file_date: string; legacy: boolean;
   restores_chart_selection: boolean; bank_policy: string; preview_token: string; confirmation: string;
   contents: { accounts: { name: string; currency: string | null }[]; transaction_dates: { first: string | null; last: string | null } } }
-const label = (mode: string) => mode === 'personal' ? 'Personal' : 'Sandbox'
+const label = (mode: string) => mode === 'personal' ? 'Personal' : mode === 'sandbox_investments' ? 'Sandbox · Investments' : 'Sandbox · Banking'
 const size = (bytes: number) => bytes < 1024 * 1024 ? Math.max(1, Math.round(bytes / 1024)) + ' KB' : (bytes / 1024 / 1024).toFixed(1) + ' MB'
 
-export function BackupRestore({ request, onRestored, initialWorkspace }: { request: Request; onRestored: () => void; initialWorkspace: 'personal' | 'sandbox' }) {
+export function BackupRestore({ request, onRestored, initialWorkspace }: { request: Request; onRestored: () => void; initialWorkspace: BackupWorkspace }) {
   const [backups, setBackups] = useState<Backup[]>()
-  const [mode, setMode] = useState<'personal' | 'sandbox'>(initialWorkspace)
+  const [mode, setMode] = useState<BackupWorkspace>(initialWorkspace)
   const [filter, setFilter] = useState('')
   const [page, setPage] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -43,10 +44,10 @@ export function BackupRestore({ request, onRestored, initialWorkspace }: { reque
     ? 'Keeps your current bank authorization. Restores the backup’s data and transaction cursor; the next sync may replay later activity. No new connection is created.'
     : preview?.bank_policy === 'restore_saved_authorization'
       ? 'Restores the saved encrypted bank authorization for this Windows user. No bank connection is created or contacted during restore.'
-      : preview?.workspace === 'sandbox' ? 'This backup has no saved bank connection.' : 'Your Sandbox bank connection is unaffected.'
+      : preview?.workspace !== 'personal' ? 'This backup has no saved bank connection.' : 'Your Sandbox bank connections are unaffected.'
   return <div className="backup-page">
     <section className="card backup-create"><div><h2>Back up a workspace</h2><p className="analytics-note">Save a consistent copy of accounts, transactions, budgets, review/rule state, transfer links, and that workspace’s chart selection.</p></div>
-      <div className="backup-create-controls"><label>Workspace to back up<select aria-label="Backup workspace" disabled={busy} value={mode} onChange={event => setMode(event.target.value as 'personal' | 'sandbox')}><option value="personal">Personal</option><option value="sandbox">Sandbox</option></select></label>
+      <div className="backup-create-controls"><label>Workspace to back up<select aria-label="Backup workspace" disabled={busy} value={mode} onChange={event => setMode(event.target.value as BackupWorkspace)}><option value="personal">Personal</option><option value="sandbox">Sandbox · Banking</option><option value="sandbox_investments">Sandbox · Investments</option></select></label>
         <button className="primary" disabled={busy} onClick={() => void run(async () => {
           const created = await request<{ id: string }>('/backups', 'POST', { workspace: mode })
           const listed = await request<{ backups: Backup[] }>('/backups')
@@ -77,6 +78,7 @@ export function BackupRestore({ request, onRestored, initialWorkspace }: { reque
       <dl className="restore-summary"><div><dt>{preview.created_at ? 'Snapshot created' : 'Legacy file date'}</dt><dd>{new Date(preview.created_at ?? preview.file_date).toLocaleString()}</dd></div>
         <div><dt>Workspace</dt><dd>{label(preview.workspace)}</dd></div><div><dt>Schema</dt><dd>{preview.schema_version}{preview.schema_version !== preview.restored_schema_version ? ' → ' + preview.restored_schema_version + ' on restore' : ' · compatible'}</dd></div>
         <div><dt>Accounts</dt><dd>{preview.current_counts?.accounts ?? 'Not initialized'} currently → {preview.counts.accounts} in backup</dd></div><div><dt>Transactions</dt><dd>{preview.current_counts?.transactions ?? 'Not initialized'} currently → {preview.counts.transactions} in backup{preview.counts.active_transactions !== undefined && ' (' + preview.counts.active_transactions + ' active)'}</dd></div>
+        {preview.counts.holdings !== undefined && <><div><dt>Investment holdings</dt><dd>{preview.current_counts?.holdings ?? 'Not initialized'} currently → {preview.counts.holdings} in backup</dd></div><div><dt>Investment activity</dt><dd>{preview.current_counts?.investment_activity ?? 'Not initialized'} currently → {preview.counts.investment_activity} in backup</dd></div></>}
         <div><dt>Chart selection</dt><dd>{preview.restores_chart_selection ? 'Restored with this workspace' : 'Not included; current selection retained'}</dd></div></dl>
       <details className="backup-contents"><summary>Accounts and activity in this backup</summary><p className="analytics-note">{preview.contents.transaction_dates.first ? 'Transaction dates: ' + preview.contents.transaction_dates.first + ' – ' + preview.contents.transaction_dates.last : 'No saved transactions.'}</p>
         <ul>{preview.contents.accounts.map((account, index) => <li key={index}>{account.name} · {account.currency ?? 'Currency unavailable'}</li>)}</ul>

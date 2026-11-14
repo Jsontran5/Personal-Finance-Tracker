@@ -63,6 +63,9 @@ def check_database(path):
         counts = {name: db.execute(f'SELECT COUNT(*) FROM {name}').fetchone()[0] for name in ['accounts', 'transactions']}
         if mode == 'sandbox':
             counts['active_transactions'] = db.execute('SELECT COUNT(*) FROM transactions WHERE removed=0').fetchone()[0]
+            if 'investment_holdings' in tables:
+                counts['holdings'] = db.execute('SELECT COUNT(*) FROM investment_holdings').fetchone()[0]
+                counts['investment_activity'] = db.execute('SELECT COUNT(*) FROM investment_activity WHERE removed=0').fetchone()[0]
         return {'workspace': mode, 'schema_version': version, 'counts': counts}
 
 

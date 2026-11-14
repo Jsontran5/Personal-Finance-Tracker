@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Icon } from './icons'
 import { BankSync } from './BankSync'
@@ -66,7 +66,7 @@ function parseMoney(value: string, currency: string) {
   return match[1] ? -amount : amount
 }
 
-async function request<T>(path: string, method = 'GET', body?: object, signal?: AbortSignal): Promise<T> {
+async function apiRequest<T>(path: string, method = 'GET', body?: object, signal?: AbortSignal): Promise<T> {
   const response = await fetch('/api' + path, {
     method, signal,
     headers: method === 'GET' ? {} : { 'Content-Type': 'application/json', 'X-Finance-Request': '1' },
@@ -209,7 +209,7 @@ function BudgetRows({ budgets, edit, filter, compare = false }: { budgets: Budge
   })}</div>
 }
 
-function BalanceHistory({ account, sandbox = false }: { account: Account; sandbox?: boolean }) {
+function BalanceHistory({ account, sandbox = false, request }: { account: Account; sandbox?: boolean; request: typeof apiRequest }) {
   const [rows, setRows] = useState<{ id: number; effective_date: string; balance_minor: number; notes: string }[] | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -239,6 +239,12 @@ function BalanceHistory({ account, sandbox = false }: { account: Account; sandbo
 
 
 function App() {
+  const [scenario, setScenario] = useState<'banking' | 'investments'>('banking')
+  const [scenarioPending, setScenarioPending] = useState(false)
+  const request = useCallback(<T,>(path: string, method?: string, body?: object, signal?: AbortSignal): Promise<T> => {
+    const mapped = scenario === 'investments' ? path.replace(/^\/plaid\/sandbox(?=\/|\?|$)/, '/plaid/investments-sandbox').replace(/^\/chart-selection\/sandbox(?=\?|$)/, '/chart-selection/sandbox_investments') : path
+    return apiRequest<T>(mapped, method, body, signal)
+  }, [scenario])
   const [page, setPage] = useState<Page>('Overview')
   const [month, setMonth] = useState(today().slice(0, 7))
   const [data, setData] = useState<Overview>()
@@ -272,9 +278,9 @@ function App() {
   const previewPath = '/plaid/sandbox/preview'
   useEffect(() => { setTransactionPage(0) }, [search, accountFilter, categoryFilter, month, mode])
   useEffect(() => { window.scrollTo(0, 0) }, [page])
-  useEffect(() => { setDrilldown(null) }, [month, mode])
+  useEffect(() => { setDrilldown(null) }, [month, mode, scenario])
   useEffect(() => { setSelectedTransactions([]); setTransactionPage(0) }, [month, mode, search, accountFilter, categoryFilter, reviewFilter, drilldown, allReviewDates])
-  useEffect(() => { setReviewFilter('all'); setReviewStatuses({}); setReviewMessage(''); setAllReviewDates(false); setReviewHistory([]) }, [month, mode])
+  useEffect(() => { setReviewFilter('all'); setReviewStatuses({}); setReviewMessage(''); setAllReviewDates(false); setReviewHistory([]); setSelectedTransactions([]); setTransactionPage(0) }, [month, mode, scenario])
 
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -288,8 +294,8 @@ function App() {
   }, [])
 
   useEffect(() => {
-    request<{ mode: Mode }>('/workspace')
-      .then(value => setMode(value.mode))
+    Promise.all([apiRequest<{ mode: Mode }>('/workspace'), apiRequest<{ scenario: 'banking' | 'investments' }>('/sandbox-scenario')])
+      .then(([workspace, selected]) => { setScenario(selected.scenario); setMode(workspace.mode) })
       .catch(() => { setMode('personal'); setModeError('Could not load the saved workspace.') })
   }, [])
 
@@ -313,6 +319,17 @@ function App() {
     }
   }
 
+  async function changeScenario(next: 'banking' | 'investments') {
+    if (next === scenario) return
+    setScenarioPending(true); setModeError('')
+    try {
+      await apiRequest('/sandbox-scenario', 'PUT', { scenario: next })
+      setDialog(null); setData(undefined); setError(''); setCategoryFilter(0); setAccountFilter(0); setSearch(''); setChartAccountIds(null); setTransferFocus(null)
+      setScenario(next)
+    } catch (failure) { setModeError((failure as Error).message) }
+    finally { setScenarioPending(false) }
+  }
+
   async function toggleTheme() {
     const next = theme === 'dark' ? 'light' : 'dark'
     setTheme(next)
@@ -333,11 +350,11 @@ function App() {
     const controller = new AbortController()
     request<Overview>((mode === 'sandbox' ? previewPath : '/overview') + '?month=' + month, 'GET', undefined, controller.signal).then(result => {
       setData(result)
-      setLoadedMonth(mode + month)
+      setLoadedMonth(mode + scenario + month)
       setError('')
     }).catch(failure => { if (!controller.signal.aborted) setError(failure.message) })
     return () => controller.abort()
-  }, [month, revision, mode])
+  }, [month, revision, mode, scenario, request])
 
   function open(state: DialogState) {
     setFormError('')
@@ -425,7 +442,7 @@ function App() {
   }
 
   const activeMonth = new Date(month + '-02T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-  const ready = data && loadedMonth === mode + month ? data : undefined
+  const ready = data && loadedMonth === mode + scenario + month ? data : undefined
   const budgetRows = ready?.budgets.filter(budget => budget.limit_minor !== null).slice(0, 4) ?? []
   const editTransaction = (entry: Transaction) => {
     if (mode === 'sandbox') {
@@ -462,6 +479,7 @@ function App() {
       <label className="workspace-picker">Workspace<select aria-label="Workspace" value={mode ?? 'personal'} disabled={!mode || modePending || busy || !!dialog} onChange={event => void changeMode(event.target.value as Mode)}>
         <option value="personal">Personal</option><option value="sandbox">Sandbox preview</option>
       </select></label>
+      {mode === 'sandbox' && <label className="scenario-picker">Test scenario<select aria-label="Sandbox scenario" disabled={scenarioPending || modePending || busy || !!dialog} value={scenario} onChange={event => void changeScenario(event.target.value as 'banking' | 'investments')}><option value="banking">Banking</option><option value="investments">Investments</option></select></label>}
       <nav aria-label="Finance sections">{pages.map((item, index) =>
         <button key={item} aria-current={page === item ? 'page' : undefined} onClick={() => { setPage(item); setAllReviewDates(false); setReviewFilter('all'); setDrilldown(null); setCategoryFilter(0); setAccountFilter(0); setSearch('') }}>
           <Icon name={icons[index]} />{item}
@@ -484,7 +502,7 @@ function App() {
           Investments: 'See your holdings, allocation, and investment activity.',
           'Bank sync': 'Connect and refresh a test bank through Plaid.',
           'Backup & restore': 'Save local checkpoints and recover a workspace.',
-        }[page]}</p>{mode === 'sandbox' && page !== 'Backup & restore' && <SyncFreshness request={request} revision={revision} open={() => setPage('Bank sync')} />}</div>
+        }[page]}</p>{mode === 'sandbox' && scenario === 'banking' && page !== 'Backup & restore' && <SyncFreshness request={request} revision={revision} open={() => setPage('Bank sync')} />}</div>
         <div className="toolbar">
           {page !== 'Accounts' && page !== 'Backup & restore' && page !== 'Investments' && <input type="month" aria-label="Reporting month" value={month} disabled={page === 'Transactions' && allReviewDates} onChange={event => { if (event.target.value) setMonth(event.target.value) }} />}
           {page === 'Backup & restore' || page === 'Investments' ? null : mode === 'sandbox' ? <button className="primary" onClick={() => setPage('Bank sync')}>Bank sync</button>
@@ -500,7 +518,7 @@ function App() {
       {!ready && !error && <p className="muted" role="status">Loading your ledger…</p>}
       {ready && page === 'Overview' && <>
         <div className="overview-grid">
-        <NetWorth key={mode} accounts={ready.accounts} history={ready.history} mode={mode === 'sandbox' ? 'sandbox' : 'personal'}
+        <NetWorth key={mode + scenario} accounts={ready.accounts} history={ready.history} mode={mode === 'sandbox' ? 'sandbox' : 'personal'}
           request={request} money={money} onSelectionChange={setChartAccountIds} onStart={() => mode === 'sandbox' ? setPage('Bank sync') : open({ type: 'account' })} />
         <CashFlow data={ready} month={activeMonth} />
         </div>
@@ -513,14 +531,14 @@ function App() {
           </section>
         </div>
       </>}
-      {ready && page === 'Spending' && <SpendingPage key={mode} report={ready.spending} money={money} drill={drillSpending} changeMonth={setMonth} sandbox={mode === 'sandbox'} />}
+      {ready && page === 'Spending' && <SpendingPage key={mode + scenario} report={ready.spending} money={money} drill={drillSpending} changeMonth={setMonth} sandbox={mode === 'sandbox'} />}
       {ready && page === 'Transactions' && <>
         <section className="card">
           <div className="section-heading"><div><h2>{allReviewDates ? 'All saved dates' : activeMonth}</h2><small>{entries.length} entries</small></div></div>
           {reviewMessage && <p className="notice" role="status">{reviewMessage}</p>}
           <TransferReview path={(mode === 'sandbox' ? previewPath : '') + '/review/transfers'} request={request} money={money} revision={ready.transactions} focusId={transferFocus} setFocusId={setTransferFocus}
             complete={message => { setReviewMessage(message); setRevision(value => value + 1) }} />
-          <TransactionReview<Transaction> key={mode} path={(mode === 'sandbox' ? previewPath : '') + '/review'} request={request} transactions={ready.transactions} categories={ready.categories} accounts={ready.accounts} allDates={allReviewDates} setAllDates={setAllReviewDates} onHistory={setReviewHistory}
+          <TransactionReview<Transaction> key={mode + scenario} path={(mode === 'sandbox' ? previewPath : '') + '/review'} request={request} transactions={ready.transactions} categories={ready.categories} accounts={ready.accounts} allDates={allReviewDates} setAllDates={setAllReviewDates} onHistory={setReviewHistory}
             selected={selectedTransactions} setSelected={setSelectedTransactions} pageIds={entries.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map(tx => tx.id)} matchingIds={entries.map(tx => tx.id)} filter={reviewFilter} setFilter={setReviewFilter} onStatuses={setReviewStatuses}
             complete={message => { setReviewMessage(message); setRevision(value => value + 1) }} />
           {drilldown && <div className="drilldown-filter"><span>{drilldown.label}</span><div className="inline-actions"><button className="secondary small" onClick={() => setDrilldown(null)}>Clear spending filter</button><button className="secondary small" onClick={() => { setDrilldown(null); setPage('Spending') }}>Back to Spending</button></div></div>}
@@ -561,16 +579,16 @@ function App() {
         <BudgetRows budgets={ready.budgets} compare edit={editBudget} filter={filterCategory} />
         <p className="muted">Uncategorized spending: {money(ready.uncategorized_minor)}</p>
       </section>}
-      {ready && page === 'Accounts' && <AccountList key={mode} accounts={ready.accounts} sandbox={mode === 'sandbox'} primary={ready.primary_account_id}
+      {ready && page === 'Accounts' && <AccountList key={mode + scenario} accounts={ready.accounts} sandbox={mode === 'sandbox'} primary={ready.primary_account_id}
         money={money} add={() => open({ type: 'account' })} details={account => <>
           <button className="secondary small" onClick={() => { setPage('Transactions'); setAllReviewDates(true); setAccountFilter(account.id); setCategoryFilter(0); setReviewFilter('all'); setSearch(''); setDrilldown(null) }}>View account transactions →</button>
           {mode === 'personal' && <div className="inline-actions"><button className="secondary small" onClick={() => open({ type: 'balance', account })}>Record balance</button>
             <button className="secondary small" onClick={() => open({ type: 'account', account })}>Edit account</button></div>}
-          <BalanceHistory key={revision} account={account} sandbox={mode === 'sandbox'} />
+          <BalanceHistory key={revision} account={account} sandbox={mode === 'sandbox'} request={request} />
         </>} />}
-      {page === 'Bank sync' && <BankSync request={request} money={money} onChanged={() => setRevision(value => value + 1)} />}
-      {page === 'Investments' && <Investments key={mode} sandbox={mode === 'sandbox'} request={request} money={money} openBank={() => setPage('Bank sync')} onChanged={() => setRevision(value => value + 1)} />}
-      {page === 'Backup & restore' && <BackupRestore request={request} initialWorkspace={mode ?? 'personal'} onRestored={() => {
+      {page === 'Bank sync' && <BankSync key={scenario} investmentScenario={scenario === 'investments'} openInvestments={() => setPage('Investments')} request={request} money={money} onChanged={() => setRevision(value => value + 1)} />}
+      {page === 'Investments' && <Investments key={mode + scenario} sandbox={mode === 'sandbox'} request={request} money={money} openBank={() => setPage('Bank sync')} openTestScenario={scenario === 'banking' ? () => void changeScenario('investments') : undefined} onChanged={() => setRevision(value => value + 1)} />}
+      {page === 'Backup & restore' && <BackupRestore key={scenario} request={request} initialWorkspace={mode === 'sandbox' && scenario === 'investments' ? 'sandbox_investments' : mode ?? 'personal'} onRestored={() => {
         setData(undefined); setDialog(null); setSelectedTransactions([]); setReviewHistory([]); setReviewStatuses({}); setChartAccountIds(null)
         setAllReviewDates(false); setDrilldown(null); setAccountFilter(0); setCategoryFilter(0); setSearch(''); setTransferFocus(null); setReviewMessage(''); setRevision(value => value + 1)
       }} />}
