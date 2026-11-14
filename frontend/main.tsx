@@ -14,6 +14,7 @@ import { SyncFreshness } from './SyncFreshness'
 import { BackupRestore } from './BackupRestore'
 import { DeleteTransaction } from './DeleteTransaction'
 import { Investments } from './Investments'
+import { DebtDetails } from './DebtDetails'
 import './styles.css'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
@@ -424,7 +425,7 @@ function App() {
       const account = dialog.account
       const metadata = { name: read(form, 'name'), include_in_net_worth: form.has('include'), primary: form.has('primary') }
       void save(account ? '/accounts/' + account.id : '/accounts', account ? 'PUT' : 'POST', () => account ? metadata : ({
-        ...metadata, kind: read(form, 'kind'), currency: read(form, 'currency'),
+        ...metadata, kind: read(form, 'kind') === 'student' ? 'loan' : read(form, 'kind'), debt_subtype: read(form, 'kind') === 'student' ? 'student' : undefined, currency: read(form, 'currency'),
         opening_balance_minor: parseMoney(read(form, 'amount'), read(form, 'currency')), date: read(form, 'date'),
       }))
     } else if (dialog?.type === 'balance') {
@@ -584,6 +585,7 @@ function App() {
           <button className="secondary small" onClick={() => { setPage('Transactions'); setAllReviewDates(true); setAccountFilter(account.id); setCategoryFilter(0); setReviewFilter('all'); setSearch(''); setDrilldown(null) }}>View account transactions →</button>
           {mode === 'personal' && <div className="inline-actions"><button className="secondary small" onClick={() => open({ type: 'balance', account })}>Record balance</button>
             <button className="secondary small" onClick={() => open({ type: 'account', account })}>Edit account</button></div>}
+          {isDebt(account.kind) && <DebtDetails account={account} sandbox={mode === 'sandbox'} request={request} money={money} parseMoney={parseMoney} revision={revision} onChanged={() => setRevision(value => value + 1)} />}
           <BalanceHistory key={revision} account={account} sandbox={mode === 'sandbox'} request={request} />
         </>} />}
       {page === 'Bank sync' && <BankSync key={scenario} investmentScenario={scenario === 'investments'} openInvestments={() => setPage('Investments')} request={request} money={money} onChanged={() => setRevision(value => value + 1)} />}
@@ -609,12 +611,12 @@ function App() {
             <label>Name<input data-autofocus name="name" required maxLength={120} defaultValue={dialog.account?.name} placeholder="e.g. Everyday checking" /></label>
             {!dialog.account && <>
               <div className="form-grid">
-                <label>Type<select name="kind">{Object.entries(accountKinds).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                <label>Type<select name="kind">{Object.entries(accountKinds).map(([value, label]) => <option value={value} key={value}>{label}</option>)}<option value="student">Student loan (manual)</option></select></label>
                 <label>Currency<select name="currency">{currencies.map(currency => <option key={currency}>{currency}</option>)}</select></label>
                 <label>Opening balance<input name="amount" inputMode="decimal" defaultValue="0" required /></label>
                 <label>Balance date<input name="date" type="date" defaultValue={today()} max={today()} required /></label>
               </div>
-              <p className="muted">For loans and credit cards, enter the amount owed as a positive number.</p>
+              <p className="muted">For loans and credit cards, enter the amount owed as a positive number. For Nelnet, choose Student loan (manual); add rates and terms under the account’s Debt details.</p>
             </>}
             <label className="checkbox"><input name="include" type="checkbox" defaultChecked={dialog.account ? !!dialog.account.include_in_net_worth : true} /> Include in net worth</label>
             <label className="checkbox"><input name="primary" type="checkbox" defaultChecked={!!dialog.account && dialog.account.id === data.primary_account_id} /> Primary spending account</label>

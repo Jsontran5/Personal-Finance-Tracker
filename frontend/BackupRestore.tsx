@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
 type Backup = { id: string; size_bytes: number; file_date: string; format: string }
-type Counts = { accounts: number; transactions: number; active_transactions?: number; holdings?: number; investment_activity?: number }
+type Counts = { accounts: number; transactions: number; active_transactions?: number; holdings?: number; investment_activity?: number; debt_details?: number }
 type BackupWorkspace = 'personal' | 'sandbox' | 'sandbox_investments'
 type Preview = { id: string; workspace: BackupWorkspace; schema_version: number; restored_schema_version: number;
   counts: Counts; current_counts: Counts | null; created_at: string | null; file_date: string; legacy: boolean;
@@ -79,6 +79,7 @@ export function BackupRestore({ request, onRestored, initialWorkspace }: { reque
         <div><dt>Workspace</dt><dd>{label(preview.workspace)}</dd></div><div><dt>Schema</dt><dd>{preview.schema_version}{preview.schema_version !== preview.restored_schema_version ? ' → ' + preview.restored_schema_version + ' on restore' : ' · compatible'}</dd></div>
         <div><dt>Accounts</dt><dd>{preview.current_counts?.accounts ?? 'Not initialized'} currently → {preview.counts.accounts} in backup</dd></div><div><dt>Transactions</dt><dd>{preview.current_counts?.transactions ?? 'Not initialized'} currently → {preview.counts.transactions} in backup{preview.counts.active_transactions !== undefined && ' (' + preview.counts.active_transactions + ' active)'}</dd></div>
         {preview.counts.holdings !== undefined && <><div><dt>Investment holdings</dt><dd>{preview.current_counts?.holdings ?? 'Not initialized'} currently → {preview.counts.holdings} in backup</dd></div><div><dt>Investment activity</dt><dd>{preview.current_counts?.investment_activity ?? 'Not initialized'} currently → {preview.counts.investment_activity} in backup</dd></div></>}
+        {preview.counts.debt_details !== undefined && <div><dt>Debt details</dt><dd>{preview.current_counts?.debt_details ?? 'Not initialized'} currently → {preview.counts.debt_details} in backup</dd></div>}
         <div><dt>Chart selection</dt><dd>{preview.restores_chart_selection ? 'Restored with this workspace' : 'Not included; current selection retained'}</dd></div></dl>
       <details className="backup-contents"><summary>Accounts and activity in this backup</summary><p className="analytics-note">{preview.contents.transaction_dates.first ? 'Transaction dates: ' + preview.contents.transaction_dates.first + ' – ' + preview.contents.transaction_dates.last : 'No saved transactions.'}</p>
         <ul>{preview.contents.accounts.map((account, index) => <li key={index}>{account.name} · {account.currency ?? 'Currency unavailable'}</li>)}</ul>

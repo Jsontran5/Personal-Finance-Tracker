@@ -61,6 +61,9 @@ def run(live=False):
             with closing(sqlite3.connect(investment)) as db:
                 db.execute("UPDATE investment_state SET holdings_at='2000-01-01T00:00:00+00:00',activity_at='2000-01-01T00:00:00+00:00'")
                 db.commit()
+            with closing(sqlite3.connect(database.with_suffix('.plaid-sandbox.db'))) as db:
+                db.execute("UPDATE liability_state SET synced_at='2000-01-01T00:00:00+00:00'")
+                db.commit()
         database.with_suffix('.workspace').write_text('sandbox')
         database.with_suffix('.sandbox-scenario').write_text('banking')
         original_banking = fingerprint(database.with_suffix('.plaid-sandbox.db'))
@@ -134,6 +137,16 @@ def run(live=False):
 
             cdp('Page.enable'); cdp('Page.navigate', {'url': url})
             ready("document.querySelector('select[aria-label=\"Sandbox scenario\"]')")
+            if live:
+                nav('Bank sync')
+                ready("[...document.querySelectorAll('.bank-actions button')].some(b=>b.textContent==='Sync debt details')")
+                button('.bank-actions button', 'Sync debt details')
+                ready("[...document.querySelectorAll('[role=status]')].some(e=>e.textContent.startsWith('Debt details synced'))", 180)
+                updated_banking = fingerprint(database.with_suffix('.plaid-sandbox.db'))
+                for table in ['connection', 'transactions', 'preview_edits', 'transaction_reviews', 'merchant_rules', 'transfer_links']:
+                    assert updated_banking[table] == original_banking[table]
+                original_banking = updated_banking
+                print('Actual Plaid debt sync completed through UI; authorization, transactions and local classifications unchanged.', flush=True)
             select('Sandbox scenario', 'investments')
             nav('Investments')
             ready("document.querySelector('.investment-holdings')")

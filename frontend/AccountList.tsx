@@ -54,8 +54,8 @@ export function AccountList({ accounts, sandbox, primary, money, add, details }:
                   (account.balance_date ? ' · Checked ' + new Date(account.balance_date).toLocaleString() : '')
                 : 'Recorded ' + account.balance_date + ' · Includes later ledger activity'}</p>
               {sandbox && <p className="muted">{account.transaction_count ? account.transaction_count + ' saved transactions across all dates.' : 'No spending transactions saved for this account.'}
-                {account.provider_type === 'investment' ? ' Holdings and investment activity are not integrated yet.'
-                  : account.provider_type === 'loan' ? ' Loan terms and payment details are not integrated yet.' : ''}</p>}
+                {account.provider_type === 'investment' ? ' See Investments for holdings and investment activity.'
+                  : account.provider_type === 'loan' || account.provider_type === 'credit' ? ' Expand Debt details for terms and reported payment information.' : ''}</p>}
               {details(account)}
             </div>
           </details>)}</div>

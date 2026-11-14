@@ -98,6 +98,10 @@ export function BankSync({ request, money, onChanged, investmentScenario, openIn
           {investmentScenario ? <button className="primary" disabled={busy} onClick={openInvestments}>View investments</button> : <button className="primary" disabled={busy} onClick={() => sync(false)}>Sync now</button>}
           <button className="secondary" disabled={busy} onClick={() => sync(true)}>Refresh balances</button>
           {!investmentScenario && <button className="secondary" disabled={busy} onClick={() => sync(false, true)}>Refresh transaction details</button>}
+          {!investmentScenario && <button className="secondary" disabled={busy} onClick={() => void action(async () => {
+            const result = await request<{ count: number }>(path + '/liabilities/sync', 'POST')
+            setStatus(await request<Status>(path)); onChanged(); setMessage(`Debt details synced for ${result.count} supported accounts. Open Accounts to view them.`)
+          })}>Sync debt details</button>}
           <button className="secondary" disabled={busy} onClick={() => void action(async () => {
             setSession(await request<Session>(path + '/link?reconnect=true', 'POST'))
           })}>Manage test accounts</button>

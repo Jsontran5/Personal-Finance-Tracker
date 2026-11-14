@@ -82,6 +82,24 @@ nav { display: grid; gap: 5px; margin-top: 20px; }
 .workspace-picker select { width: 100%; margin-top: 3px; }
 .scenario-picker { color: var(--muted); font-size: .76rem; margin-top: 8px; }
 .scenario-picker select { width: 100%; margin-top: 3px; }
+.debt-details { margin: 16px 0; border-block: 1px solid var(--line); padding-block: 13px; }
+.debt-details > summary { cursor: pointer; font-weight: 650; }
+.debt-details > summary .chip { font-weight: 400; margin-left: 8px; }
+.debt-content { padding-top: 15px; min-width: 0; }
+.debt-content .section-heading { flex-wrap: wrap; }
+.debt-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+.debt-facts dt { color: var(--muted); font-size: .76rem; margin-bottom: 5px; }
+.debt-facts dd { margin: 0; font-size: .86rem; overflow-wrap: anywhere; }
+.debt-editor fieldset { min-width: 0; }
+.debt-editor .form-actions { flex-wrap: wrap; }
+.debt-payment-fields { margin-block: 17px; }
+.debt-payment-fields > summary, .debt-provider > summary { cursor: pointer; font-size: .84rem; }
+.debt-payment-fields .form-grid { margin-top: 14px; }
+.debt-aprs > div { border-top: 1px solid var(--line); padding: 10px 0; overflow-wrap: anywhere; font-size: .83rem; }
+.debt-aprs small { display: block; margin-top: 5px; }
+.debt-provider pre { max-height: 260px; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; background: var(--bg); padding: 12px; border-radius: 8px; font-size: .75rem; }
+.debt-notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 610px) { .debt-facts, .debt-editor .form-grid { grid-template-columns: minmax(0, 1fr); } }
 .notice.sandbox-banner { border: 1px solid var(--control-line); background: var(--blue-tint); color: var(--text); }
 nav button { display: flex; align-items: center; gap: 11px; text-align: left; border: 1px solid transparent; border-radius: 8px; padding: 10px 11px; background: transparent; color: var(--muted); font-size: .89rem; font-weight: 600; }
 nav button:hover { background: var(--raised); color: var(--text); }
