@@ -24,7 +24,7 @@ def monthly_activity(transactions):
 
 def account_balances(db: sqlite3.Connection, day: date):
     return [dict(row) for row in db.execute("""
-        SELECT a.*, s.effective_date AS balance_date,
+        SELECT a.*, NULLIF(json_extract(d.payload,'$.subtype'),'other') AS subtype, s.effective_date AS balance_date,
                CASE WHEN s.id IS NULL THEN NULL ELSE s.balance_minor +
                  COALESCE((SELECT SUM(CASE WHEN t.kind IN ('income','refund')
                                            THEN t.amount_minor WHEN t.kind = 'investment' THEN 0 ELSE -t.amount_minor END)
@@ -34,6 +34,7 @@ def account_balances(db: sqlite3.Connection, day: date):
                            WHERE t.destination_id = a.id AND (t.date > s.effective_date OR (t.date = s.effective_date AND t.id > s.transaction_cutoff)) AND t.date <= :day), 0)
                END AS balance_minor
         FROM accounts a
+        LEFT JOIN manual_debt_details d ON d.account_id=a.id
         LEFT JOIN balance_snapshots s ON s.id = (
             SELECT id FROM balance_snapshots WHERE account_id = a.id AND effective_date <= :day
             ORDER BY effective_date DESC, id DESC LIMIT 1

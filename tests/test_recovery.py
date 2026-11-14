@@ -150,7 +150,7 @@ class RecoveryTests(TestCase):
         preview = self.preview(legacy.name)
         self.assertTrue(preview['legacy'])
         self.assertEqual(preview['schema_version'], 1)
-        self.assertEqual(preview['restored_schema_version'], 3)
+        self.assertEqual(preview['restored_schema_version'], 4)
         self.assertEqual(legacy.read_bytes(), original)
         self.assertEqual(self.restore(preview).status_code, 200)
 

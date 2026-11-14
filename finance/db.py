@@ -99,6 +99,11 @@ def initialize(path: Path):
             from .transfers import initialize_transfers
             initialize_transfers(db)
             db.execute('PRAGMA user_version = 3')
-        elif version != 3:
+            version = 3
+        if version == 3:
+            from .debt import initialize_manual_debt
+            initialize_manual_debt(db)
+            db.execute('PRAGMA user_version = 4')
+        elif version != 4:
             raise RuntimeError(f"Unsupported database version: {version}")
 

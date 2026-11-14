@@ -34,12 +34,18 @@ class BudgetEdit(BaseModel):
 
 def initialize_preview(db):
     version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version == 7:
+        return
     if version == 6:
+        from .debt import initialize_liabilities
+        initialize_liabilities(db)
+        db.execute('PRAGMA user_version = 7')
         return
     if version == 5:
         from .investments import initialize_investments
         initialize_investments(db)
         db.execute('PRAGMA user_version = 6')
+        initialize_preview(db)
         return
     if version == 4:
         initialize_transfers(db)

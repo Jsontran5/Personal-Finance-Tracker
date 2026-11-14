@@ -19,6 +19,7 @@ from .review import apply_rules, mark, review_router
 from .transfers import require_unlinked
 from .recovery import backup_router
 from .scenarios import Scenario, sandbox_path, chart_path
+from .debt import manual_debt_router, ManualDebt, DebtSubtype
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 Notes = Annotated[str, StringConstraints(max_length=2000)]
@@ -39,6 +40,7 @@ class AccountCreate(AccountFields):
     currency: Literal["USD", "CAD", "EUR", "GBP", "AUD", "CHF", "JPY"] = "USD"
     opening_balance_minor: Money
     date: date
+    debt_subtype: DebtSubtype | None = None
 
 
 class Balance(BaseModel):
@@ -162,6 +164,7 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
     app.include_router(sandbox_router(database))
     app.include_router(investment_sandbox_router(database))
+    app.include_router(manual_debt_router(database))
     app.include_router(review_router(database, after_write=lambda db: record_net_worth(db, date.today())), prefix='/api')
     app.include_router(backup_router(database))
 
@@ -293,10 +296,18 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
         today = date.today()
         validate_date(item.date, today)
         opening = normalized_balance(item.kind, item.opening_balance_minor)
+        if item.debt_subtype and (item.kind not in {'credit', 'loan'} or
+             (item.kind == 'loan' and item.debt_subtype == 'credit card') or
+             (item.kind == 'credit' and item.debt_subtype not in {'credit card', 'line of credit', 'other'})):
+            raise HTTPException(422, 'Choose a debt subtype that matches the account kind.')
         with connect(database, write=True) as db:
             account_id = db.execute("""
                 INSERT INTO accounts(name, kind, currency, include_in_net_worth) VALUES (?, ?, ?, ?)
             """, (item.name, item.kind, item.currency, item.include_in_net_worth)).lastrowid
+            if item.debt_subtype:
+                from datetime import datetime, timezone
+                db.execute('INSERT INTO manual_debt_details VALUES (?,?,?)',
+                           (account_id, ManualDebt(subtype=item.debt_subtype).model_dump_json(), datetime.now(timezone.utc).isoformat()))
             db.execute("INSERT INTO balance_snapshots(account_id,effective_date,balance_minor,transaction_cutoff) VALUES (?,?,?,COALESCE((SELECT MAX(id) FROM transactions),0))",
                        (account_id, item.date.isoformat(), opening))
             has_primary = db.execute("SELECT primary_account_id FROM settings").fetchone()[0] is not None

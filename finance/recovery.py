@@ -19,7 +19,7 @@ from .db import connect, database_lock, initialize
 from .scenarios import sandbox_path, chart_path
 
 MAX_SIZE = 256 * 1024 * 1024
-VERSIONS = {'personal': 3, 'sandbox': 6, 'sandbox_investments': 6}
+VERSIONS = {'personal': 4, 'sandbox': 7, 'sandbox_investments': 7}
 
 
 def checksum(path):
@@ -61,11 +61,15 @@ def check_database(path):
         if version > VERSIONS[mode] or version < (0 if mode == 'sandbox' else 1):
             raise ValueError('Unsupported schema version. Open this backup with a compatible app version.')
         counts = {name: db.execute(f'SELECT COUNT(*) FROM {name}').fetchone()[0] for name in ['accounts', 'transactions']}
+        if 'manual_debt_details' in tables:
+            counts['debt_details'] = db.execute('SELECT COUNT(*) FROM manual_debt_details').fetchone()[0]
         if mode == 'sandbox':
             counts['active_transactions'] = db.execute('SELECT COUNT(*) FROM transactions WHERE removed=0').fetchone()[0]
             if 'investment_holdings' in tables:
                 counts['holdings'] = db.execute('SELECT COUNT(*) FROM investment_holdings').fetchone()[0]
                 counts['investment_activity'] = db.execute('SELECT COUNT(*) FROM investment_activity WHERE removed=0').fetchone()[0]
+            if 'liability_details' in tables:
+                counts['debt_details'] = db.execute('SELECT COUNT(*) FROM liability_details').fetchone()[0]
         return {'workspace': mode, 'schema_version': version, 'counts': counts}
 
 
@@ -103,10 +107,14 @@ def validate_current_schema(path, mode, directory):
         if mode == 'sandbox':
             for table, columns in [('investment_holdings', ['payload', 'security']),
                                    ('investment_activity', ['payload', 'security']),
-                                   ('investment_observations', ['accounts'])]:
+                                   ('investment_observations', ['accounts']), ('liability_details', ['payload', 'balances'])]:
                 for column in columns:
                     if candidate.execute(f'SELECT 1 FROM {table} WHERE NOT json_valid({column}) LIMIT 1').fetchone():
-                        raise ValueError('Saved investment metadata is not valid JSON.')
+                        raise ValueError('Saved provider metadata is not valid JSON.')
+        if mode == 'personal':
+            from .debt import ManualDebt
+            for row in candidate.execute('SELECT payload FROM manual_debt_details'):
+                ManualDebt.model_validate_json(row[0])
     # Exercise the application projections before touching live data.
     with connect(path) as db:
         if mode == 'personal':

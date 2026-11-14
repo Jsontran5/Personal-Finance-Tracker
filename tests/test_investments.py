@@ -180,7 +180,7 @@ class InvestmentTests(TestCase):
             db.execute('PRAGMA user_version=5')
         self.assertEqual(self.client.get('/api/plaid/sandbox/investments').status_code, 200)
         with connect(self.path) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 6)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 7)
             self.assertEqual(db.execute('SELECT cursor FROM connection').fetchone()[0], 'bank-cursor')
 
     def test_date_validation_and_leap_year(self):
