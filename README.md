@@ -36,7 +36,15 @@ From the VS Code PowerShell terminal, run `& .\.venv\Scripts\python.exe -m finan
 
 ## Back up the database
 
-From the project folder, run `.venv\Scripts\python.exe -m finance.backup`. The command takes a consistent, integrity-checked copy in `backups/`. Treat the database and backups as private files. Project notes and checkpoints stay in the local-only `context_docs/` folder.
+Open **Backup & restore** in the sidebar. Choose Personal or Sandbox, then **Create backup**. Back up each workspace separately. Bundles in the project `backups/` folder include its database and chart selection: accounts, transactions, budgets, balance history, review/rule state, and confirmed/dismissed transfer links. Appearance, the current workspace choice, `.env` credentials, and context documents are not included.
+
+Choose **Preview restore** to validate a bundle and inspect its workspace, snapshot date, account/transaction counts, sample accounts, and activity dates. Type the displayed confirmation phrase before restoring. A validated `recovery-…finance-backup.zip` of the current workspace is created first; use it to recover the previous data if needed. The app refreshes its cached records after success. Other workspaces are unaffected. Close other Finance instances and finish/cancel pending bank authorization before restoring.
+
+Sandbox restores retain the current authorization when the backup belongs to the same Item, while restoring the backup's transaction cursor with its data. No bank request or new Item is created; the next explicit sync may replay later activity. Different-Item backups are rejected while connected. Empty recovery restores keep the current authorization and reset the feed checkpoint. Saved authorization can be recovered without a current connection only if the Windows profile can unlock it. API credentials must be retained separately.
+
+Existing `.db` backups are also listed. They are checked and migrated on a temporary copy; current chart selection is retained because legacy files do not include it. Corrupt, incompatible, oversized, or stale restore previews are rejected. The UI supports databases up to approximately 256 MB. Bundles contain private financial records; only the stored bank tokens are Windows-user encrypted. Keep a separate copy on storage you control if you need protection from loss of the project or drive.
+
+The original Personal-only CLI remains available: `.venv\Scripts\python.exe -m finance.backup`. It creates a consistent, integrity-checked `.db` file in `backups/`. Context notes and checkpoints remain local-only in `context_docs/`.
 
 ## Try Plaid Sandbox
 
