@@ -12,11 +12,12 @@ from pydantic import BaseModel, StringConstraints, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.staticfiles import StaticFiles
 
-from .db import DATABASE, ROOT, connect, initialize
+from .db import DATABASE, ROOT, connect, initialize, database_lock
 from .ledger import LIABILITIES, overview, record_net_worth
 from .plaid_sandbox import sandbox_router
 from .review import apply_rules, mark, review_router
 from .transfers import require_unlinked
+from .recovery import backup_router
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 Notes = Annotated[str, StringConstraints(max_length=2000)]
@@ -156,6 +157,7 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
     app.include_router(sandbox_router(database))
     app.include_router(review_router(database, after_write=lambda db: record_net_worth(db, date.today())), prefix='/api')
+    app.include_router(backup_router(database))
 
     @app.middleware("http")
     async def protect_local_writes(request: Request, call_next):
@@ -217,20 +219,21 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
 
     @app.put("/api/chart-selection/{mode}", response_model=ChartSelection)
     def set_chart_selection(mode: Literal["personal", "sandbox"], item: ChartSelection):
-        path = database.with_suffix(f".{mode}-chart.json")
-        temporary = None
-        selection = ChartSelection(excluded_account_ids=sorted(set(item.excluded_account_ids)))
-        try:
-            with NamedTemporaryFile(dir=path.parent, delete=False) as file:
-                temporary = Path(file.name)
-                file.write(selection.model_dump_json().encode("utf-8"))
-            temporary.replace(path)
-        except OSError:
-            raise HTTPException(503, "Could not save the chart selection. Try again.") from None
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
-        return selection
+        with database_lock(database if mode == 'personal' else database.with_suffix('.plaid-sandbox.db')):
+            path = database.with_suffix(f".{mode}-chart.json")
+            temporary = None
+            selection = ChartSelection(excluded_account_ids=sorted(set(item.excluded_account_ids)))
+            try:
+                with NamedTemporaryFile(dir=path.parent, delete=False) as file:
+                    temporary = Path(file.name)
+                    file.write(selection.model_dump_json().encode("utf-8"))
+                temporary.replace(path)
+            except OSError:
+                raise HTTPException(503, "Could not save the chart selection. Try again.") from None
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
+            return selection
 
     @app.put("/api/workspace", response_model=Workspace)
     def set_workspace(item: Workspace):
