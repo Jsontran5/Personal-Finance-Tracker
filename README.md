@@ -12,6 +12,7 @@ From the VS Code PowerShell terminal, run `& .\.venv\Scripts\python.exe -m finan
 
 ## Record your finances
 
+- Deleting a manual transaction opens a warning with its saved merchant, amount, date, and account. Tick **I understand this permanently deletes the transaction.** to enable **Delete transaction**. Cancel or Escape returns to your unsaved edits. Deletion has no Undo.
 - Under **Transactions → Transfer & card-payment matches**, review possible movements between your accounts. Suggestions require equal amounts/currencies, different accounts, posted dates within five days, and a transfer/payment clue. Competing matches are identified; nothing is linked automatically. Loan accounts are excluded because payments may include interest.
 - **Review pair → Confirm link** excludes both entries from income, spending, and category budgets while the link is valid. Original transaction types, categories, notes, and account balances stay saved. **Linked → Unlink pair** restores normal reporting; **Dismissed → Restore suggestion** allows a dismissed candidate to appear again. Linked entries must be unlinked before editing/deleting/reclassifying. Provider corrections or removals invalidate the exclusion and show **Needs attention** rather than silently hiding changed activity.
 - On Accounts, expand an account and choose **View account transactions** to browse its saved activity across all dates. The page header shows the last saved Sandbox sync time and links to Bank sync for details.

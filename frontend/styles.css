@@ -390,6 +390,12 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .backup-contents { font-size: .82rem; color: var(--muted); margin-bottom: 15px; }
 .backup-contents summary { cursor: pointer; }
 .backup-contents li { overflow-wrap: anywhere; margin-top: 6px; }
+.delete-summary { display: grid; gap: 12px; margin: 17px 0; }
+.delete-summary > div { display: grid; gap: 4px; }
+.delete-summary dt { color: var(--muted); font-size: .78rem; }
+.delete-summary dd { margin: 0; overflow-wrap: anywhere; font-size: .9rem; }
+.delete-acknowledgement { align-items: flex-start; line-height: 1.5; margin: 16px 0; }
+.delete-acknowledgement input { flex-shrink: 0; margin-top: 4px; }
 @media (max-width: 610px) {
   .backup-row { align-items: start; flex-direction: column; gap: 10px; }
   .restore-summary > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }

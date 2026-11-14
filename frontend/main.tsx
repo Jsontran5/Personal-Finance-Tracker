@@ -12,6 +12,7 @@ import { TransactionReview } from './TransactionReview'
 import { TransferReview } from './TransferReview'
 import { SyncFreshness } from './SyncFreshness'
 import { BackupRestore } from './BackupRestore'
+import { DeleteTransaction } from './DeleteTransaction'
 import './styles.css'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
@@ -92,10 +93,11 @@ function Modal({ title, children, close }: { title: string; children: ReactNode;
 function EntryForm({ data, state, save, remove, busy }: {
   data: Overview; state: Extract<DialogState, { type: 'transaction' }>;
   save: (path: string, method: string, body: () => object) => Promise<void>;
-  remove: (path: string, message: string) => Promise<void>; busy: boolean
+  remove: (path: string) => Promise<void>; busy: boolean
 }) {
   const entry = state.entry
   const existing = entry && 'date' in entry ? entry : undefined
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [kind, setKind] = useState<Kind>(entry?.kind ?? 'expense')
   const [accountId, setAccountId] = useState(entry?.account_id ?? data.primary_account_id ?? data.accounts[0].id)
   const [categoryId, setCategoryId] = useState(entry?.category_id ?? 0)
@@ -146,10 +148,15 @@ function EntryForm({ data, state, save, remove, busy }: {
       </div>
       {kind === 'investment' && <p className="muted">Investment activity is kept in the journal. Record a balance separately to value the account.</p>}
       <div className="form-actions">
-        {existing && <button type="button" className="danger" onClick={() => void remove('/transactions/' + existing.id, 'Delete this transaction?')}>Delete</button>}
+        {existing && <button type="button" className="danger" onClick={() => setConfirmDelete(true)}>Delete</button>}
         <button className="primary" type="submit">{state.template ? 'Save template' : 'Save transaction'}</button>
       </div>
     </fieldset>
+    {confirmDelete && existing && <DeleteTransaction transaction={existing}
+      account={data.accounts.find(account => account.id === existing.account_id)?.name ?? 'Account unavailable'}
+      destination={data.accounts.find(account => account.id === existing.destination_id)?.name}
+      amount={money(existing.amount_minor, data.accounts.find(account => account.id === existing.account_id)?.currency ?? 'USD')}
+      close={() => setConfirmDelete(false)} remove={() => remove('/transactions/' + existing.id)} />}
   </form>
 }
 
@@ -366,8 +373,14 @@ function App() {
     }
   }
 
-  async function remove(path: string, message: string) {
-    if (window.confirm(message)) await save(path, 'DELETE')
+  async function remove(path: string) {
+    setBusy(true)
+    setFormError('')
+    try {
+      await request(path, 'DELETE')
+      setDialog(null)
+      setRevision(value => value + 1)
+    } finally { setBusy(false) }
   }
 
   function filterCategory(id: number) {

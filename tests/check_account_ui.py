@@ -375,7 +375,64 @@ def run():
             screenshot('1280-dark-restore-success')
             restored_count = js("fetch('/api/overview?month=" + test_month + "').then(r=>r.json()).then(d=>d.accounts.length)")
             assert restored_count == 0
+            # Deletion warning: only synthetic Personal entries on the isolated database.
+            change('select[aria-label="Workspace"]', 'personal')
+            account_id = js("fetch('/api/accounts',{method:'POST',headers:{'Content-Type':'application/json','X-Finance-Request':'1'},body:JSON.stringify({name:'Everyday checking — deletion verification account',kind:'checking',currency:'USD',opening_balance_minor:10000,date:'2026-01-01'})}).then(r=>r.json()).then(d=>d.id)")
+            for delete_width in (1280, 390):
+                cdp('Emulation.setDeviceMetricsOverride', {'width': delete_width, 'height': 1000 if delete_width > 400 else 844, 'deviceScaleFactor': 1, 'mobile': False})
+                for delete_theme in ('dark', 'light'):
+                    payload = {'account_id': account_id, 'kind': 'expense', 'amount_minor': 12345, 'date': test_month + '-01',
+                               'merchant': 'Synthetic deletion check — a deliberately long merchant name for small screens', 'notes': 'Saved notes'}
+                    identifier = js("fetch('/api/transactions',{method:'POST',headers:{'Content-Type':'application/json','X-Finance-Request':'1'},body:JSON.stringify(" + json.dumps(payload) + ")}).then(r=>r.json()).then(d=>d.id)")
+                    assert identifier
+                    cdp('Page.reload')
+                    ready("document.querySelector('.hero-value')?.textContent.includes('$')")
+                    if js('document.documentElement.dataset.theme') != delete_theme:
+                        js("document.querySelector('.theme-toggle').click()")
+                        ready(f"document.documentElement.dataset.theme==='{delete_theme}' && !document.querySelector('.theme-toggle').disabled")
+                    nav('Transactions')
+                    ready("document.querySelector('.ledger-row')")
+                    js("document.querySelector('.ledger-row').click()")
+                    ready("document.querySelector('dialog[open] input[name=merchant]')")
+                    change('dialog[open] input[name=merchant]', 'Unsaved merchant draft')
+                    js("document.querySelector('dialog[open] button.danger').click()")
+                    ready("document.querySelector('.delete-transaction-dialog[open]')")
+                    assert js("document.activeElement.textContent") == 'Cancel'
+                    assert payload['merchant'] in js("document.querySelector('.delete-summary').textContent")
+                    assert '$123.45' in js("document.querySelector('.delete-summary').textContent")
+                    assert js("document.querySelector('.delete-transaction-dialog button.danger').disabled")
+                    js("document.querySelector('.delete-transaction-dialog button.danger').click()")
+                    cdp('Input.dispatchKeyEvent', {'type': 'keyDown', 'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13, 'text': '\r', 'unmodifiedText': '\r'})
+                    cdp('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': 'Enter', 'code': 'Enter', 'windowsVirtualKeyCode': 13})
+                    ready("!document.querySelector('.delete-transaction-dialog') && document.querySelector('dialog[open] input[name=merchant]')")
+                    assert js("document.querySelector('dialog[open] input[name=merchant]').value") == 'Unsaved merchant draft'
+                    js("document.querySelector('dialog[open] button.danger').click()")
+                    ready("document.querySelector('.delete-transaction-dialog[open]')")
+                    js("document.querySelector('.delete-transaction-dialog input[type=checkbox]').click()")
+                    assert not js("document.querySelector('.delete-transaction-dialog button.danger').disabled")
+                    cdp('Input.dispatchKeyEvent', {'type': 'keyDown', 'key': 'Escape', 'code': 'Escape', 'windowsVirtualKeyCode': 27})
+                    cdp('Input.dispatchKeyEvent', {'type': 'keyUp', 'key': 'Escape', 'code': 'Escape', 'windowsVirtualKeyCode': 27})
+                    ready("!document.querySelector('.delete-transaction-dialog') && document.querySelector('dialog[open] input[name=merchant]')")
+                    js("document.querySelector('dialog[open] button.danger').click()")
+                    ready("document.querySelector('.delete-transaction-dialog[open]')")
+                    assert not js("document.querySelector('.delete-transaction-dialog input[type=checkbox]').checked")
+                    screenshot(f'{delete_width}-{delete_theme}-delete-warning')
+                    js("document.querySelector('.delete-transaction-dialog input[type=checkbox]').click()")
+                    if delete_width == 1280 and delete_theme == 'dark':
+                        js("(()=>{const original=window.fetch.bind(window);window.fetch=(input,init)=>{if(init?.method==='DELETE'){window.fetch=original;return Promise.resolve(new Response(JSON.stringify({detail:'Simulated delete failure'}),{status:503,headers:{'Content-Type':'application/json'}}));}return original(input,init);};})()")
+                        js("document.querySelector('.delete-transaction-dialog button.danger').click()")
+                        ready("document.querySelector('.delete-transaction-dialog [role=alert]')")
+                        assert 'Simulated delete failure' in js("document.querySelector('.delete-transaction-dialog').textContent")
+                        assert not js("document.querySelector('.delete-transaction-dialog button.danger').disabled")
+                        screenshot('1280-dark-delete-error')
+                    still_present = js("fetch('/api/overview?month=" + test_month + "').then(r=>r.json()).then(d=>d.transactions.some(t=>t.id===" + str(identifier) + "))")
+                    assert still_present
+                    js("document.querySelector('.delete-transaction-dialog button.danger').click()")
+                    ready("!document.querySelector('dialog[open]')")
+                    remaining = js("fetch('/api/overview?month=" + test_month + "').then(r=>r.json()).then(d=>d.transactions.some(t=>t.id===" + str(identifier) + "))")
+                    assert not remaining
             print('\n'.join(results))
+            print('Deletion acknowledgement, safe keyboard defaults, draft preservation, reset, error/retry and confirmed deletion verified in both themes at desktop/narrow widths.')
             print('Selection persistence, account search, spending drilldowns, refund-only charts, empty states and Personal isolation verified.')
             print('Screenshots:', OUTPUT)
         finally:
