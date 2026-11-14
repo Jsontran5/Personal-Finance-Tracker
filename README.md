@@ -76,6 +76,16 @@ Use **Bank sync → Refresh transaction details** to replay the available histor
 
 Plaid Sandbox supports credit cards and loans. The sample [credit-card testing profile](sandbox_profiles/credit-card-testing.json) was verified against Plaid Sandbox. Import it as a custom user in Dashboard → Build → Sandbox Studio. Editing a custom profile does not change an existing Item. This app currently stores one Sandbox Item, so a separate profile connection needs a future scenario selector or a separate isolated test database.
 
+## Investment holdings and activity
+
+Choose **Sandbox preview → Investments → Sync holdings**, then **Sync activity**. Investment sync reuses the saved Item and retrieves Plaid's available data; it does not request live market quotes or call the separately entitled Investments Refresh endpoint. The Investments product must be supported by the connected institution and consented on the Item. **Manage connection** opens Bank sync; **Manage test accounts** uses that Item's update flow, including consent for Investments and Liabilities.
+
+Holdings include existing positions, cash/equivalents, quantities, broker prices, values, and cost basis where supplied. Expand a position for price dates and unrealized gain/loss; **Provider details** retains the complete supplied holding/security objects. Missing values show a dash. Allocation uses positive USD holdings only and excludes short positions, unknown values, and other currencies. Portfolio value uses saved USD account balances, counting cash and securities once. Recorded portfolio history begins with observations; it is not a historical return calculation and includes the effects of deposits and withdrawals.
+
+The **Activity** tab has account, security/description, type, and date filters with 25 records per page. Buys, sells, dividends, contributions, withdrawals, fees, and cancellations stay separate from everyday spending and budgets. Positive provider amounts use cash; negative amounts add cash. Initial sync requests up to two years of available history. Later syncs reconcile a seven-day overlap plus the period since the previous sync; **History coverage → Reload available history** rechecks older corrections within the available two-year range. Holdings sync separately, so a delayed activity request does not discard loaded positions. No automated polling or public webhook service is added.
+
+The project's existing test institution was verified to return `PRODUCTS_NOT_SUPPORTED` for Investments, despite investment-type account balances being available. Its original connection and data are preserved. Investment-capable Sandbox tests use a separate temporary database. Custom Sandbox users require `investments` in the initial required products, rather than only additional consent. Do not delete/relink the saved Item to try a new test scenario. Real-bank connections and multi-Item/scenario selection remain separate milestones.
+
 ## Local development
 
 The local Git repository tracks source, the public README, the dependency lockfile, and synthetic test profiles. `context_docs/` and `context_folder/` are local-only and must never be committed or pushed. Credentials, databases, backups, and generated files are also ignored. Make small, frequent commits after each verified piece of work. Local Git hooks reject context files in commits and pushes.
@@ -83,4 +93,6 @@ The local Git repository tracks source, the public README, the dependency lockfi
 For the regression tests, install optional test dependencies with `.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`, then run `.venv\Scripts\python.exe -m unittest discover -s tests -v`. Build the dashboard with `npm.cmd run build`.
 
 With Chrome installed and the 14-account Sandbox dataset available, run `.venv\Scripts\python.exe tests/check_account_ui.py` for the expanded-layout checks. It uses isolated database copies and writes screenshots under ignored `data/ui-qa`.
+
+For an opt-in check against Plaid's actual investment APIs, run `.venv\Scripts\python.exe tests/check_investment_sandbox.py --run`. It loads the existing server-side Sandbox credentials, creates a temporary investment-capable Sandbox Item, imports holdings/activity into a temporary database, and removes that test Item afterward. It does not use or replace the application's saved Item and makes no Production calls.
 
