@@ -212,3 +212,52 @@ class MultiBankTests(TestCase):
         saved = self.client.post('/api/backups', json={'workspace': 'sandbox_combined'}).json()
         self.client.post(self.base + '/connections/1/link')
         self.assertEqual(self.client.get('/api/backups/preview', params={'id': saved['id']}).status_code, 422)
+
+    def test_parallel_manager_reads_do_not_invert_database_locks(self):
+        from concurrent.futures import ThreadPoolExecutor
+        self.imported()
+        endpoints = [self.base, self.base + '/manual'] * 8
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [executor.submit(self.client.get, endpoint) for endpoint in endpoints]
+            self.assertTrue(all(future.result(timeout=8).status_code == 200 for future in futures))
+
+    def test_manual_spending_mirror_cannot_be_reclassified(self):
+        self.imported()
+        account = self.client.post('/api/accounts', json={'name': 'Manual cash', 'kind': 'checking', 'currency': 'USD',
+            'date': date.today().isoformat(), 'opening_balance_minor': 10000}).json()['id']
+        transaction = {'account_id': account, 'kind': 'expense', 'amount_minor': 500, 'category_id': 1,
+                       'date': date.today().isoformat(), 'merchant': 'Manual shop'}
+        self.assertEqual(self.client.post('/api/transactions', json=transaction).status_code, 201)
+        self.client.put(self.base + '/manual', json={'account_ids': [account]})
+        row = next(row for row in self.overview()['transactions'] if row['manual_source'])
+        self.assertEqual(row['amount_minor'], 500)
+        self.assertEqual(self.client.put(self.base + '/preview/transactions/' + str(row['id']),
+            json={'merchant': 'Changed', 'kind': 'expense'}).status_code, 409)
+        self.assertEqual(self.overview()['spending_minor'], 600)
+
+    def test_two_investment_owners_keep_identical_provider_ids_separate(self):
+        self.imported()
+        with connect(self.path, write=True) as db:
+            db.execute("UPDATE multi_connections SET profile='investments' WHERE id=1")
+        for identifier in [1, 2]:
+            for product in ['holdings', 'activity']:
+                result = self.client.post(f'{self.base}/connections/{identifier}/sync?product={product}')
+                self.assertEqual(result.status_code, 200, result.text)
+        self.assertEqual(len(self.client.get(self.base + '/investments').json()['holdings']), 2)
+        self.assertEqual(self.client.get(self.base + '/investments/activity').json()['total'], 2)
+        with connect(self.path, write=True) as db:
+            db.execute('UPDATE multi_connections SET holdings_at=NULL,activity_at=NULL WHERE id=1')
+        for product in ['holdings', 'activity']:
+            self.assertEqual(self.client.post(f'{self.base}/connections/1/sync?product={product}').status_code, 200)
+        self.assertEqual(len(self.client.get(self.base + '/investments').json()['holdings']), 2)
+        self.assertEqual(self.client.get(self.base + '/investments/activity').json()['total'], 2)
+
+    def test_restore_cannot_drop_a_newer_connected_item(self):
+        self.imported()
+        saved = self.client.post('/api/backups', json={'workspace': 'sandbox_combined'}).json()
+        with connect(self.path, write=True) as db:
+            db.execute("INSERT INTO multi_connections(institution_id,name,profile,item_id,token) VALUES ('ins_new','Third','banking','third',?)",
+                       (protect(b'third', True),))
+        result = self.client.get('/api/backups/preview', params={'id': saved['id']})
+        self.assertEqual(result.status_code, 422, result.text)
+        self.assertEqual(len(self.client.get(self.base).json()['connections']), 3)

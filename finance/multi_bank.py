@@ -425,7 +425,15 @@ def combined_router(database: Path, *, client_factory=plaid_client):
     def positions():
         initialize()
         with connect(path) as db:
-            return project_investments(db)
+            result = project_investments(db)
+            names = owner_names(db)
+            for account in result['accounts']:
+                account['name'] += ' · ' + names.get(account['id'], 'Personal')
+            return result
+
+    def owner_names(db):
+        return {row['account_id']: row['name'] for row in db.execute('''SELECT m.account_id,COALESCE(c.name,'Personal') AS name
+            FROM connection_accounts m LEFT JOIN multi_connections c ON c.id=m.connection_id''')}
 
     @router.get('/investments/activity')
     def activity(account: str | None = None, start: date | None = None, end: date | None = None,
@@ -434,7 +442,11 @@ def combined_router(database: Path, *, client_factory=plaid_client):
             raise HTTPException(422, 'Start date must be before end date.')
         initialize()
         with connect(path) as db:
-            return project_activity(db, account, start.isoformat() if start else None, end.isoformat() if end else None, search, kind, page)
+            result = project_activity(db, account, start.isoformat() if start else None, end.isoformat() if end else None, search, kind, page)
+            names = owner_names(db)
+            for row in result['rows']:
+                row['account_name'] += ' · ' + names.get(row['account_id'], 'Personal')
+            return result
 
     @router.get('/debt/{identifier}')
     def debt(identifier: int):
@@ -462,7 +474,7 @@ def combined_router(database: Path, *, client_factory=plaid_client):
     def manual_accounts():
         from .ledger import account_balances
         initialize()
-        with connect(database) as source, connect(path) as db:
+        with connect(path) as db, connect(database) as source:
             selected = {row[0] for row in db.execute('SELECT account_id FROM manual_selection')}
             return {'accounts': [{**row, 'selected': row['id'] in selected} for row in account_balances(source, date.today())]}
 
