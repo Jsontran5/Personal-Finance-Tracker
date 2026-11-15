@@ -17,10 +17,14 @@ from .debt import save_liabilities, project_liability
 from .scenarios import sandbox_path
 
 
-def initialize_combined(db):
+def initialize_combined(db, *, production=False):
+    version = db.execute('PRAGMA user_version').fetchone()[0]
+    if version == 9 and not production:
+        raise ValueError('A Production database cannot be opened as Sandbox.')
     for statement in SCHEMA:
         db.execute(statement)
-    initialize_preview(db)
+    if version != 9:
+        initialize_preview(db)
     db.execute('''CREATE TABLE IF NOT EXISTS multi_connections (
         id INTEGER PRIMARY KEY, institution_id TEXT NOT NULL UNIQUE,name TEXT NOT NULL,
         profile TEXT NOT NULL CHECK(profile IN ('banking','investments')),item_id TEXT UNIQUE,token BLOB,
@@ -35,7 +39,7 @@ def initialize_combined(db):
         mode TEXT NOT NULL,token BLOB NOT NULL,url BLOB NOT NULL,expiration TEXT NOT NULL,public_token BLOB)''')
     db.execute('CREATE TABLE IF NOT EXISTS manual_selection (account_id INTEGER PRIMARY KEY,fingerprint TEXT)')
     db.execute('CREATE TABLE IF NOT EXISTS manual_debt_mirror (account_id TEXT PRIMARY KEY,payload TEXT NOT NULL,updated_at TEXT)')
-    db.execute('PRAGMA user_version=8')
+    db.execute('PRAGMA user_version=' + ('9' if version == 9 else '8'))
 
 
 def scoped(identifier, value):
@@ -196,21 +200,61 @@ class ManualSelection(BaseModel):
     account_ids: list[int] = Field(default_factory=list, max_length=1000)
 
 
-def combined_router(database: Path, *, client_factory=plaid_client):
-    path = sandbox_path(database, 'combined')
-    router = APIRouter(prefix='/api/plaid/combined-sandbox')
+def combined_router(database: Path, *, client_factory=plaid_client, production=False):
+    path = database.with_suffix('.plaid-live.db') if production else sandbox_path(database, 'combined')
+    router = APIRouter(prefix='/api/plaid/live' if production else '/api/plaid/combined-sandbox')
 
     def initialize():
         with connect(path, write=True) as db:
-            initialize_combined(db)
+            if production:
+                from .live_setup import initialize_live
+                initialize_live(db)
+            else:
+                initialize_combined(db)
         from .manual_mirror import refresh_manual
         refresh_manual(database, path)
 
     def client():
-        keys = credentials(database.parent.parent)
+        from .live_setup import production_credentials
+        keys = production_credentials(database.parent.parent) if production else credentials(database.parent.parent)
         if not keys:
-            raise HTTPException(503, 'Configure local Sandbox credentials first.')
-        return client_factory(keys)
+            raise HTTPException(503, 'Configure explicit Production credentials first; Sandbox credentials are never reused.' if production else 'Configure local Sandbox credentials first.')
+        return client_factory(keys, environment='production') if production else client_factory(keys)
+
+    if production:
+        from .live_setup import LiveSetup, readiness
+
+        @router.get('/readiness')
+        def get_readiness():
+            initialize()
+            with connect(path) as db:
+                return readiness(db, database.parent.parent)
+
+        @router.put('/readiness')
+        def save_readiness(item: LiveSetup):
+            initialize()
+            with connect(path, write=True) as db:
+                db.execute('INSERT INTO live_setup VALUES (1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload', (item.model_dump_json(),))
+                return readiness(db, database.parent.parent)
+
+        @router.post('/preflight')
+        def preflight(item: NewConnection):
+            initialize()
+            try:
+                info = client()('/institutions/get_by_id', institution_id=item.institution_id, country_codes=['US'], options={'include_optional_metadata': True, 'include_status': True})['institution']
+                result = {'institution_id': info['institution_id'], 'name': info['name'], 'oauth': info.get('oauth'),
+                          'transactions': 'transactions' in info.get('products', []),
+                          'products': info.get('products', []), 'checked_at': now().isoformat(),
+                          'note': 'Credentials accepted for institution lookup. Coverage is not proof of account-specific access or successful OAuth.'}
+                with connect(path, write=True) as db:
+                    from .live_setup import credentials_digest
+                    db.execute('INSERT INTO live_preflight VALUES (?,?,?,?) ON CONFLICT(institution_id) DO UPDATE SET payload=excluded.payload,checked_at=excluded.checked_at,credentials_digest=excluded.credentials_digest',
+                               (item.institution_id, json.dumps(result), result['checked_at'], credentials_digest(database.parent.parent)))
+                return result
+            except PlaidError as error:
+                with connect(path, write=True) as db:
+                    db.execute('DELETE FROM live_preflight WHERE institution_id=?', (item.institution_id,))
+                raise upstream(error) from None
 
     def connection(db, identifier):
         row = db.execute('SELECT * FROM multi_connections WHERE id=?', (identifier,)).fetchone()
@@ -233,7 +277,7 @@ def combined_router(database: Path, *, client_factory=plaid_client):
         initialize()
         with connect(path) as db:
             rows = [dict(row) for row in db.execute('''SELECT c.id,c.institution_id,c.name,c.profile,
-                c.item_id IS NOT NULL AS connected,c.synced_at,c.balance_checked_at,c.needs_reauth,c.last_error,
+                c.item_id IS NOT NULL AS connected,c.synced_at,c.history_status,c.balance_checked_at,c.needs_reauth,c.last_error,
                 c.holdings_at,c.activity_at,c.liabilities_at,s.session,s.expiration,
                 (SELECT COUNT(*) FROM connection_accounts m JOIN accounts a ON a.id=m.account_id WHERE m.connection_id=c.id AND a.active=1) AS account_count
                 FROM multi_connections c LEFT JOIN multi_sessions s ON s.connection_id=c.id ORDER BY c.name,c.id''')]
@@ -241,7 +285,10 @@ def combined_router(database: Path, *, client_factory=plaid_client):
                 pending = db.execute('SELECT url FROM multi_sessions WHERE connection_id=?', (row['id'],)).fetchone()
                 row['url'] = protect(pending['url'], False).decode() if pending else None
             manual = [dict(row) for row in db.execute('SELECT a.rowid AS id,a.name,m.manual_id FROM accounts a JOIN connection_accounts m ON m.account_id=a.id WHERE m.manual_id IS NOT NULL AND a.active=1')]
-        return {'configured': bool(credentials(database.parent.parent)), 'connections': rows, 'manual_accounts': manual}
+        from .live_setup import production_credentials, settings
+        return {'configured': bool(production_credentials(database.parent.parent) if production else credentials(database.parent.parent)),
+                'connections': rows, 'manual_accounts': manual, 'environment': 'production' if production else 'sandbox',
+                'linking_enabled': (settings(database.parent.parent).get('PLAID_LIVE_ENABLED', '').lower() == 'true') if production else True}
 
     @router.get('/institutions')
     def search(query: str = Query(min_length=2, max_length=100), profile: Literal['banking', 'investments'] = 'banking'):
@@ -254,6 +301,8 @@ def combined_router(database: Path, *, client_factory=plaid_client):
     @router.post('/connections', status_code=201)
     def add(item: NewConnection):
         initialize()
+        if production and item.profile != 'banking':
+            raise HTTPException(409, 'The first Live pilot supports banking transactions and balances only.')
         with database_lock(path):
             with connect(path) as db:
                 if db.execute('SELECT 1 FROM multi_connections WHERE institution_id=?', (item.institution_id,)).fetchone():
@@ -271,6 +320,8 @@ def combined_router(database: Path, *, client_factory=plaid_client):
 
     @router.post('/import-scenarios')
     def import_scenarios():
+        if production:
+            raise HTTPException(403, 'Sandbox connections cannot be imported into Live.')
         initialize()
         call = client()
         imported = 0
@@ -317,14 +368,32 @@ def combined_router(database: Path, *, client_factory=plaid_client):
         try:
             with connect(path, write=True) as db:
                 row = connection(db, identifier)
+                if production:
+                    from .live_setup import require_link_ready
+                    require_link_ready(db, database.parent.parent, row['institution_id'])
+                    if not row['item_id']:
+                        setup = readiness(db, database.parent.parent)
+                        pending = db.execute('SELECT COUNT(*) FROM multi_sessions s JOIN multi_connections c ON c.id=s.connection_id WHERE c.item_id IS NULL').fetchone()[0]
+                        if setup['connected_items'] + pending >= setup['setup']['item_limit']:
+                            raise HTTPException(409, 'The locally configured Item allowance has been reached. Verify your actual Dashboard usage.')
                 old = db.execute('SELECT * FROM multi_sessions WHERE connection_id=?', (identifier,)).fetchone()
                 if old:
                     raise HTTPException(409, 'Finish or cancel the saved Link session before starting another.')
                 options = {'access_token': protect(row['token'], False).decode(), 'update': {'account_selection_enabled': True}} if row['item_id'] else \
                     {'products': ['investments']} if row['profile'] == 'investments' else \
                     {'products': ['transactions'], 'additional_consented_products': ['investments', 'liabilities'], 'transactions': {'days_requested': 730}}
-                result = client()('/link/token/create', retry=False, client_name='Personal Finance Sandbox', language='en', country_codes=['US'],
+                if production and not row['item_id']:
+                    options = {'products': ['transactions'], 'transactions': {'days_requested': 730}}
+                if production:
+                    from .live_setup import settings
+                    redirect = settings(database.parent.parent).get('PLAID_PRODUCTION_REDIRECT_URI')
+                    if redirect:
+                        options['redirect_uri'] = redirect
+                result = client()('/link/token/create', retry=False, client_name='Personal Finance' if production else 'Personal Finance Sandbox', language='en', country_codes=['US'],
                                   user={'client_user_id': 'local-finance-owner'}, hosted_link={}, **options)
+                if production:
+                    from .live_setup import safe_hosted_url
+                    safe_hosted_url(result['hosted_link_url'])
                 session = str(uuid4())
                 db.execute('INSERT INTO multi_sessions VALUES (?,?,?,?,?,?,NULL)', (identifier, session, 'update' if row['item_id'] else 'new',
                            protect(result['link_token'].encode(), True), protect(result['hosted_link_url'].encode(), True), result['expiration']))
@@ -346,6 +415,10 @@ def combined_router(database: Path, *, client_factory=plaid_client):
     @router.post('/connections/{identifier}/link/{session}')
     def finish(identifier: int, session: UUID):
         initialize()
+        if production:
+            from .live_setup import require_link_ready
+            with connect(path) as db:
+                require_link_ready(db, database.parent.parent, connection(db, identifier)['institution_id'])
         call = client()
         try:
             with database_lock(path):
@@ -413,6 +486,8 @@ def combined_router(database: Path, *, client_factory=plaid_client):
     @router.post('/connections/{identifier}/sync')
     def sync(identifier: int, product: Literal['transactions', 'balances', 'holdings', 'activity', 'liabilities'], full: bool = False):
         initialize()
+        if production and product not in {'transactions', 'balances'}:
+            raise HTTPException(409, 'Only transactions and balances are enabled for the first Live pilot.')
         try:
             with connect(path, write=True) as db:
                 return sync_connection(db, connection(db, identifier), client(), product, full)

@@ -63,10 +63,22 @@ def credentials(directory):
     return (client, secret) if client and secret else None
 
 
-def plaid_client(keys):
+def plaid_client(keys, *, environment='sandbox'):
+    if environment not in {'sandbox', 'production'}:
+        raise ValueError('Unsupported Plaid environment.')
     def call(path, *, retry=True, **payload):
+        if environment == 'production':
+            allowed = {'/institutions/search', '/institutions/get_by_id', '/item/get', '/accounts/get',
+                       '/accounts/balance/get', '/transactions/sync', '/investments/holdings/get',
+                       '/investments/transactions/get', '/liabilities/get', '/link/token/create',
+                       '/link/token/get', '/item/public_token/exchange'}
+            if path not in allowed:
+                raise PlaidError('ENDPOINT_NOT_ALLOWED')
+            if any(isinstance(value, str) and value.startswith(('access-sandbox-', 'public-sandbox-', 'link-sandbox-'))
+                   for key, value in payload.items() if key in {'access_token', 'public_token', 'link_token'}):
+                raise PlaidError('WRONG_TOKEN_ENVIRONMENT')
         body = json.dumps({"client_id": keys[0], "secret": keys[1], **payload}).encode()
-        request = Request("https://sandbox.plaid.com" + path, data=body, headers={
+        request = Request("https://" + environment + ".plaid.com" + path, data=body, headers={
             "Content-Type": "application/json", "Plaid-Version": "2020-09-14",
         })
         attempts = 3 if retry else 1
@@ -74,7 +86,7 @@ def plaid_client(keys):
             try:
                 with urlopen(request, timeout=120 if path.startswith('/investments/') else 12) as response:
                     result = json.load(response, parse_float=Decimal)
-                LOG.info("Plaid Sandbox %s request_id=%s", path, result.get("request_id"))
+                LOG.info("Plaid %s %s request_id=%s", environment, path, result.get("request_id"))
                 return result
             except HTTPError as error:
                 with error:
@@ -83,7 +95,7 @@ def plaid_client(keys):
                     except (ValueError, OSError):
                         result = {}
                 code = result.get("error_code", "UPSTREAM_ERROR")
-                LOG.info("Plaid Sandbox %s failed code=%s request_id=%s", path, code, result.get("request_id"))
+                LOG.info("Plaid %s %s failed code=%s request_id=%s", environment, path, code, result.get("request_id"))
                 if error.code not in {429, 500, 502, 503, 504} and code not in {
                     "INSTITUTION_DOWN", "INSTITUTION_NOT_RESPONDING", "RATE_LIMIT_EXCEEDED",
                 }:

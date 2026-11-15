@@ -19,7 +19,7 @@ from .db import connect, database_lock, initialize
 from .scenarios import sandbox_path, chart_path
 
 MAX_SIZE = 256 * 1024 * 1024
-VERSIONS = {'personal': 4, 'sandbox': 7, 'sandbox_investments': 7, 'sandbox_combined': 8}
+VERSIONS = {'personal': 4, 'sandbox': 7, 'sandbox_investments': 7, 'sandbox_combined': 8, 'live': 9}
 
 
 def checksum(path):
@@ -54,7 +54,7 @@ def check_database(path):
         if db.execute("SELECT 1 FROM sqlite_schema WHERE type IN ('trigger','view')").fetchone():
             raise ValueError('Backups containing triggers or views are not supported.')
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        mode = 'sandbox_combined' if 'multi_connections' in tables else 'sandbox' if {'connection', 'link', 'accounts', 'transactions'} <= tables else 'personal' if {'settings', 'balance_snapshots', 'net_worth_snapshots'} <= tables else None
+        mode = 'live' if 'workspace_environment' in tables else 'sandbox_combined' if 'multi_connections' in tables else 'sandbox' if {'connection', 'link', 'accounts', 'transactions'} <= tables else 'personal' if {'settings', 'balance_snapshots', 'net_worth_snapshots'} <= tables else None
         if mode is None:
             raise ValueError('This is not a recognized Finance database.')
         version = db.execute('PRAGMA user_version').fetchone()[0]
@@ -70,13 +70,17 @@ def check_database(path):
                 counts['investment_activity'] = db.execute('SELECT COUNT(*) FROM investment_activity WHERE removed=0').fetchone()[0]
             if 'liability_details' in tables:
                 counts['debt_details'] = db.execute('SELECT COUNT(*) FROM liability_details').fetchone()[0]
-            if mode == 'sandbox_combined':
+            if mode in {'sandbox_combined', 'live'}:
                 counts['connections'] = db.execute('SELECT COUNT(*) FROM multi_connections WHERE item_id IS NOT NULL').fetchone()[0]
         return {'workspace': mode, 'schema_version': version, 'counts': counts}
 
 
 def migrate(path, mode):
-    if mode == 'sandbox_combined':
+    if mode == 'live':
+        from .live_setup import initialize_live
+        with connect(path, write=True) as db:
+            initialize_live(db)
+    elif mode == 'sandbox_combined':
         from .multi_bank import initialize_combined
         with connect(path, write=True) as db:
             initialize_combined(db)
@@ -92,7 +96,7 @@ def validate_current_schema(path, mode, directory):
     """Compare all required table/column types with a newly initialized reference."""
     mode = 'sandbox' if mode == 'sandbox_investments' else mode
     reference = directory / 'reference.db'
-    if mode in {'sandbox', 'sandbox_combined'}:
+    if mode in {'sandbox', 'sandbox_combined', 'live'}:
         from .plaid_sandbox import SCHEMA
         with connect(reference, write=True) as db:
             for statement in SCHEMA:
@@ -117,6 +121,13 @@ def validate_current_schema(path, mode, directory):
                 for column in columns:
                     if candidate.execute(f'SELECT 1 FROM {table} WHERE NOT json_valid({column}) LIMIT 1').fetchone():
                         raise ValueError('Saved provider metadata is not valid JSON.')
+        if mode == 'live':
+            environment = candidate.execute('SELECT environment FROM workspace_environment WHERE id=1').fetchone()
+            if not environment or environment[0] != 'production':
+                raise ValueError('Live backup environment marker is invalid.')
+            from .live_setup import LiveSetup
+            for row in candidate.execute('SELECT payload FROM live_setup'):
+                LiveSetup.model_validate_json(row[0])
         if mode == 'personal':
             from .debt import ManualDebt
             for row in candidate.execute('SELECT payload FROM manual_debt_details'):
@@ -160,7 +171,7 @@ class BackupStore:
         self.guard = database.parent / 'backup-management'
 
     def target(self, mode):
-        return self.database if mode == 'personal' else sandbox_path(self.database, 'combined' if mode == 'sandbox_combined' else 'investments' if mode == 'sandbox_investments' else 'banking')
+        return self.database if mode == 'personal' else self.database.with_suffix('.plaid-live.db') if mode == 'live' else sandbox_path(self.database, 'combined' if mode == 'sandbox_combined' else 'investments' if mode == 'sandbox_investments' else 'banking')
 
     def preference(self, mode):
         return chart_path(self.database, mode)
@@ -354,7 +365,7 @@ class BackupStore:
                     migrate(target, mode)
                 if mode != 'personal':
                     policy, current = self.bank_policy(copy, target)
-                    if mode == 'sandbox_combined':
+                    if mode in {'sandbox_combined', 'live'}:
                         with connect(copy, write=True) as db:
                             for item_id, row in current.items():
                                 db.execute('UPDATE multi_connections SET token=?,needs_reauth=?,balance_checked_at=? WHERE item_id=?', (row['token'], row['needs_reauth'], row['balance_checked_at'], item_id))
@@ -392,7 +403,7 @@ class BackupStore:
 
 
 class CreateBackup(BaseModel):
-    workspace: Literal['personal', 'sandbox', 'sandbox_investments', 'sandbox_combined']
+    workspace: Literal['personal', 'sandbox', 'sandbox_investments', 'sandbox_combined', 'live']
 
 
 class RestoreBackup(BaseModel):

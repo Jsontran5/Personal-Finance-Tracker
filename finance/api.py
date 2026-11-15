@@ -21,6 +21,7 @@ from .recovery import backup_router
 from .scenarios import Scenario, sandbox_path, chart_path
 from .debt import manual_debt_router, ManualDebt, DebtSubtype
 from .multi_bank import combined_router
+from .live_setup import live_router
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 Notes = Annotated[str, StringConstraints(max_length=2000)]
@@ -85,7 +86,7 @@ class Appearance(BaseModel):
 
 
 class Workspace(BaseModel):
-    mode: Literal["personal", "sandbox"]
+    mode: Literal["personal", "sandbox", "live"]
 
 
 class SandboxScenario(BaseModel):
@@ -166,6 +167,7 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
     app.include_router(sandbox_router(database))
     app.include_router(investment_sandbox_router(database))
     app.include_router(combined_router(database))
+    app.include_router(live_router(database))
     app.include_router(manual_debt_router(database))
     app.include_router(review_router(database, after_write=lambda db: record_net_worth(db, date.today())), prefix='/api')
     app.include_router(backup_router(database))
@@ -218,7 +220,7 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
             saved = workspace_path.read_text(encoding="ascii").strip()
         except (FileNotFoundError, UnicodeError):
             saved = "personal"
-        return {"mode": "sandbox" if saved == "sandbox" else "personal"}
+        return {"mode": saved if saved in {"sandbox", "live"} else "personal"}
 
     @app.get('/api/sandbox-scenario', response_model=SandboxScenario)
     def get_scenario():
@@ -238,7 +240,7 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
         return item
 
     @app.get("/api/chart-selection/{mode}", response_model=ChartSelection)
-    def get_chart_selection(mode: Literal["personal", "sandbox", "sandbox_investments", "sandbox_combined"]):
+    def get_chart_selection(mode: Literal["personal", "sandbox", "sandbox_investments", "sandbox_combined", "live"]):
         path = chart_path(database, mode)
         try:
             return ChartSelection.model_validate_json(path.read_text(encoding="utf-8"))
@@ -246,8 +248,8 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
             return ChartSelection()
 
     @app.put("/api/chart-selection/{mode}", response_model=ChartSelection)
-    def set_chart_selection(mode: Literal["personal", "sandbox", "sandbox_investments", "sandbox_combined"], item: ChartSelection):
-        with database_lock(database if mode == 'personal' else sandbox_path(database, 'combined' if mode == 'sandbox_combined' else 'investments' if mode == 'sandbox_investments' else 'banking')):
+    def set_chart_selection(mode: Literal["personal", "sandbox", "sandbox_investments", "sandbox_combined", "live"], item: ChartSelection):
+        with database_lock(database if mode == 'personal' else database.with_suffix('.plaid-live.db') if mode == 'live' else sandbox_path(database, 'combined' if mode == 'sandbox_combined' else 'investments' if mode == 'sandbox_investments' else 'banking')):
             path = chart_path(database, mode)
             temporary = None
             selection = ChartSelection(excluded_account_ids=sorted(set(item.excluded_account_ids)))
