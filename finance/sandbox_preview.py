@@ -115,7 +115,7 @@ def initialize_preview(db):
 def preview_accounts(db):
     multi = db.execute("SELECT 1 FROM sqlite_schema WHERE name='connection_accounts'").fetchone()
     inclusion = "COALESCE((SELECT included FROM connection_accounts m WHERE m.account_id=accounts.id),1)" if multi else '1'
-    institution = "(SELECT COALESCE(c.name,'Personal') FROM connection_accounts m LEFT JOIN multi_connections c ON c.id=m.connection_id WHERE m.account_id=accounts.id)" if multi else 'NULL'
+    institution = "(SELECT COALESCE(c.name,'Manual') FROM connection_accounts m LEFT JOIN multi_connections c ON c.id=m.connection_id WHERE m.account_id=accounts.id)" if multi else 'NULL'
     return [dict(row) for row in db.execute(f"""
         SELECT rowid AS id, name, type AS provider_type, subtype,
           CASE type WHEN 'depository' THEN COALESCE(subtype,'depository') WHEN 'loan' THEN 'loan'
@@ -231,7 +231,7 @@ def sandbox_preview_router(database, initialize_sandbox, *, path=None):
                 raise HTTPException(404, "Transaction no longer available. Refresh this view.")
             manual = db.execute("SELECT 1 FROM transaction_details WHERE transaction_id=? AND json_extract(payload,'$._finance_manual')=1", (row['id'],)).fetchone()
             if manual:
-                raise HTTPException(409, 'Manage this manual transaction in Personal.')
+                raise HTTPException(409, 'Manage this manual transaction in Manual.')
             require_unlinked(db, row['id'])
             if (row["amount_minor"] > 0 and item.kind in {"income", "refund"}) or (
                 row["amount_minor"] < 0 and item.kind == "expense"

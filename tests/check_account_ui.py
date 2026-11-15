@@ -415,7 +415,7 @@ def run():
             js("document.querySelector('.backup-row button').click()")
             ready("document.querySelector('dialog[open] #restore-title')")
             assert '1 currently → 0' in js("document.querySelector('.restore-summary').textContent")
-            change('input[aria-label="Restore confirmation"]', 'RESTORE PERSONAL')
+            change('input[aria-label="Restore confirmation"]', 'RESTORE MANUAL')
             js("document.querySelector('dialog .form-actions .danger').click()")
             ready("document.querySelector('.restore-result') && !document.querySelector('dialog[open]')")
             screenshot('1280-dark-restore-success')

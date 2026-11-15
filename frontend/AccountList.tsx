@@ -50,7 +50,7 @@ export function AccountList({ accounts, sandbox, live, primary, money, add, deta
             </summary>
             <div className="account-expanded">
               <p className="muted">{sandbox
-                ? (account.balance_source === 'manual' ? 'Mirrored from Personal' : account.balance_source === 'fresh' ? 'Fresh when checked' : account.balance_source === 'cached' ? 'Cached by Plaid' : 'Balance unavailable') +
+                ? (account.balance_source === 'manual' ? 'Mirrored from Manual' : account.balance_source === 'fresh' ? 'Fresh when checked' : account.balance_source === 'cached' ? 'Cached by Plaid' : 'Balance unavailable') +
                   (account.balance_date ? ' · Checked ' + new Date(account.balance_date).toLocaleString() : '')
                 : 'Recorded ' + account.balance_date + ' · Includes later ledger activity'}</p>
               {sandbox && <p className="muted">{account.transaction_count ? account.transaction_count + ' saved transactions across all dates.' : 'No spending transactions saved for this account.'}

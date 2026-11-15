@@ -503,11 +503,11 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
             result = project_investments(db)
             names = owner_names(db)
             for account in result['accounts']:
-                account['name'] += ' · ' + names.get(account['id'], 'Personal')
+                account['name'] += ' · ' + names.get(account['id'], 'Manual')
             return result
 
     def owner_names(db):
-        return {row['account_id']: row['name'] for row in db.execute('''SELECT m.account_id,COALESCE(c.name,'Personal') AS name
+        return {row['account_id']: row['name'] for row in db.execute('''SELECT m.account_id,COALESCE(c.name,'Manual') AS name
             FROM connection_accounts m LEFT JOIN multi_connections c ON c.id=m.connection_id''')}
 
     @router.get('/investments/activity')
@@ -520,7 +520,7 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
             result = project_activity(db, account, start.isoformat() if start else None, end.isoformat() if end else None, search, kind, page)
             names = owner_names(db)
             for row in result['rows']:
-                row['account_name'] += ' · ' + names.get(row['account_id'], 'Personal')
+                row['account_name'] += ' · ' + names.get(row['account_id'], 'Manual')
             return result
 
     @router.get('/debt/{identifier}')
@@ -542,7 +542,7 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
         with connect(path) as db:
             owner = db.execute('SELECT m.connection_id FROM connection_accounts m JOIN accounts a ON a.id=m.account_id WHERE a.rowid=?', (account_id,)).fetchone()
             if not owner or owner[0] is None:
-                raise HTTPException(409, 'Manage this manual account in Personal.')
+                raise HTTPException(409, 'Manage this manual account in Manual.')
         return sync(owner[0], 'liabilities')
 
     @router.get('/manual')
@@ -559,7 +559,7 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
         with connect(database) as source:
             valid = {row[0] for row in source.execute('SELECT id FROM accounts')}
         if not set(item.account_ids) <= valid:
-            raise HTTPException(422, 'Choose existing Personal accounts.')
+            raise HTTPException(422, 'Choose existing Manual accounts.')
         with connect(path, write=True) as db:
             db.execute('DELETE FROM manual_selection')
             db.executemany('INSERT INTO manual_selection(account_id) VALUES (?)', [(identifier,) for identifier in sorted(set(item.account_ids))])

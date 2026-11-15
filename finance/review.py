@@ -97,7 +97,7 @@ def matches(row, merchant, account_id, kind):
 
 def reason(db, row, action, sandbox, rule=False):
     if row.get('manual_source'):
-        return 'Manage this manual transaction in Personal'
+        return 'Manage this manual transaction in Manual'
     if row['pending']:
         return 'Pending: wait until posted'
     protected = (row['has_edit'] and row['origin'] != 'rule') if sandbox else (row['origin'] == 'user' or (row['category_id'] is not None and row['origin'] != 'rule'))

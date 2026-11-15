@@ -451,7 +451,7 @@ function App() {
   const ready = data && loadedMonth === mode + scenario + month ? data : undefined
   const budgetRows = ready?.budgets.filter(budget => budget.limit_minor !== null).slice(0, 4) ?? []
   const editTransaction = (entry: Transaction) => {
-    if (entry.manual_source) { setModeError('This manual transaction is a read-only mirror. Switch to Personal to edit it.'); return }
+    if (entry.manual_source) { setModeError('This manual transaction is a read-only mirror. Switch to Manual to edit it.'); return }
     if (synced) {
       setSandboxKind(entry.kind)
       setSandboxCategory(entry.category_id ?? 0)
@@ -484,7 +484,7 @@ function App() {
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark"><Icon name="logo" /></span><div><strong>Personal Finance</strong><small>Private workspace</small></div></div>
       <label className="workspace-picker">Workspace<select aria-label="Workspace" value={mode ?? 'personal'} disabled={!mode || modePending || busy || !!dialog} onChange={event => void changeMode(event.target.value as Mode)}>
-        <option value="personal">Personal</option><option value="sandbox">Sandbox preview</option><option value="live">Live</option>
+        <option value="personal">Manual</option><option value="sandbox">Sandbox preview</option><option value="live">Live</option>
       </select></label>
       {mode === 'sandbox' && <label className="scenario-picker">Test scenario<select aria-label="Sandbox scenario" disabled={scenarioPending || modePending || busy || !!dialog} value={scenario} onChange={event => void changeScenario(event.target.value as Scenario)}><option value="banking">Banking</option><option value="investments">Investments</option><option value="combined">Combined</option></select></label>}
       <nav aria-label="Finance sections">{pages.map((item, index) =>
@@ -591,7 +591,7 @@ function App() {
           <button className="secondary small" onClick={() => { setPage('Transactions'); setAllReviewDates(true); setAccountFilter(account.id); setCategoryFilter(0); setReviewFilter('all'); setSearch(''); setDrilldown(null) }}>View account transactions →</button>
           {mode === 'personal' && <div className="inline-actions"><button className="secondary small" onClick={() => open({ type: 'balance', account })}>Record balance</button>
             <button className="secondary small" onClick={() => open({ type: 'account', account })}>Edit account</button></div>}
-          {synced && account.balance_source === 'manual' && <button className="secondary small" onClick={() => void changeMode('personal')}>Manage this manual account in Personal</button>}
+          {synced && account.balance_source === 'manual' && <button className="secondary small" onClick={() => void changeMode('personal')}>Manage in Manual</button>}
           {isDebt(account.kind) && <DebtDetails live={mode === 'live'} account={account} sandbox={synced} managed={mode === 'live' || scenario === 'combined'} request={request} money={money} parseMoney={parseMoney} revision={revision} onChanged={() => setRevision(value => value + 1)} />}
           <BalanceHistory key={revision} account={account} sandbox={synced} request={request} />
         </>} />}

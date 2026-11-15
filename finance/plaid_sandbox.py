@@ -491,9 +491,9 @@ def sandbox_router(database: Path, *, client_factory=plaid_client, scenario='ban
             raise HTTPException(409, str(error)) from None
         except PlaidError as error:
             if error.code in {'PRODUCT_NOT_SUPPORTED', 'PRODUCTS_NOT_SUPPORTED', 'NO_LIABILITY_ACCOUNTS', 'NO_ACCOUNTS'}:
-                raise HTTPException(409, 'This scenario has no supported Liabilities feed. Saved details are retained. Manual debt accounts are available in Personal.') from None
+                raise HTTPException(409, 'This scenario has no supported Liabilities feed. Saved details are retained. Manual debt accounts are available in Manual.') from None
             if error.code in {'ADDITIONAL_CONSENT_REQUIRED', 'ACCESS_NOT_GRANTED', 'INVALID_PRODUCT'}:
-                raise HTTPException(409, 'Liabilities access or consent is unavailable for this connection. Keep the saved Item; manual debt accounts are available in Personal.') from None
+                raise HTTPException(409, 'Liabilities access or consent is unavailable for this connection. Keep the saved Item; manual debt accounts are available in Manual.') from None
             raise upstream(error) from None
 
     router.include_router(sandbox_preview_router(database, initialize, path=path))

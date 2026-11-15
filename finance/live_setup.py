@@ -33,7 +33,7 @@ def production_credentials(directory):
 def initialize_live(db):
     from .multi_bank import initialize_combined
     if db.execute('PRAGMA user_version').fetchone()[0] not in {0, 9}:
-        raise ValueError('Sandbox or Personal data cannot be opened as Live.')
+        raise ValueError('Sandbox or Manual data cannot be opened as Live.')
     initialize_combined(db, production=True)
     db.execute("CREATE TABLE IF NOT EXISTS workspace_environment (id INTEGER PRIMARY KEY CHECK(id=1),environment TEXT NOT NULL CHECK(environment='production'))")
     db.execute("INSERT OR IGNORE INTO workspace_environment VALUES (1,'production')")

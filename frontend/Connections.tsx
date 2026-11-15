@@ -107,11 +107,11 @@ export function Connections({ request, onChanged, live = false }: { live?: boole
       </article>)}
       {matching.length > 6 && <div className="pagination"><button className="secondary small" disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>Previous connections</button><small>Page {currentPage + 1} of {Math.ceil(matching.length / 6)}</small><button className="secondary small" disabled={(currentPage + 1) * 6 >= matching.length} onClick={() => setPage(currentPage + 1)}>Next connections</button></div>}
     </section>
-    <section className="card"><details className="manual-selection"><summary>Include manual accounts from Personal</summary><p className="muted">Choose only accounts that are not already connected through Plaid. Selected balances and transactions appear here as read-only mirrors; edit them in Personal. Updates are reflected when Combined reloads.</p>
+    <section className="card"><details className="manual-selection"><summary>Include accounts from Manual</summary><p className="muted">Choose only accounts that are not already connected through Plaid. Selected balances and transactions appear here as read-only mirrors; edit them in Manual. Updates are reflected when this workspace reloads.</p>
       <div className="manual-selection-list">{manual.map(account => <label className="checkbox" key={account.id}><input type="checkbox" checked={selected.includes(account.id)} disabled={!!busy} onChange={event => setSelected(value => event.target.checked ? [...value, account.id] : value.filter(id => id !== account.id))} />{account.name}</label>)}</div>
-      {!manual.length && <p className="empty">No Personal accounts yet. Add a manual account, such as Nelnet, in Personal first.</p>}
+      {!manual.length && <p className="empty">No Manual accounts yet. Add a manual account, such as Nelnet, in Manual first.</p>}
       <button className="secondary small" disabled={!!busy} onClick={() => void action('Saving manual selection', async () => {
-        await request(base + '/manual', 'PUT', { account_ids: selected }); return 'Manual account selection saved. Personal records are unchanged.'
+        await request(base + '/manual', 'PUT', { account_ids: selected }); return 'Manual account selection saved. Manual records are unchanged.'
       })}>Include selected manual accounts</button>
     </details></section>
   </div>

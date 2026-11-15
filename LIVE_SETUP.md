@@ -4,10 +4,10 @@ This is a single-user app served only on loopback. Production here means Plaid's
 
 ## What is prepared
 
-- A separate Live workspace: `data/finance.plaid-live.db`, schema 9, with an explicit Production environment marker. Personal and all Sandbox stores are unchanged. Sandbox tokens cannot be imported into Live, and Live backups restore only to Live.
-- Independent encrypted authorizations, cursors, pending Link sessions, connection ownership, reporting, chart preferences and backup/restore. Explicitly selected manual Personal accounts can appear as read-only mirrors, including Nelnet. There are no sample balances or real bank connections in the project's Live workspace.
+- A separate Live workspace: `data/finance.plaid-live.db`, schema 9, with an explicit Production environment marker. Manual and all Sandbox stores are unchanged. Sandbox tokens cannot be imported into Live, and Live backups restore only to Live.
+- Independent encrypted authorizations, cursors, pending Link sessions, connection ownership, reporting, chart preferences and backup/restore. Explicitly selected manually entered accounts from Manual can appear as read-only mirrors, including Nelnet. There are no sample balances or real bank connections in the project's Live workspace.
 - Explicit Production credentials and a fixed Production API host. The Sandbox secret never serves as a Production fallback. The Production transport permits only the required read-only data/institution calls and Link/token-exchange operations; money movement, Item removal, identity/auth-number collection and paid Refresh operations are not enabled.
-- First pilot scope: checking/credit-card Transactions plus balances, on demand. Live investment/debt-term sync is deferred, while manual debt profiles remain usable through Personal. New Link requests require only Transactions, without requesting Auth, Identity, Investments or Liabilities consent. Existing purchases, ambiguous credits and transfers follow the app's current reporting/review rules.
+- First pilot scope: checking/credit-card Transactions plus balances, on demand. Live investment/debt-term sync is deferred, while manual debt profiles remain usable through Manual. New Link requests require only Transactions, without requesting Auth, Identity, Investments or Liabilities consent. Existing purchases, ambiguous credits and transfers follow the app's current reporting/review rules.
 - A server-side linking lock. Browser state cannot bypass it. This preparation did not enable the pilot or create a real Item.
 
 ## Finish local configuration before linking
@@ -36,7 +36,7 @@ Current project status: Production credentials are not configured, OAuth/Hosted 
 
 After the setup is reviewed, enable the local switch for the pilot. Do not do this as part of preparation.
 
-- Create and validate Personal/Live backups. Confirm actual usage and remaining allowance in Dashboard; local counts cannot see other projects, deleted Items or previously consumed slots. Pending new Link sessions reserve the local configured allowance, and duplicate institutions are blocked. This does not guarantee the number of remaining Dashboard slots.
+- Create and validate Manual/Live backups. Confirm actual usage and remaining allowance in Dashboard; local counts cannot see other projects, deleted Items or previously consumed slots. Pending new Link sessions reserve the local configured allowance, and duplicate institutions are blocked. This does not guarantee the number of remaining Dashboard slots.
 - Use the existing BofA draft, open its saved Hosted Link URL in a normal browser, and choose the same institution. Select intended checking and credit-card accounts, finish bank consent, return and check the saved session. The app verifies institution metadata before exchanging the public token. Do not start another connection to work around an uncertain result.
 - Sync transactions and explicitly refresh balances. Initial transaction history can arrive in stages; the saved history status appears under Sync details. Sync again after the 30-second cooldown if preparing. Compare both account balances to the bank, inspect posted/pending entries and dates, and classify ambiguous credits rather than assuming income. A requested 730-day window does not guarantee that the bank supplies all 730 days.
 - Confirm card purchases count as spending once. Checking-side card payments and card-side payment credits should be transfers; confirm valid matching pairs. Synced account balances, not sums of transaction history or holdings, drive net worth.
@@ -46,7 +46,7 @@ Stop the pilot on missing/incorrect balances, unexpected accounts, incomplete co
 
 ## Backups and verification
 
-**Backup & restore → Live** includes Live data/setup/coverage and chart selection. Restore validates the environment/schema and matching connected Item set, preserves current encrypted authorization, and blocks pending Link sessions. It never restores API credentials or the environment linking switch. Manual mirrors refresh from Personal; back up Personal separately. Authorization is protected by the current Windows user's DPAPI; whole financial databases/backups are private local files and are not whole-file encrypted by this feature.
+**Backup & restore → Live** includes Live data/setup/coverage and chart selection. Restore validates the environment/schema and matching connected Item set, preserves current encrypted authorization, and blocks pending Link sessions. It never restores API credentials or the environment linking switch. Manual mirrors refresh from Manual; back up Manual separately. Authorization is protected by the current Windows user's DPAPI; whole financial databases/backups are private local files and are not whole-file encrypted by this feature.
 
 - Build: `npm.cmd run build`
 - Unit/API checks: `.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"`

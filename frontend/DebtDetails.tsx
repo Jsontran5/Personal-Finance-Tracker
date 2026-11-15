@@ -99,7 +99,7 @@ export function DebtDetails({ account, sandbox, managed, live, request, money, p
         </>}
         {!sandbox && !editing && <p className="muted">Use Record balance to reconcile with Nelnet’s balance. For a manual payment, record principal as a transfer to this loan and interest or fees as a separate expense. Interest is not accrued automatically.</p>}
       </>}
-      {manualMirror && <p className="muted">Edit this account’s balance and debt terms in Personal. Combined shows a read-only mirror.</p>}
+      {manualMirror && <p className="muted">Edit this account’s balance and debt terms in Manual. This workspace shows a read-only mirror.</p>}
       {busy && reported && <p role="status" className="muted">Retrieving debt details…</p>}
       {error && <p className="notice" role="alert">{error}{!data && <button className="secondary small" onClick={() => void load()}>Retry</button>}</p>}
       {message && <p className="notice" role="status">{message}</p>}
