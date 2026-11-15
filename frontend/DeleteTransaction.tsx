@@ -1,3 +1,4 @@
+import { trapDialogFocus } from './dialogFocus'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -18,7 +19,7 @@ export function DeleteTransaction({ transaction, account, destination, amount, c
     catch (failure) { setError((failure as Error).message); setBusy(false) }
   }
   // A separate DOM dialog avoids implicit submission of the background edit form.
-  return createPortal(<dialog ref={dialog} className="delete-transaction-dialog" aria-labelledby="delete-transaction-title" aria-describedby="delete-transaction-warning" onCancel={event => {
+  return createPortal(<dialog onKeyDown={trapDialogFocus} ref={dialog} className="delete-transaction-dialog" aria-labelledby="delete-transaction-title" aria-describedby="delete-transaction-warning" onCancel={event => {
     event.preventDefault(); event.stopPropagation(); if (!busy) close()
   }}>
     <div className="dialog-heading"><h2 id="delete-transaction-title">Delete transaction?</h2></div>

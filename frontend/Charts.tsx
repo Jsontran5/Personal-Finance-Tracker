@@ -79,8 +79,8 @@ export function Chart({ history, money, currency = 'USD', label = 'Recorded net 
   </div>
 }
 
-export function NetWorth({ accounts, history, mode, request, money, onStart, onSelectionChange }: {
-  accounts: Account[]; history: HistoryPoint[]; mode: 'personal' | 'sandbox'; request: Request; money: Money; onStart: () => void;
+export function NetWorth({ accounts, history, mode, request, money, onStart, onSelectionChange, workspaceLabel }: {
+  accounts: Account[]; history: HistoryPoint[]; mode: 'personal' | 'sandbox'; workspaceLabel?: string; request: Request; money: Money; onStart: () => void;
   onSelectionChange: (ids: number[] | null) => void
 }) {
   const [chartMode, setChartMode] = useState('net')
@@ -142,7 +142,7 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
       <div><h2 id="net-worth-title">{chartMode === 'net' ? 'Net worth' : chartMode === 'assets' ? 'Assets' : 'Debt'}</h2>
         <strong className="hero-value numeric">{excluded !== null && complete ? money(chartMode === 'assets' ? assets : chartMode === 'debt' ? liabilities : assets - liabilities) : '—'}</strong>
       </div>
-      <span className="chip">USD · {mode === 'sandbox' ? 'Sandbox balances' : 'Manual balances'}</span>
+      <span className="chip">USD · {workspaceLabel ? workspaceLabel + ' balances' : mode === 'sandbox' ? 'Sandbox balances' : 'Manual balances'}</span>
     </div>
     <div className="segmented net-worth-modes" aria-label="Balance chart measure">{[['net', 'Net worth'], ['assets', 'Assets'], ['debt', 'Debt']].map(([value, label]) => <button key={value} aria-pressed={chartMode === value} onClick={() => setChartMode(value)}>{label}</button>)}</div>
     {error && <p className="notice" role="alert">{error}{excluded === null && <button className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button>}</p>}
@@ -179,7 +179,7 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
     {excluded === null && !error && <p className="muted">Loading chart selection…</p>}
     {excluded !== null && eligible.length === 0 && <div className="welcome">
       <h2>{accounts.length ? 'No eligible USD accounts' : 'Start with an account'}</h2>
-      <p>{mode === 'sandbox' ? 'Sync a test bank to start recording balances.' : 'Add an included USD account to start tracking net worth.'}</p>
+      <p>{mode === 'sandbox' ? workspaceLabel === 'Live' ? 'Connect a bank after completing Live readiness to start recording balances.' : 'Sync a test bank to start recording balances.' : 'Add an included USD account to start tracking net worth.'}</p>
       <button className="primary" onClick={onStart}>{mode === 'sandbox' ? 'Open Bank sync' : 'Add your first account'}</button>
     </div>}
     {excluded !== null && eligible.length > 0 && selected.length === 0 && <p className="empty">Select an account to view net worth.</p>}

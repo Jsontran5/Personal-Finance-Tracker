@@ -1,3 +1,4 @@
+import { trapDialogFocus } from './dialogFocus'
 import { useEffect, useRef, useState } from 'react'
 
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
@@ -80,7 +81,7 @@ export function TransferReview({ path, request, money, revision, complete, focus
       </article>
     })}</div>
     {count > 8 && <div className="pagination"><span className="muted">{currentPage * 8 + 1}–{Math.min(count, (currentPage + 1) * 8)} of {count}{data?.truncated && view === 'suggestions' ? '+ · showing recent matches' : ''}</span><div className="inline-actions"><button className="secondary small" disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>Previous matches</button><button className="secondary small" disabled={(currentPage + 1) * 8 >= count} onClick={() => setPage(currentPage + 1)}>Next matches</button></div></div>}
-    {(preview || removing) && <dialog ref={dialog} aria-labelledby="transfer-dialog-title" onCancel={event => { event.preventDefault(); if (!busy) close() }}>
+    {(preview || removing) && <dialog onKeyDown={trapDialogFocus} ref={dialog} aria-labelledby="transfer-dialog-title" onCancel={event => { event.preventDefault(); if (!busy) close() }}>
       <div className="dialog-heading"><h2 id="transfer-dialog-title">{removing ? removing.state === 'confirmed' ? 'Unlink this pair?' : 'Restore suggestion?' : 'Confirm transfer pair'}</h2><button className="icon" aria-label="Close transfer preview" disabled={busy} onClick={close}>×</button></div>
       {preview && <><Legs pair={preview.pair} money={money} /><p className="notice">{preview.effect}</p><p className="muted">Only confirm if both entries describe the same movement between your accounts. Two entries with equal amounts may be unrelated.</p>
         <details className="transfer-notes"><summary>Saved notes</summary>{[preview.pair.outgoing, preview.pair.incoming].map((leg, index) => <p className="muted" key={index}>{leg.account_name}: {leg.notes || 'No notes'}</p>)}</details></>}

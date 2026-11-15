@@ -1,4 +1,6 @@
 const paths = {
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
+  connection: 'M8 8H6a4 4 0 0 0 0 8h4m4-8h4a4 4 0 0 1 0 8h-2M8 12h8',
   logo: 'M3 16l5-5 4 4 8-8m-6 0h6v6',
   backup: 'M4 4h16v16H4z M8 4v6h8V4 M8 20v-6h8v6',
   overview: 'M3 3h7v9H3z M14 3h7v5h-7z M3 16h7v5H3z M14 12h7v9h-7z',

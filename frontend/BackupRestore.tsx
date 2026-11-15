@@ -1,3 +1,4 @@
+import { trapDialogFocus } from './dialogFocus'
 import { useEffect, useRef, useState } from 'react'
 
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
@@ -74,7 +75,7 @@ export function BackupRestore({ request, onRestored, initialWorkspace }: { reque
       {matching.length > 10 && <div className="pagination"><span className="muted">{currentPage * 10 + 1}–{Math.min((currentPage + 1) * 10, matching.length)} of {matching.length}</span><div className="inline-actions"><button className="secondary small" disabled={!currentPage || busy} onClick={() => setPage(currentPage - 1)}>Previous backups</button><button className="secondary small" disabled={(currentPage + 1) * 10 >= matching.length || busy} onClick={() => setPage(currentPage + 1)}>Next backups</button></div></div>}
       <p className="analytics-note">Legacy .db backups are validated and upgraded on a temporary copy. Damaged, incompatible, or wrong-Item files cannot be restored. Other project files are never read from this screen.</p>
     </section>
-    {preview && <dialog ref={dialog} aria-labelledby="restore-title" onCancel={event => { event.preventDefault(); if (!busy) setPreview(undefined) }}>
+    {preview && <dialog onKeyDown={trapDialogFocus} ref={dialog} aria-labelledby="restore-title" onCancel={event => { event.preventDefault(); if (!busy) setPreview(undefined) }}>
       <div className="dialog-heading"><h2 id="restore-title">Restore {label(preview.workspace)}?</h2><button className="icon" aria-label="Close restore preview" disabled={busy} onClick={() => setPreview(undefined)}>×</button></div>
       <p className="backup-filename">{preview.id}</p>
       <dl className="restore-summary"><div><dt>{preview.created_at ? 'Snapshot created' : 'Legacy file date'}</dt><dd>{new Date(preview.created_at ?? preview.file_date).toLocaleString()}</dd></div>

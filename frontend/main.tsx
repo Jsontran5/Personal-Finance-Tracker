@@ -1,3 +1,4 @@
+import { trapDialogFocus } from './dialogFocus'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Icon } from './icons'
@@ -16,7 +17,9 @@ import { DeleteTransaction } from './DeleteTransaction'
 import { Investments } from './Investments'
 import { DebtDetails } from './DebtDetails'
 import { Connections } from './Connections'
+import { Navigation, type Page } from './Navigation'
 import './styles.css'
+import './interface.css'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
 type Category = { id: number; name: string; kind: 'expense' | 'income' }
@@ -34,7 +37,6 @@ type Overview = {
   pending_count?: number; missing_balance_count?: number; review_count?: number;
   spending: SpendingReport;
 }
-type Page = 'Overview' | 'Spending' | 'Transactions' | 'Budgets' | 'Accounts' | 'Bank sync' | 'Backup & restore' | 'Investments'
 type Theme = 'dark' | 'light'
 type Mode = 'personal' | 'sandbox' | 'live'
 type Scenario = 'banking' | 'investments' | 'combined'
@@ -46,8 +48,6 @@ type DialogState =
   | { type: 'category' }
   | { type: 'sandbox-transaction'; entry: Transaction }
 
-const pages: Page[] = ['Overview', 'Spending', 'Transactions', 'Budgets', 'Accounts', 'Investments', 'Bank sync', 'Backup & restore']
-const icons = ['overview', 'expense', 'transactions', 'budgets', 'accounts', 'logo', 'transactions', 'backup'] as const
 const kinds: Record<Kind, string> = { expense: 'Expense', income: 'Income', refund: 'Refund', transfer: 'Transfer', investment: 'Investment activity' }
 const accountKinds = { checking: 'Checking', savings: 'Savings', cash: 'Cash', investment: 'Investment', credit: 'Credit card', loan: 'Loan', property: 'Property', other: 'Other asset' }
 const currencies = ['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'CHF', 'JPY']
@@ -82,14 +82,14 @@ async function apiRequest<T>(path: string, method = 'GET', body?: object, signal
   return data
 }
 
-function Modal({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
+function Modal({ title, children, close, inspector }: { title: string; children: ReactNode; close: () => void; inspector?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     ref.current?.showModal()
     ref.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus()
   }, [])
-  return <dialog ref={ref} onCancel={event => { event.preventDefault(); close() }} aria-labelledby="dialog-title">
-    <div className="dialog-heading"><h2 id="dialog-title">{title}</h2><button type="button" className="icon" aria-label="Close" onClick={close}>×</button></div>
+  return <dialog onKeyDown={trapDialogFocus} className={inspector ? 'inspector editor-inspector' : undefined} ref={ref} onCancel={event => { event.preventDefault(); close() }} aria-labelledby="dialog-title">
+    <div className="dialog-heading"><div><small className="eyebrow">{inspector ? 'DETAILS & EDITING' : 'YOUR WORKSPACE'}</small><h2 id="dialog-title">{title}</h2></div><button type="button" className="icon" aria-label="Close" onClick={close}>×</button></div>
     {children}
   </dialog>
 }
@@ -487,10 +487,7 @@ function App() {
         <option value="personal">Manual</option><option value="sandbox">Sandbox preview</option><option value="live">Live</option>
       </select></label>
       {mode === 'sandbox' && <label className="scenario-picker">Test scenario<select aria-label="Sandbox scenario" disabled={scenarioPending || modePending || busy || !!dialog} value={scenario} onChange={event => void changeScenario(event.target.value as Scenario)}><option value="banking">Banking</option><option value="investments">Investments</option><option value="combined">Combined</option></select></label>}
-      <nav aria-label="Finance sections">{pages.map((item, index) =>
-        <button key={item} aria-current={page === item ? 'page' : undefined} onClick={() => { setPage(item); setAllReviewDates(false); setReviewFilter('all'); setDrilldown(null); setCategoryFilter(0); setAccountFilter(0); setSearch('') }}>
-          <Icon name={icons[index]} />{item}
-        </button>)}</nav>
+      <Navigation page={page} navigate={item => { setPage(item); setAllReviewDates(false); setReviewFilter('all'); setDrilldown(null); setCategoryFilter(0); setAccountFilter(0); setSearch('') }} />
       <div className="sidebar-footer">
         <button className="theme-toggle" type="button" role="switch" aria-checked={theme === 'dark'} disabled={themePending} onClick={() => void toggleTheme()}>
           <Icon name={theme === 'dark' ? 'moon' : 'sun'} /><span>Dark mode</span><i className="switch-track" aria-hidden="true" />
@@ -500,7 +497,7 @@ function App() {
     </aside>
     <main>
       <header className="page-header">
-        <div><h1>{page}</h1><p className="page-description">{{
+        <div><span className="page-context"><i data-mode={mode} />{mode === 'live' ? 'Live workspace' : mode === 'sandbox' ? 'Sandbox · ' + scenario : 'Manual workspace'}</span><h1>{page}</h1><p className="page-description">{{
           Overview: 'Net worth, monthly cash flow, and budget progress.',
           Spending: 'See when, where, and how your spending changes.',
           Transactions: 'Browse your ledger and recurring templates.',
@@ -518,24 +515,26 @@ function App() {
       </header>
       {themeError && <p role="alert" className="notice">{themeError}</p>}
       {modeError && <p role="alert" className="notice">{modeError}</p>}
-      {synced && page !== 'Backup & restore' && <p className="notice sandbox-banner"><strong>{mode === 'live' ? 'Live workspace' : 'Sandbox preview'}</strong> · {mode === 'live' ? 'Real financial data stays separate from Sandbox. Manage connection readiness in Bank sync.' : 'Test accounts, categories, and budgets.'} Spending uses posted activity.</p>}
+      {synced && page !== 'Backup & restore' && <details className="workspace-info"><summary><span className="status-dot" />{mode === 'live' ? 'Live data · Local storage' : 'Test data · Sandbox preview'}<span>About this workspace</span></summary><p>{mode === 'live' ? 'Real financial data stays separate from Sandbox. Manage connection readiness in Bank sync.' : 'Test accounts, categories, and budgets.'} Spending uses posted activity.</p></details>}
       {synced && page !== 'Backup & restore' && page !== 'Investments' && !!ready?.review_count && <p className="notice">{ready.review_count} credit entries need classification as income, refunds, or transfers before they count toward cash flow.</p>}
       {synced && page !== 'Backup & restore' && !!ready?.missing_balance_count && <p className="notice">{ready.missing_balance_count} accounts have no reported balance and are excluded from net worth.</p>}
       {error && <p role="alert" className="notice">{error} <button className="secondary small" onClick={() => setRevision(value => value + 1)}>Retry</button></p>}
       {!ready && !error && <p className="muted" role="status">Loading your ledger…</p>}
       {ready && page === 'Overview' && <>
         <div className="overview-grid">
-        <NetWorth key={mode + scenario} accounts={ready.accounts} history={ready.history} mode={synced ? 'sandbox' : 'personal'}
+        <NetWorth workspaceLabel={mode === 'live' ? 'Live' : mode === 'sandbox' ? 'Sandbox' : 'Manual'} key={mode + scenario} accounts={ready.accounts} history={ready.history} mode={synced ? 'sandbox' : 'personal'}
           request={request} money={money} onSelectionChange={setChartAccountIds} onStart={() => synced ? setPage('Bank sync') : open({ type: 'account' })} />
-        <CashFlow data={ready} month={activeMonth} />
+        <div className="overview-side"><CashFlow data={ready} month={activeMonth} />
+          <section className="card"><div className="section-heading"><div><h2>Budget progress</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => setPage('Budgets')}>View budgets <Icon name="right" /></button></div>
+            <BudgetRows budgets={budgetRows} edit={editBudget} filter={filterCategory} />
+          </section>
+        </div>
         </div>
         <HomeSpending report={ready.spending} money={money} drill={drillSpending} changeMonth={setMonth} openSpending={() => setPage('Spending')}
           recent={<TransactionList transactions={ready.transactions.filter(tx => ready.spending.eligible_ids.includes(tx.id)).slice(0, 5)} edit={editTransaction} empty="No posted spending this month." />} />
         <div className="dashboard-grid">
           <AssetSummary accounts={ready.accounts.filter(account => chartAccountIds?.includes(account.id))} loading={chartAccountIds === null} money={money} openAccounts={() => setPage('Accounts')} />
-          <section className="card"><div className="section-heading"><div><h2>Budget progress</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => setPage('Budgets')}>View budgets <Icon name="right" /></button></div>
-            <BudgetRows budgets={budgetRows} edit={editBudget} filter={filterCategory} />
-          </section>
+
         </div>
       </>}
       {ready && page === 'Spending' && <SpendingPage key={mode + scenario} report={ready.spending} money={money} drill={drillSpending} changeMonth={setMonth} sandbox={synced} />}
@@ -602,7 +601,7 @@ function App() {
         setAllReviewDates(false); setDrilldown(null); setAccountFilter(0); setCategoryFilter(0); setSearch(''); setTransferFocus(null); setReviewMessage(''); setRevision(value => value + 1)
       }} />}
     </main>
-    {dialog && data && <Modal title={
+    {dialog && data && <Modal inspector={['transaction', 'sandbox-transaction', 'account', 'balance'].includes(dialog.type)} title={
       dialog.type === 'account' ? dialog.account ? 'Edit account' : 'Add account'
         : dialog.type === 'balance' ? 'Record balance'
         : dialog.type === 'budget' ? dialog.budget.name + ' limit'
