@@ -204,6 +204,8 @@ def run():
                         key('Escape');ready("!document.querySelector('dialog[open]')")
                     nav('Overview');ready("document.querySelector('.account-picker')")
                     click('.account-picker > summary')
+                    if width<=850:
+                        assert js("document.querySelector('.picker-done').getBoundingClientRect().bottom <= document.querySelector('.mobile-navigation').getBoundingClientRect().top"), 'Picker action covered by navigation'
                     screenshot(f'{width}-{theme}-redesign-chart-account-picker')
                     click('.account-picker button','Done')
                     # Inspect an account using real pointer input, then keyboard close/focus return.

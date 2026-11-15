@@ -377,3 +377,9 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(4px); }
 .editor-inspector > form > fieldset { flex: 1; display: flex; flex-direction: column; gap: 18px; }
 .editor-inspector .form-actions { margin-top: auto; }
 @media (max-width: 610px) { .editor-inspector .form-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Keep every picker action reachable above the mobile navigation. */
+@media (max-width: 850px) {
+  .account-options { position: fixed; top: auto; bottom: calc(82px + env(safe-area-inset-bottom)); inset-inline: 16px; margin: 0 auto; width: min(460px, calc(100% - 32px)); max-height: calc(100dvh - 120px); z-index: 25; grid-template-rows: auto minmax(0, 1fr) auto; }
+  .account-options .picker-scroll { min-height: 0; max-height: min(40dvh, 300px); }
+}
