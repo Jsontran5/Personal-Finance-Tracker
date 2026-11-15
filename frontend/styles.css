@@ -532,3 +532,13 @@ input[type="checkbox"] { accent-color: var(--accent); }
   .connection-result { align-items: start; }
   .connection-result button { flex: 0 0 auto; }
 }
+
+.live-readiness { min-width: 0; }
+.readiness-checks { list-style: none; padding: 0; display: grid; gap: 12px; }
+.readiness-checks li { display: flex; align-items: start; gap: 10px; }
+.readiness-checks small { display: block; color: var(--muted); }
+.readiness-settings { padding-block: 14px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.readiness-settings summary { cursor: pointer; font-weight: 600; }
+.readiness-settings fieldset { display: grid; gap: 14px; margin-top: 14px; }
+.readiness-settings .checkbox { display: flex; align-items: start; gap: 10px; }
+.preflight-result { margin-top: 14px; padding-block: 10px; border-top: 1px solid var(--line); }

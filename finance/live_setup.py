@@ -57,8 +57,11 @@ def readiness(db, directory):
     configured = bool(production_credentials(directory))
     enabled = values.get('PLAID_LIVE_ENABLED', '').lower() == 'true'
     redirect = values.get('PLAID_PRODUCTION_REDIRECT_URI', '')
-    uri = urlsplit(redirect)
-    redirect_valid = not redirect or (uri.scheme == 'https' and bool(uri.netloc) and not any((uri.query, uri.fragment, uri.username, uri.password)))
+    try:
+        uri = urlsplit(redirect)
+        redirect_valid = not redirect or (uri.scheme == 'https' and bool(uri.hostname) and not any((uri.query, uri.fragment, uri.username, uri.password)) and '*' not in redirect and not any(c.isspace() for c in redirect))
+    except ValueError:
+        redirect_valid = False
     connected = db.execute('SELECT COUNT(*) FROM multi_connections WHERE item_id IS NOT NULL').fetchone()[0]
     checks = [
         {'label': 'Production credentials configured', 'ok': configured},
@@ -92,8 +95,12 @@ def credentials_digest(directory):
 
 
 def safe_hosted_url(value):
-    uri = urlsplit(value)
-    if uri.scheme != 'https' or uri.hostname not in {'secure.plaid.com', 'hosted.plaid.com'} or uri.username or uri.password:
+    try:
+        uri = urlsplit(value)
+        valid = uri.scheme == 'https' and uri.hostname in {'secure.plaid.com', 'hosted.plaid.com'} and not uri.username and not uri.password and uri.port in {None, 443}
+    except ValueError:
+        valid = False
+    if not valid:
         raise HTTPException(502, 'Plaid returned an unexpected Hosted Link URL. No session was saved.')
     return value
 

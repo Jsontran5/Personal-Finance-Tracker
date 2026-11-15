@@ -3,12 +3,12 @@ import { useEffect, useRef, useState } from 'react'
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
 type Backup = { id: string; size_bytes: number; file_date: string; format: string }
 type Counts = { accounts: number; transactions: number; active_transactions?: number; holdings?: number; investment_activity?: number; debt_details?: number; connections?: number }
-type BackupWorkspace = 'personal' | 'sandbox' | 'sandbox_investments' | 'sandbox_combined'
+type BackupWorkspace = 'personal' | 'sandbox' | 'sandbox_investments' | 'sandbox_combined' | 'live'
 type Preview = { id: string; workspace: BackupWorkspace; schema_version: number; restored_schema_version: number;
   counts: Counts; current_counts: Counts | null; created_at: string | null; file_date: string; legacy: boolean;
   restores_chart_selection: boolean; bank_policy: string; preview_token: string; confirmation: string;
   contents: { accounts: { name: string; currency: string | null }[]; transaction_dates: { first: string | null; last: string | null } } }
-const label = (mode: string) => mode === 'personal' ? 'Personal' : mode === 'sandbox_combined' ? 'Sandbox · Combined' : mode === 'sandbox_investments' ? 'Sandbox · Investments' : 'Sandbox · Banking'
+const label = (mode: string) => mode === 'personal' ? 'Personal' : mode === 'live' ? 'Live' : mode === 'sandbox_combined' ? 'Sandbox · Combined' : mode === 'sandbox_investments' ? 'Sandbox · Investments' : 'Sandbox · Banking'
 const size = (bytes: number) => bytes < 1024 * 1024 ? Math.max(1, Math.round(bytes / 1024)) + ' KB' : (bytes / 1024 / 1024).toFixed(1) + ' MB'
 
 export function BackupRestore({ request, onRestored, initialWorkspace }: { request: Request; onRestored: () => void; initialWorkspace: BackupWorkspace }) {
@@ -47,15 +47,15 @@ export function BackupRestore({ request, onRestored, initialWorkspace }: { reque
       : preview?.workspace !== 'personal' ? 'This backup has no saved bank connection.' : 'Your Sandbox bank connections are unaffected.'
   return <div className="backup-page">
     <section className="card backup-create"><div><h2>Back up a workspace</h2><p className="analytics-note">Save a consistent copy of accounts, transactions, budgets, review/rule state, transfer links, and that workspace’s chart selection.</p></div>
-      <div className="backup-create-controls"><label>Workspace to back up<select aria-label="Backup workspace" disabled={busy} value={mode} onChange={event => setMode(event.target.value as BackupWorkspace)}><option value="personal">Personal</option><option value="sandbox">Sandbox · Banking</option><option value="sandbox_investments">Sandbox · Investments</option><option value="sandbox_combined">Sandbox · Combined</option></select></label>
+      <div className="backup-create-controls"><label>Workspace to back up<select aria-label="Backup workspace" disabled={busy} value={mode} onChange={event => setMode(event.target.value as BackupWorkspace)}><option value="personal">Personal</option><option value="live">Live</option><option value="sandbox">Sandbox · Banking</option><option value="sandbox_investments">Sandbox · Investments</option><option value="sandbox_combined">Sandbox · Combined</option></select></label>
         <button className="primary" disabled={busy} onClick={() => void run(async () => {
           const created = await request<{ id: string }>('/backups', 'POST', { workspace: mode })
           const listed = await request<{ backups: Backup[] }>('/backups')
           setBackups(listed.backups); setFilter(''); setPage(0); setMessage(label(mode) + ' backup created: ' + created.id)
         })}>Create backup</button></div>
-      <p className="analytics-note">Stored in this project’s backups folder, outside Git. Backups contain private financial records. Sandbox authorization is Windows-user encrypted; API credentials and local context docs are not included. Appearance and current workspace stay unchanged.</p>
+      <p className="analytics-note">Stored in this project’s backups folder, outside Git. Backups contain private financial records. Bank authorization is Windows-user encrypted; API credentials and local context docs are not included. Appearance and current workspace stay unchanged.</p>
     </section>
-    {mode === 'sandbox_combined' && <p className="muted">Combined backups require the same connected institutions when restoring. Manual mirrors refresh from Personal; back up Personal separately to preserve their original records.</p>}
+    {(mode === 'sandbox_combined' || mode === 'live') && <p className="muted">Multi-institution backups require the same connected institutions when restoring. Manual mirrors refresh from Personal; back up Personal separately to preserve their original records.</p>}
     {busy && <p className="muted" role="status">Working with local backup files…</p>}
     {error && <p className="notice" role="alert">{error}{!backups && <button className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button>}</p>}
     {message && <p className="notice backup-message" role="status">{message}</p>}

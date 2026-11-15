@@ -6,8 +6,8 @@ export type Account = GroupAccount & {
   balance_date: string | null; include_in_net_worth: number; balance_source?: string; transaction_count?: number; institution_name?: string | null
 }
 
-export function AccountList({ accounts, sandbox, primary, money, add, details }: {
-  accounts: Account[]; sandbox: boolean; primary: number | null;
+export function AccountList({ accounts, sandbox, live, primary, money, add, details }: {
+  accounts: Account[]; sandbox: boolean; live?: boolean; primary: number | null;
   money: (amount: number, currency?: string) => string; add: () => void; details: (account: Account) => ReactNode
 }) {
   const [search, setSearch] = useState('')
@@ -17,7 +17,7 @@ export function AccountList({ accounts, sandbox, primary, money, add, details }:
   const matching = accounts.filter(account => (!filter || groups.find(group => group.name === filter)?.accounts.includes(account)) &&
     (account.name + ' ' + (account.institution_name ?? '') + ' ' + accountLabel(account)).toLowerCase().includes(search.trim().toLowerCase()))
   return <section className="accounts-workspace">
-    <div className="section-heading"><div><h2>{sandbox ? 'Sandbox accounts' : 'Manual accounts'}</h2><small>{accounts.length} accounts · Latest saved balances</small></div>
+    <div className="section-heading"><div><h2>{live ? 'Live accounts' : sandbox ? 'Sandbox accounts' : 'Manual accounts'}</h2><small>{accounts.length} accounts · Latest saved balances</small></div>
       {!sandbox && <button className="primary" onClick={add}>＋ Add account</button>}</div>
     <div className="filters">
       <input type="search" aria-label="Search accounts" placeholder="Find an account" value={search} onChange={event => setSearch(event.target.value)} />

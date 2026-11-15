@@ -21,8 +21,8 @@ function ProviderDetails({ provider, security }: { provider: object; security: o
   return <details className="investment-provider"><summary>Provider details</summary><pre>{JSON.stringify({ record: provider, security }, null, 2)}</pre></details>
 }
 
-export function Investments({ sandbox, managed, request, money, openBank, onChanged, openTestScenario }: {
-  sandbox: boolean; managed?: boolean; request: Request; money: Money; openBank: () => void; onChanged: () => void; openTestScenario?: () => void
+export function Investments({ sandbox, managed, live, request, money, openBank, onChanged, openTestScenario }: {
+  sandbox: boolean; managed?: boolean; live?: boolean; request: Request; money: Money; openBank: () => void; onChanged: () => void; openTestScenario?: () => void
 }) {
   const [data, setData] = useState<Portfolio>()
   const [activity, setActivity] = useState<ActivityPage>()
@@ -42,16 +42,16 @@ export function Investments({ sandbox, managed, request, money, openBank, onChan
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    if (!sandbox) return
+    if (!sandbox || live) return
     const controller = new AbortController()
     request<Portfolio>(path, 'GET', undefined, controller.signal).then(setData)
       .catch(failure => { if (!controller.signal.aborted) setError(failure.message) })
     return () => controller.abort()
-  }, [sandbox, request, revision])
+  }, [sandbox, live, request, revision])
 
   useEffect(() => { setPage(1); setHoldingPage(1) }, [account, search, kind, start, end, revision])
   useEffect(() => {
-    if (!sandbox || tab !== 'activity') return
+    if (!sandbox || live || tab !== 'activity') return
     const controller = new AbortController()
     const params = new URLSearchParams({ search, page: String(page) })
     if (account) params.set('account', account)
@@ -63,7 +63,7 @@ export function Investments({ sandbox, managed, request, money, openBank, onChan
       .catch(failure => { if (!controller.signal.aborted) setActivityError(failure.message) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [sandbox, request, tab, account, search, kind, start, end, page, revision])
+  }, [sandbox, live, request, tab, account, search, kind, start, end, page, revision])
 
   async function sync(activityOnly: boolean, full = false) {
     setBusy(true); setError(''); setMessage('')
@@ -75,6 +75,7 @@ export function Investments({ sandbox, managed, request, money, openBank, onChan
     finally { setBusy(false) }
   }
 
+  if (live) return <section className="card"><h2>Investments are available in Sandbox</h2><p className="muted">The first Live pilot supports checking and credit-card transactions and balances. Live investment products will be enabled in a later step.</p></section>
   if (!sandbox) return <section className="card"><h2>Investment sync starts in Sandbox</h2><p className="muted">Choose Sandbox preview in the workspace selector to view and test holdings and investment activity. Your manual accounts remain on Accounts.</p></section>
   if (!data) return <section className="card">{error ? <p className="notice" role="alert">{error}<button className="secondary small" onClick={() => { setError(''); setRevision(value => value + 1) }}>Retry</button></p> : <p role="status">Loading investments…</p>}</section>
   const accounts = data.accounts.filter(item => !account || item.id === account)
@@ -106,7 +107,7 @@ export function Investments({ sandbox, managed, request, money, openBank, onChan
   return <div className="investments-page">
     {openTestScenario && <div className="notice"><p>The prepared holdings demo is in the Investments test scenario. Your banking connection stays saved separately.</p><button className="secondary small" onClick={openTestScenario}>Switch to investment demo</button></div>}
     <section className="card investment-sync">
-      <div className="section-heading"><div><h2>Broker-reported investments</h2><small>{managed ? "View sync times for each institution in Bank sync." : <>Holdings: {stamp(data.state?.holdings_at)} / Activity: {stamp(data.state?.activity_at)}</>}</small></div><span className="chip">TEST MODE</span></div>
+      <div className="section-heading"><div><h2>Broker-reported investments</h2><small>{managed ? "View sync times for each institution in Bank sync." : <>Holdings: {stamp(data.state?.holdings_at)} / Activity: {stamp(data.state?.activity_at)}</>}</small></div><span className="chip">{live ? 'LIVE DATA' : 'TEST MODE'}</span></div>
       <p className="muted">Sync retrieves Plaid’s latest available data, not live quotes. Holdings can update overnight. Initial activity may take up to two minutes.</p>
       <div className="investment-actions">{!managed && <><button className="primary" disabled={busy} onClick={() => void sync(false)}>Sync holdings</button><button className="secondary" disabled={busy || !data.accounts.length} onClick={() => void sync(true)}>Sync activity</button>
         </>}<button className="secondary" disabled={busy} onClick={openBank}>Manage connection</button></div>

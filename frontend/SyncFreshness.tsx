@@ -14,7 +14,7 @@ export function SyncFreshness({ request, revision, open }: { request: Request; r
         if (result.connections) {
           const connected = result.connections.filter(item => item.connected).length
           const attention = result.connections.filter(item => item.needs_reauth).length
-          setCombined(attention ? `${attention} institutions need reconnection` : connected ? `${connected} institutions · View sync status` : 'No test institutions connected')
+          setCombined(attention ? `${attention} institutions need reconnection` : connected ? `${connected} institutions · View sync status` : 'No institutions connected')
         }
       })
       .catch(() => { if (!controller.signal.aborted) setError(true) })
