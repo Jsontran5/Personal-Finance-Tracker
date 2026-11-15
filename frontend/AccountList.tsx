@@ -3,7 +3,7 @@ import { accountLabel, accountGroups, groupedAccounts, type GroupAccount } from 
 
 export type Account = GroupAccount & {
   id: number; name: string; kind: string; currency: string; balance_minor: number | null;
-  balance_date: string | null; include_in_net_worth: number; balance_source?: string; transaction_count?: number
+  balance_date: string | null; include_in_net_worth: number; balance_source?: string; transaction_count?: number; institution_name?: string | null
 }
 
 export function AccountList({ accounts, sandbox, primary, money, add, details }: {
@@ -15,7 +15,7 @@ export function AccountList({ accounts, sandbox, primary, money, add, details }:
   const [expanded, setExpanded] = useState<string[]>(['Cash & savings', 'Credit cards'])
   const groups = groupedAccounts(accounts)
   const matching = accounts.filter(account => (!filter || groups.find(group => group.name === filter)?.accounts.includes(account)) &&
-    (account.name + ' ' + accountLabel(account)).toLowerCase().includes(search.trim().toLowerCase()))
+    (account.name + ' ' + (account.institution_name ?? '') + ' ' + accountLabel(account)).toLowerCase().includes(search.trim().toLowerCase()))
   return <section className="accounts-workspace">
     <div className="section-heading"><div><h2>{sandbox ? 'Sandbox accounts' : 'Manual accounts'}</h2><small>{accounts.length} accounts · Latest saved balances</small></div>
       {!sandbox && <button className="primary" onClick={add}>＋ Add account</button>}</div>
@@ -44,13 +44,13 @@ export function AccountList({ accounts, sandbox, primary, money, add, details }:
             <span className="group-totals numeric">{[...totals].map(([currency, amount]) => <span key={currency}>{amount === null ? 'Incomplete · ' + currency : money(amount, currency)}</span>)}</span>
           </summary>
           <div className="group-accounts">{group.accounts.map(account => <details name="account-inspector" className="compact-account" key={account.id}>
-            <summary className="account-summary"><span className="account-identity"><strong>{account.name}</strong><small>{accountLabel(account)} · {account.currency}
+            <summary className="account-summary"><span className="account-identity"><strong>{account.name}</strong><small>{accountLabel(account)}{account.institution_name && ` / ${account.institution_name}`} · {account.currency}
               {account.id === primary && ' · Primary'}{!account.include_in_net_worth && ' · Excluded'}</small></span>
               <span className={'numeric ' + ((account.balance_minor ?? 0) < 0 ? 'negative' : '')}>{account.balance_minor === null ? '—' : money(account.balance_minor, account.currency)}</span>
             </summary>
             <div className="account-expanded">
               <p className="muted">{sandbox
-                ? (account.balance_source === 'fresh' ? 'Fresh when checked' : account.balance_source === 'cached' ? 'Cached by Plaid' : 'Balance unavailable') +
+                ? (account.balance_source === 'manual' ? 'Mirrored from Personal' : account.balance_source === 'fresh' ? 'Fresh when checked' : account.balance_source === 'cached' ? 'Cached by Plaid' : 'Balance unavailable') +
                   (account.balance_date ? ' · Checked ' + new Date(account.balance_date).toLocaleString() : '')
                 : 'Recorded ' + account.balance_date + ' · Includes later ledger activity'}</p>
               {sandbox && <p className="muted">{account.transaction_count ? account.transaction_count + ' saved transactions across all dates.' : 'No spending transactions saved for this account.'}

@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
 type Backup = { id: string; size_bytes: number; file_date: string; format: string }
-type Counts = { accounts: number; transactions: number; active_transactions?: number; holdings?: number; investment_activity?: number; debt_details?: number }
-type BackupWorkspace = 'personal' | 'sandbox' | 'sandbox_investments'
+type Counts = { accounts: number; transactions: number; active_transactions?: number; holdings?: number; investment_activity?: number; debt_details?: number; connections?: number }
+type BackupWorkspace = 'personal' | 'sandbox' | 'sandbox_investments' | 'sandbox_combined'
 type Preview = { id: string; workspace: BackupWorkspace; schema_version: number; restored_schema_version: number;
   counts: Counts; current_counts: Counts | null; created_at: string | null; file_date: string; legacy: boolean;
   restores_chart_selection: boolean; bank_policy: string; preview_token: string; confirmation: string;
   contents: { accounts: { name: string; currency: string | null }[]; transaction_dates: { first: string | null; last: string | null } } }
-const label = (mode: string) => mode === 'personal' ? 'Personal' : mode === 'sandbox_investments' ? 'Sandbox · Investments' : 'Sandbox · Banking'
+const label = (mode: string) => mode === 'personal' ? 'Personal' : mode === 'sandbox_combined' ? 'Sandbox · Combined' : mode === 'sandbox_investments' ? 'Sandbox · Investments' : 'Sandbox · Banking'
 const size = (bytes: number) => bytes < 1024 * 1024 ? Math.max(1, Math.round(bytes / 1024)) + ' KB' : (bytes / 1024 / 1024).toFixed(1) + ' MB'
 
 export function BackupRestore({ request, onRestored, initialWorkspace }: { request: Request; onRestored: () => void; initialWorkspace: BackupWorkspace }) {
@@ -38,7 +38,7 @@ export function BackupRestore({ request, onRestored, initialWorkspace }: { reque
   }
   const matching = backups?.filter(backup => backup.id.toLowerCase().includes(filter.toLowerCase())) ?? []
   const currentPage = Math.min(page, Math.max(0, Math.ceil(matching.length / 10) - 1))
-  const policy = preview?.bank_policy === 'keep_authorization_reset_feed'
+  const policy = preview?.bank_policy === 'keep_multiple_authorizations' ? 'Keeps the current authorizations for every institution. Restores data and per-connection cursors without creating connections.' : preview?.bank_policy === 'restore_multiple_authorizations' ? 'Restores the saved Windows-user encrypted authorizations. No new connections are created.' : preview?.bank_policy === 'keep_authorization_reset_feed'
     ? 'Restores empty Sandbox data while retaining your current bank authorization. The next sync starts a fresh data checkpoint on the same connection.'
     : preview?.bank_policy === 'keep_current_authorization'
     ? 'Keeps your current bank authorization. Restores the backup’s data and transaction cursor; the next sync may replay later activity. No new connection is created.'
@@ -47,7 +47,7 @@ export function BackupRestore({ request, onRestored, initialWorkspace }: { reque
       : preview?.workspace !== 'personal' ? 'This backup has no saved bank connection.' : 'Your Sandbox bank connections are unaffected.'
   return <div className="backup-page">
     <section className="card backup-create"><div><h2>Back up a workspace</h2><p className="analytics-note">Save a consistent copy of accounts, transactions, budgets, review/rule state, transfer links, and that workspace’s chart selection.</p></div>
-      <div className="backup-create-controls"><label>Workspace to back up<select aria-label="Backup workspace" disabled={busy} value={mode} onChange={event => setMode(event.target.value as BackupWorkspace)}><option value="personal">Personal</option><option value="sandbox">Sandbox · Banking</option><option value="sandbox_investments">Sandbox · Investments</option></select></label>
+      <div className="backup-create-controls"><label>Workspace to back up<select aria-label="Backup workspace" disabled={busy} value={mode} onChange={event => setMode(event.target.value as BackupWorkspace)}><option value="personal">Personal</option><option value="sandbox">Sandbox · Banking</option><option value="sandbox_investments">Sandbox · Investments</option><option value="sandbox_combined">Sandbox · Combined</option></select></label>
         <button className="primary" disabled={busy} onClick={() => void run(async () => {
           const created = await request<{ id: string }>('/backups', 'POST', { workspace: mode })
           const listed = await request<{ backups: Backup[] }>('/backups')
@@ -55,6 +55,7 @@ export function BackupRestore({ request, onRestored, initialWorkspace }: { reque
         })}>Create backup</button></div>
       <p className="analytics-note">Stored in this project’s backups folder, outside Git. Backups contain private financial records. Sandbox authorization is Windows-user encrypted; API credentials and local context docs are not included. Appearance and current workspace stay unchanged.</p>
     </section>
+    {mode === 'sandbox_combined' && <p className="muted">Combined backups require the same connected institutions when restoring. Manual mirrors refresh from Personal; back up Personal separately to preserve their original records.</p>}
     {busy && <p className="muted" role="status">Working with local backup files…</p>}
     {error && <p className="notice" role="alert">{error}{!backups && <button className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button>}</p>}
     {message && <p className="notice backup-message" role="status">{message}</p>}
@@ -80,6 +81,7 @@ export function BackupRestore({ request, onRestored, initialWorkspace }: { reque
         <div><dt>Accounts</dt><dd>{preview.current_counts?.accounts ?? 'Not initialized'} currently → {preview.counts.accounts} in backup</dd></div><div><dt>Transactions</dt><dd>{preview.current_counts?.transactions ?? 'Not initialized'} currently → {preview.counts.transactions} in backup{preview.counts.active_transactions !== undefined && ' (' + preview.counts.active_transactions + ' active)'}</dd></div>
         {preview.counts.holdings !== undefined && <><div><dt>Investment holdings</dt><dd>{preview.current_counts?.holdings ?? 'Not initialized'} currently → {preview.counts.holdings} in backup</dd></div><div><dt>Investment activity</dt><dd>{preview.current_counts?.investment_activity ?? 'Not initialized'} currently → {preview.counts.investment_activity} in backup</dd></div></>}
         {preview.counts.debt_details !== undefined && <div><dt>Debt details</dt><dd>{preview.current_counts?.debt_details ?? 'Not initialized'} currently → {preview.counts.debt_details} in backup</dd></div>}
+        {preview.counts.connections !== undefined && <div><dt>Connections</dt><dd>{preview.counts.connections}</dd></div>}
         <div><dt>Chart selection</dt><dd>{preview.restores_chart_selection ? 'Restored with this workspace' : 'Not included; current selection retained'}</dd></div></dl>
       <details className="backup-contents"><summary>Accounts and activity in this backup</summary><p className="analytics-note">{preview.contents.transaction_dates.first ? 'Transaction dates: ' + preview.contents.transaction_dates.first + ' – ' + preview.contents.transaction_dates.last : 'No saved transactions.'}</p>
         <ul>{preview.contents.accounts.map((account, index) => <li key={index}>{account.name} · {account.currency ?? 'Currency unavailable'}</li>)}</ul>

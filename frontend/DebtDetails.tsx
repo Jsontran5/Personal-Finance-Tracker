@@ -12,10 +12,12 @@ const strings: [string, string][] = [['servicer', 'Servicer / lender'], ['repaym
 const supplied = (value: unknown) => value !== null && value !== undefined && value !== ''
 const human = (value: string) => value.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase())
 
-export function DebtDetails({ account, sandbox, request, money, parseMoney, revision, onChanged }: {
-  account: Account; sandbox: boolean; request: Request; money: (value: number, currency?: string) => string;
+export function DebtDetails({ account, sandbox, managed, request, money, parseMoney, revision, onChanged }: {
+  account: Account; sandbox: boolean; managed?: boolean; request: Request; money: (value: number, currency?: string) => string;
   parseMoney: (value: string, currency: string) => number; revision: number; onChanged: () => void
 }) {
+  const manualMirror = sandbox && account.balance_source === 'manual'
+  const reported = sandbox && !manualMirror
   const panel = useRef<HTMLDetailsElement>(null)
   const [data, setData] = useState<Debt>()
   const [editing, setEditing] = useState(false)
@@ -32,9 +34,9 @@ export function DebtDetails({ account, sandbox, request, money, parseMoney, revi
   async function sync() {
     setBusy(true); setError(''); setMessage('')
     try {
-      const result = await request<{ count: number }>('/plaid/sandbox/liabilities/sync', 'POST')
+      const result = await request<{ count: number }>('/plaid/sandbox/liabilities/sync' + (managed ? '?account_id=' + account.id : ''), 'POST')
       setData(await request<Debt>(path)); onChanged()
-      setMessage(`Debt details synced for ${result.count} supported accounts in this scenario.`)
+      setMessage(`Debt details synced for ${result.count} supported accounts on this connection.`)
     } catch (failure) { setError((failure as Error).message) }
     finally { setBusy(false) }
   }
@@ -66,13 +68,13 @@ export function DebtDetails({ account, sandbox, request, money, parseMoney, revi
   const moneyInput = ([key, label]: [string, string]) => <label key={key}>{label} ({account.currency})<input name={key} inputMode="decimal" defaultValue={editMoney(key)} placeholder="Not supplied" /></label>
 
   return <details className="debt-details" ref={panel} onToggle={event => { if (event.currentTarget.open && !data) void load() }}>
-    <summary>Debt details <span className="chip">{sandbox ? 'Plaid' : 'Manual'}</span></summary>
+    <summary>Debt details <span className="chip">{reported ? 'Plaid' : 'Manual'}</span></summary>
     <div className="debt-content">
       {!data && !error && <p role="status" className="muted">Loading debt details…</p>}
       {data && <>
-        <div className="section-heading"><div><h3>{sandbox ? 'Reported debt terms' : 'Manual debt terms'}</h3><small>{data.updated_at ? (sandbox ? 'Retrieved ' : 'Updated ') + new Date(data.updated_at).toLocaleString() : 'No details saved yet.'}</small></div>
-          {sandbox ? <button className="secondary small" disabled={busy} onClick={() => void sync()}>Sync debt details</button> : !editing && <button className="secondary small" onClick={() => { setEditing(true); setMessage(''); setError('') }}>{rows.length > 1 ? 'Edit debt details' : 'Add debt details'}</button>}</div>
-        {sandbox && <p className="muted">Retrieves all supported debts on this scenario’s saved connection. Availability varies by institution; missing fields are unavailable.</p>}
+        <div className="section-heading"><div><h3>{reported ? 'Reported debt terms' : 'Manual debt terms'}</h3><small>{data.updated_at ? (reported ? 'Retrieved ' : 'Updated ') + new Date(data.updated_at).toLocaleString() : 'No details saved yet.'}</small></div>
+          {reported ? <button className="secondary small" disabled={busy} onClick={() => void sync()}>Sync debt details</button> : !sandbox && !editing && <button className="secondary small" onClick={() => { setEditing(true); setMessage(''); setError('') }}>{rows.length > 1 ? 'Edit debt details' : 'Add debt details'}</button>}</div>
+        {reported && <p className="muted">Retrieves supported debts on this account’s saved connection. Availability varies by institution; missing fields are unavailable.</p>}
         {editing && fields ? <form className="debt-editor" onSubmit={event => void save(event)}><fieldset disabled={busy}>
           <div className="form-grid"><label>Debt type<select name="subtype" defaultValue={String(fields.subtype)}>{Object.entries(types).filter(([value]) => account.kind === 'credit' ? ['credit card', 'line of credit', 'other'].includes(value) : value !== 'credit card').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label>Servicer / lender<input name="servicer" maxLength={120} defaultValue={String(fields.servicer ?? '')} placeholder="e.g. Nelnet" /></label>
@@ -89,7 +91,7 @@ export function DebtDetails({ account, sandbox, request, money, parseMoney, revi
           <div className="form-actions"><button className="secondary" type="button" disabled={busy} onClick={() => { setEditing(false); setError('') }}>Cancel</button><button className="primary" type="submit">{busy ? 'Saving…' : 'Save debt details'}</button></div>
         </fieldset></form> : <>
           {rows.length > 0 && <dl className="debt-facts">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
-          {(!fields || rows.length <= 1) && <p className="empty">{sandbox ? 'No supported details returned for this account yet. Try Sync debt details.' : 'Add the servicer, rate and any loan details you want to track.'}</p>}
+          {(!fields || rows.length <= 1) && <p className="empty">{reported ? 'No supported details returned for this account yet. Try Sync debt details.' : 'Add the servicer, rate and any loan details you want to track.'}</p>}
           {data.is_overdue != null && <p className="muted">Reported overdue: {data.is_overdue ? 'Yes' : 'No'}</p>}
           {!!data.aprs?.length && <div className="debt-aprs"><h4>Reported APRs</h4>{data.aprs.map((apr, index) => <div key={index}><strong>{apr.percent == null ? 'Unavailable' : apr.percent + '%'} · {human(apr.type ?? 'Other')}</strong><small>Balance subject to rate: {apr.balance_minor == null ? 'Not supplied' : money(apr.balance_minor, currency)} · Interest charge: {apr.interest_minor == null ? 'Not supplied' : money(apr.interest_minor, currency)}</small></div>)}</div>}
           {fields?.notes && <p className="debt-notes">{fields.notes}</p>}
@@ -97,7 +99,8 @@ export function DebtDetails({ account, sandbox, request, money, parseMoney, revi
         </>}
         {!sandbox && !editing && <p className="muted">Use Record balance to reconcile with Nelnet’s balance. For a manual payment, record principal as a transfer to this loan and interest or fees as a separate expense. Interest is not accrued automatically.</p>}
       </>}
-      {busy && sandbox && <p role="status" className="muted">Retrieving debt details…</p>}
+      {manualMirror && <p className="muted">Edit this account’s balance and debt terms in Personal. Combined shows a read-only mirror.</p>}
+      {busy && reported && <p role="status" className="muted">Retrieving debt details…</p>}
       {error && <p className="notice" role="alert">{error}{!data && <button className="secondary small" onClick={() => void load()}>Retry</button>}</p>}
       {message && <p className="notice" role="status">{message}</p>}
     </div>

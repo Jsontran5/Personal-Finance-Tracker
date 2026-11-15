@@ -15,12 +15,13 @@ import { BackupRestore } from './BackupRestore'
 import { DeleteTransaction } from './DeleteTransaction'
 import { Investments } from './Investments'
 import { DebtDetails } from './DebtDetails'
+import { Connections } from './Connections'
 import './styles.css'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
 type Category = { id: number; name: string; kind: 'expense' | 'income' }
 type Entry = { id: number; account_id: number; destination_id: number | null; category_id: number | null; amount_minor: number; kind: Kind; merchant: string; notes: string; date: string; transfer_pair_id?: number | null; transfer_kind?: string | null; transfer_other_account?: string | null }
-type Transaction = Entry & { currency: string; account_name: string; category_name: string | null; destination_name: string | null; pending?: number; needs_review?: number; source_merchant?: string }
+type Transaction = Entry & { currency: string; account_name: string; category_name: string | null; destination_name: string | null; pending?: number; needs_review?: number; source_merchant?: string; manual_source?: number }
 type Template = Omit<Entry, 'date' | 'destination_id'> & { name: string }
 type Budget = Category & { limit_minor: number | null; actual_minor: number; previous_actual_minor: number }
 type Point = HistoryPoint
@@ -36,6 +37,7 @@ type Overview = {
 type Page = 'Overview' | 'Spending' | 'Transactions' | 'Budgets' | 'Accounts' | 'Bank sync' | 'Backup & restore' | 'Investments'
 type Theme = 'dark' | 'light'
 type Mode = 'personal' | 'sandbox'
+type Scenario = 'banking' | 'investments' | 'combined'
 type DialogState =
   | { type: 'transaction'; entry?: Entry | Template; template?: boolean }
   | { type: 'account'; account?: Account }
@@ -133,13 +135,13 @@ function EntryForm({ data, state, save, remove, busy }: {
           {Object.entries(kinds).filter(([value]) => !state.template || value === 'expense' || value === 'income').map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select></label>
         <label>Account<select value={accountId} onChange={event => { setAccountId(Number(event.target.value)); setDestinationId(0) }}>
-          {data.accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+          {data.accounts.map(account => <option key={account.id} value={account.id}>{account.name}{account.institution_name && ` / ${account.institution_name}`}</option>)}
         </select></label>
         {state.template ? <label>Template name<input name="name" required maxLength={120} /></label>
           : <label>Date<input name="date" type="date" required max={today()} defaultValue={existing?.date ?? today()} /></label>}
         {kind === 'transfer' && <label>Destination<select required value={destinationId || ''} onChange={event => setDestinationId(Number(event.target.value))}>
           <option value="">Select an account</option>
-          {data.accounts.filter(account => account.id !== accountId && account.currency === currency).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+          {data.accounts.filter(account => account.id !== accountId && account.currency === currency).map(account => <option key={account.id} value={account.id}>{account.name}{account.institution_name && ` / ${account.institution_name}`}</option>)}
         </select></label>}
         {canCategorize && <label>Category<select value={categoryId} onChange={event => setCategoryId(Number(event.target.value))}>
           <option value={0}>Uncategorized</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
@@ -240,10 +242,12 @@ function BalanceHistory({ account, sandbox = false, request }: { account: Accoun
 
 
 function App() {
-  const [scenario, setScenario] = useState<'banking' | 'investments'>('banking')
+  const [scenario, setScenario] = useState<Scenario>('banking')
   const [scenarioPending, setScenarioPending] = useState(false)
   const request = useCallback(<T,>(path: string, method?: string, body?: object, signal?: AbortSignal): Promise<T> => {
-    const mapped = scenario === 'investments' ? path.replace(/^\/plaid\/sandbox(?=\/|\?|$)/, '/plaid/investments-sandbox').replace(/^\/chart-selection\/sandbox(?=\?|$)/, '/chart-selection/sandbox_investments') : path
+    const prefix = scenario === 'combined' ? '/plaid/combined-sandbox' : scenario === 'investments' ? '/plaid/investments-sandbox' : '/plaid/sandbox'
+    const chart = scenario === 'combined' ? 'sandbox_combined' : scenario === 'investments' ? 'sandbox_investments' : 'sandbox'
+    const mapped = path.replace(/^\/plaid\/sandbox(?=\/|\?|$)/, prefix).replace(/^\/chart-selection\/sandbox(?=\?|$)/, '/chart-selection/' + chart)
     return apiRequest<T>(mapped, method, body, signal)
   }, [scenario])
   const [page, setPage] = useState<Page>('Overview')
@@ -295,7 +299,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    Promise.all([apiRequest<{ mode: Mode }>('/workspace'), apiRequest<{ scenario: 'banking' | 'investments' }>('/sandbox-scenario')])
+    Promise.all([apiRequest<{ mode: Mode }>('/workspace'), apiRequest<{ scenario: Scenario }>('/sandbox-scenario')])
       .then(([workspace, selected]) => { setScenario(selected.scenario); setMode(workspace.mode) })
       .catch(() => { setMode('personal'); setModeError('Could not load the saved workspace.') })
   }, [])
@@ -320,7 +324,7 @@ function App() {
     }
   }
 
-  async function changeScenario(next: 'banking' | 'investments') {
+  async function changeScenario(next: Scenario) {
     if (next === scenario) return
     setScenarioPending(true); setModeError('')
     try {
@@ -446,6 +450,7 @@ function App() {
   const ready = data && loadedMonth === mode + scenario + month ? data : undefined
   const budgetRows = ready?.budgets.filter(budget => budget.limit_minor !== null).slice(0, 4) ?? []
   const editTransaction = (entry: Transaction) => {
+    if (entry.manual_source) { setModeError('This manual transaction is a read-only mirror. Switch to Personal to edit it.'); return }
     if (mode === 'sandbox') {
       setSandboxKind(entry.kind)
       setSandboxCategory(entry.category_id ?? 0)
@@ -470,8 +475,8 @@ function App() {
   const linkedEntry = dialog?.type === 'sandbox-transaction' ? dialog.entry : dialog?.type === 'transaction' ? dialog.entry : undefined
   const emptyMessage = mode === 'sandbox' && filteredAccount?.transaction_count === 0
     ? 'No spending transactions have been saved for this account. Its balance is tracked separately.' +
-      (filteredAccount.provider_type === 'investment' ? ' Holdings and investment activity are not integrated yet.' :
-        filteredAccount.provider_type === 'loan' ? ' Loan terms and payment details are not integrated yet.' : ' Availability varies by account and institution.')
+      (filteredAccount.provider_type === 'investment' ? ' See Investments for holdings and investment activity.' :
+        filteredAccount.provider_type === 'loan' ? ' Expand Debt details on Accounts for supported loan terms.' : ' Availability varies by account and institution.')
     : allReviewDates ? 'No saved transactions match these filters.' : 'No transactions match this month and these filters. Try another month or clear the filters.'
 
   return <div className="shell">
@@ -480,7 +485,7 @@ function App() {
       <label className="workspace-picker">Workspace<select aria-label="Workspace" value={mode ?? 'personal'} disabled={!mode || modePending || busy || !!dialog} onChange={event => void changeMode(event.target.value as Mode)}>
         <option value="personal">Personal</option><option value="sandbox">Sandbox preview</option>
       </select></label>
-      {mode === 'sandbox' && <label className="scenario-picker">Test scenario<select aria-label="Sandbox scenario" disabled={scenarioPending || modePending || busy || !!dialog} value={scenario} onChange={event => void changeScenario(event.target.value as 'banking' | 'investments')}><option value="banking">Banking</option><option value="investments">Investments</option></select></label>}
+      {mode === 'sandbox' && <label className="scenario-picker">Test scenario<select aria-label="Sandbox scenario" disabled={scenarioPending || modePending || busy || !!dialog} value={scenario} onChange={event => void changeScenario(event.target.value as Scenario)}><option value="banking">Banking</option><option value="investments">Investments</option><option value="combined">Combined</option></select></label>}
       <nav aria-label="Finance sections">{pages.map((item, index) =>
         <button key={item} aria-current={page === item ? 'page' : undefined} onClick={() => { setPage(item); setAllReviewDates(false); setReviewFilter('all'); setDrilldown(null); setCategoryFilter(0); setAccountFilter(0); setSearch('') }}>
           <Icon name={icons[index]} />{item}
@@ -547,7 +552,7 @@ function App() {
             <input type="search" aria-label="Search transactions" placeholder="Search transactions" value={search} onChange={event => setSearch(event.target.value)} />
             <select aria-label="Filter account" value={accountFilter} onChange={event => setAccountFilter(Number(event.target.value))}>
               <option value={0}>All accounts</option>{groupedAccounts(ready.accounts).map(group => <optgroup label={group.name} key={group.name}>
-                {group.accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+                {group.accounts.map(account => <option key={account.id} value={account.id}>{account.name}{account.institution_name && ` / ${account.institution_name}`}</option>)}
               </optgroup>)}
             </select>
             <select aria-label="Filter category" value={categoryFilter} onChange={event => setCategoryFilter(Number(event.target.value))}>
@@ -585,12 +590,13 @@ function App() {
           <button className="secondary small" onClick={() => { setPage('Transactions'); setAllReviewDates(true); setAccountFilter(account.id); setCategoryFilter(0); setReviewFilter('all'); setSearch(''); setDrilldown(null) }}>View account transactions →</button>
           {mode === 'personal' && <div className="inline-actions"><button className="secondary small" onClick={() => open({ type: 'balance', account })}>Record balance</button>
             <button className="secondary small" onClick={() => open({ type: 'account', account })}>Edit account</button></div>}
-          {isDebt(account.kind) && <DebtDetails account={account} sandbox={mode === 'sandbox'} request={request} money={money} parseMoney={parseMoney} revision={revision} onChanged={() => setRevision(value => value + 1)} />}
+          {mode === 'sandbox' && account.balance_source === 'manual' && <button className="secondary small" onClick={() => void changeMode('personal')}>Manage this manual account in Personal</button>}
+          {isDebt(account.kind) && <DebtDetails account={account} sandbox={mode === 'sandbox'} managed={scenario === 'combined'} request={request} money={money} parseMoney={parseMoney} revision={revision} onChanged={() => setRevision(value => value + 1)} />}
           <BalanceHistory key={revision} account={account} sandbox={mode === 'sandbox'} request={request} />
         </>} />}
-      {page === 'Bank sync' && <BankSync key={scenario} investmentScenario={scenario === 'investments'} openInvestments={() => setPage('Investments')} request={request} money={money} onChanged={() => setRevision(value => value + 1)} />}
-      {page === 'Investments' && <Investments key={mode + scenario} sandbox={mode === 'sandbox'} request={request} money={money} openBank={() => setPage('Bank sync')} openTestScenario={scenario === 'banking' ? () => void changeScenario('investments') : undefined} onChanged={() => setRevision(value => value + 1)} />}
-      {page === 'Backup & restore' && <BackupRestore key={scenario} request={request} initialWorkspace={mode === 'sandbox' && scenario === 'investments' ? 'sandbox_investments' : mode ?? 'personal'} onRestored={() => {
+      {page === 'Bank sync' && (scenario === 'combined' ? <Connections request={request} onChanged={() => setRevision(value => value + 1)} /> : <BankSync key={scenario} investmentScenario={scenario === 'investments'} openInvestments={() => setPage('Investments')} request={request} money={money} onChanged={() => setRevision(value => value + 1)} />)}
+      {page === 'Investments' && <Investments key={mode + scenario} sandbox={mode === 'sandbox'} managed={scenario === 'combined'} request={request} money={money} openBank={() => setPage('Bank sync')} openTestScenario={scenario === 'banking' ? () => void changeScenario('investments') : undefined} onChanged={() => setRevision(value => value + 1)} />}
+      {page === 'Backup & restore' && <BackupRestore key={scenario} request={request} initialWorkspace={mode === 'sandbox' && scenario === 'combined' ? 'sandbox_combined' : mode === 'sandbox' && scenario === 'investments' ? 'sandbox_investments' : mode ?? 'personal'} onRestored={() => {
         setData(undefined); setDialog(null); setSelectedTransactions([]); setReviewHistory([]); setReviewStatuses({}); setChartAccountIds(null)
         setAllReviewDates(false); setDrilldown(null); setAccountFilter(0); setCategoryFilter(0); setSearch(''); setTransferFocus(null); setReviewMessage(''); setRevision(value => value + 1)
       }} />}

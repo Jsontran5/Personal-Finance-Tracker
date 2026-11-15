@@ -1,4 +1,4 @@
-export type GroupAccount = { kind?: string; provider_type?: string; subtype?: string | null }
+export type GroupAccount = { kind?: string; provider_type?: string; subtype?: string | null; institution_name?: string | null }
 export const accountGroups = ['Cash & savings', 'Investments & retirement', 'Health savings', 'Credit cards', 'Loans & credit lines', 'Other assets'] as const
 
 export function accountGroup(account: GroupAccount): string {

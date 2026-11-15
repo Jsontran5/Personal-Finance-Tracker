@@ -21,8 +21,8 @@ function ProviderDetails({ provider, security }: { provider: object; security: o
   return <details className="investment-provider"><summary>Provider details</summary><pre>{JSON.stringify({ record: provider, security }, null, 2)}</pre></details>
 }
 
-export function Investments({ sandbox, request, money, openBank, onChanged, openTestScenario }: {
-  sandbox: boolean; request: Request; money: Money; openBank: () => void; onChanged: () => void; openTestScenario?: () => void
+export function Investments({ sandbox, managed, request, money, openBank, onChanged, openTestScenario }: {
+  sandbox: boolean; managed?: boolean; request: Request; money: Money; openBank: () => void; onChanged: () => void; openTestScenario?: () => void
 }) {
   const [data, setData] = useState<Portfolio>()
   const [activity, setActivity] = useState<ActivityPage>()
@@ -106,14 +106,14 @@ export function Investments({ sandbox, request, money, openBank, onChanged, open
   return <div className="investments-page">
     {openTestScenario && <div className="notice"><p>The prepared holdings demo is in the Investments test scenario. Your banking connection stays saved separately.</p><button className="secondary small" onClick={openTestScenario}>Switch to investment demo</button></div>}
     <section className="card investment-sync">
-      <div className="section-heading"><div><h2>Broker-reported investments</h2><small>Holdings: {stamp(data.state?.holdings_at)} · Activity: {stamp(data.state?.activity_at)}</small></div><span className="chip">TEST MODE</span></div>
+      <div className="section-heading"><div><h2>Broker-reported investments</h2><small>{managed ? "View sync times for each institution in Bank sync." : <>Holdings: {stamp(data.state?.holdings_at)} / Activity: {stamp(data.state?.activity_at)}</>}</small></div><span className="chip">TEST MODE</span></div>
       <p className="muted">Sync retrieves Plaid’s latest available data, not live quotes. Holdings can update overnight. Initial activity may take up to two minutes.</p>
-      <div className="investment-actions"><button className="primary" disabled={busy} onClick={() => void sync(false)}>Sync holdings</button><button className="secondary" disabled={busy || !data.accounts.length} onClick={() => void sync(true)}>Sync activity</button>
-        <button className="secondary" disabled={busy} onClick={openBank}>Manage connection</button></div>
+      <div className="investment-actions">{!managed && <><button className="primary" disabled={busy} onClick={() => void sync(false)}>Sync holdings</button><button className="secondary" disabled={busy || !data.accounts.length} onClick={() => void sync(true)}>Sync activity</button>
+        </>}<button className="secondary" disabled={busy} onClick={openBank}>Manage connection</button></div>
       {busy && <p role="status">Retrieving investment data…</p>}{error && <p className="notice" role="alert">{error}</p>}{message && <p className="notice" role="status">{message}</p>}
     </section>
     <div className="filters investment-filters"><label>Investment account<select aria-label="Investment account" value={account} onChange={event => setAccount(event.target.value)}><option value="">All investment accounts</option>{data.accounts.map(item => <option key={item.id} value={item.id}>{item.name} · {nameOf(item.subtype)}</option>)}</select></label></div>
-    {!data.state?.holdings_at ? <section className="card"><h2>Load your existing portfolio</h2><p className="empty">Choose Sync holdings first, then Sync activity. Existing positions load as holdings, without becoming new income or spending.</p></section> : <>
+    {!data.state?.holdings_at ? <section className="card"><h2>Load your existing portfolio</h2><p className="empty">In Bank sync, choose Sync holdings first, then Sync activity for each investment institution. Existing positions load as holdings, without becoming new income or spending.</p></section> : <>
       <div className="investment-overview">
         <section className="card investment-value"><h2>Portfolio value</h2><strong className="hero-value numeric">{total === null ? '—' : money(total)}</strong><p className="muted">Saved USD account balances · cash and securities counted once</p>
           {accounts.some(item => item.currency !== 'USD' || item.current_minor === null) && <p className="notice">Other currencies and missing USD balances are excluded from this total.</p>}
@@ -145,7 +145,7 @@ export function Investments({ sandbox, request, money, openBank, onChanged, open
             <div className="investment-expanded"><dl className="investment-facts"><div><dt>Security</dt><dd>{item.security_name ?? 'Not supplied'} {item.ticker && `(${item.ticker})`}</dd></div><div><dt>Quantity</dt><dd>{quantity(item.quantity)}</dd></div><div><dt>Execution price</dt><dd>{price(item.price, item.currency)}</dd></div><div><dt>Fees</dt><dd>{format(item.fees_minor, item.currency)}</dd></div></dl><ProviderDetails provider={item.provider} security={item.security} /></div></details>)}
           {activity?.total === 0 && <p className="empty">No investment activity matches this view. Sync activity if you haven’t loaded history yet.</p>}
           {activity && activity.total > 25 && <div className="pagination"><button className="secondary small" disabled={page === 1 || loading} onClick={() => setPage(value => value - 1)}>Previous</button><small>Page {page} of {Math.ceil(activity.total / 25)}</small><button className="secondary small" disabled={page * 25 >= activity.total || loading} onClick={() => setPage(value => value + 1)}>Next</button></div>}
-          <details className="investment-history-help"><summary>History coverage</summary><p className="muted">Loaded range: {data.state?.activity_start ?? 'Not synced'} to {data.state?.activity_end ?? 'Not synced'}. Initial sync requests up to two years of available history. Later syncs reconcile the last seven days plus time since the previous sync. Reload history to check older corrections; older positions remain visible even when their purchase history is unavailable.</p><button className="secondary small" disabled={busy} onClick={() => void sync(true, true)}>Reload available history</button></details>
+          <details className="investment-history-help"><summary>History coverage</summary><p className="muted">{managed ? "History coverage varies by connection. View sync details in Bank sync." : <>Loaded range: {data.state?.activity_start ?? 'Not synced'} to {data.state?.activity_end ?? 'Not synced'}. Initial sync requests up to two years of available history. Later syncs reconcile the last seven days plus time since the previous sync. Reload history to check older corrections; older positions remain visible even when their purchase history is unavailable.</>}</p>{!managed && <button className="secondary small" disabled={busy} onClick={() => void sync(true, true)}>Reload available history</button>}</details>
         </>}
       </section>
     </>}

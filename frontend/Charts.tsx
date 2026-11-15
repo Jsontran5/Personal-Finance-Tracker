@@ -156,7 +156,7 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
           <button className="secondary small" disabled={busy} onClick={() => void saveSelection(eligible.map(account => account.id))}>Clear</button></div>
         <div className="picker-scroll">
         {groupedAccounts(eligible).map(group => {
-          const visible = group.accounts.filter(account => account.name.toLowerCase().includes(search.toLowerCase()))
+          const visible = group.accounts.filter(account => (account.name + ' ' + (account.institution_name ?? '')).toLowerCase().includes(search.toLowerCase()))
           if (!visible.length) return null
           const ids = group.accounts.map(account => account.id)
           const count = group.accounts.filter(account => !excluded.includes(account.id)).length
@@ -167,11 +167,11 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
               {group.name} <span className="subtle">{count}/{ids.length}</span></label></legend>
             {visible.map(account => <label className="checkbox" key={account.id}>
               <input type="checkbox" checked={!excluded.includes(account.id)} disabled={busy} onChange={event =>
-                void saveSelection(event.target.checked ? excluded.filter(id => id !== account.id) : [...excluded, account.id])} />{account.name}
+                void saveSelection(event.target.checked ? excluded.filter(id => id !== account.id) : [...excluded, account.id])} />{account.name}{account.institution_name && ` / ${account.institution_name}`}
             </label>)}
           </fieldset>
         })}
-        {!eligible.some(account => account.name.toLowerCase().includes(search.toLowerCase())) && <p className="muted">No matching accounts.</p>}
+        {!eligible.some(account => (account.name + ' ' + (account.institution_name ?? '')).toLowerCase().includes(search.toLowerCase())) && <p className="muted">No matching accounts.</p>}
         </div>
         <button className="secondary small picker-done" onClick={() => { if (picker.current) { picker.current.open = false; picker.current.querySelector('summary')?.focus() } }}>Done</button>
       </div>
