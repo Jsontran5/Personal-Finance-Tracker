@@ -73,7 +73,7 @@ def readiness(db, directory):
     ]
     return {'environment': 'production', 'configured': configured, 'linking_enabled': enabled,
             'setup': confirmed.model_dump(), 'checks': checks, 'ready': all(check['ok'] for check in checks),
-            'connected_items': connected, 'allowance_is_dashboard_confirmed': True,
+            'connected_items': connected, 'allowance_is_dashboard_confirmed': confirmed.trial_confirmed and confirmed.item_limit is not None,
             'limit_note': 'Dashboard allowance is authoritative. Local connected Items do not include Items created by other apps or removed Items.',
             'preflights': [json.loads(row[0]) for row in db.execute('SELECT payload FROM live_preflight ORDER BY checked_at DESC')]}
 

@@ -185,6 +185,13 @@ class LiveTests(TestCase):
             self.assertEqual(db.execute('SELECT cursor FROM multi_connections').fetchone()[0],'live-cursor')
         self.assertEqual(sum(name.endswith('/exchange') for name,_ in self.calls),1)
 
+    def test_backup_rejects_invalid_coverage_metadata(self):
+        self.prepare()
+        with connect(self.path,write=True) as db:
+            db.execute("UPDATE live_preflight SET payload='{}'")
+        result=self.client.post('/api/backups',json={'workspace':'live'})
+        self.assertEqual(result.status_code,422,result.text)
+
 
 class ProductionTransportTests(TestCase):
     def test_fixed_production_host_and_no_money_movement_or_sandbox_tokens(self):

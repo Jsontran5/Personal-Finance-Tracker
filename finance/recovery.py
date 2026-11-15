@@ -128,6 +128,16 @@ def validate_current_schema(path, mode, directory):
             from .live_setup import LiveSetup
             for row in candidate.execute('SELECT payload FROM live_setup'):
                 LiveSetup.model_validate_json(row[0])
+            for row in candidate.execute('SELECT payload,credentials_digest FROM live_preflight'):
+                value = json.loads(row['payload'])
+                if not isinstance(value, dict) or type(value.get('transactions')) is not bool or not isinstance(value.get('institution_id'), str) or not isinstance(value.get('name'), str) or not re.fullmatch('[a-f0-9]{64}', row['credentials_digest']):
+                    raise ValueError('Live coverage metadata is invalid.')
+                try:
+                    stamp = datetime.fromisoformat(value.get('checked_at', ''))
+                    if stamp.tzinfo is None:
+                        raise ValueError('Missing timezone.')
+                except (TypeError, ValueError):
+                    raise ValueError('Live coverage timestamp is invalid.') from None
         if mode == 'personal':
             from .debt import ManualDebt
             for row in candidate.execute('SELECT payload FROM manual_debt_details'):

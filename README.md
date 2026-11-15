@@ -47,7 +47,7 @@ Debt details are stored locally and included in workspace/scenario backups. Pers
 
 ## Back up the database
 
-Open **Backup & restore** in the sidebar. Choose **Personal**, **Sandbox · Banking**, **Sandbox · Investments**, or **Sandbox · Combined**, then **Create backup**. Back up each separately. Bundles in the project `backups/` folder include its database and chart selection: accounts, transactions, budgets, balance history, debt details, review/rule state, confirmed/dismissed transfer links, and investment holdings/activity. Appearance, the current workspace/scenario choices, `.env` credentials, and context documents are not included.
+Open **Backup & restore** in the sidebar. Choose **Personal**, **Sandbox · Banking**, **Sandbox · Investments**, **Sandbox · Combined**, or **Live**, then **Create backup**. Back up each separately. Bundles in the project `backups/` folder include its database and chart selection: accounts, transactions, budgets, balance history, debt details, review/rule state, confirmed/dismissed transfer links, and investment holdings/activity. Appearance, the current workspace/scenario choices, `.env` credentials, and context documents are not included.
 
 Choose **Preview restore** to validate a bundle and inspect its workspace/scenario, snapshot date, account/transaction and investment counts, sample accounts, and activity dates. Type the displayed confirmation phrase before restoring. A validated `recovery-…finance-backup.zip` of the current workspace is created first; use it to recover the previous data if needed. A bundle restores to its own named workspace/scenario, regardless of the current sidebar selection. The app refreshes its cached records after success. Other workspaces/scenarios are unaffected. Close other Finance instances and finish/cancel pending bank authorization for the destination before restoring.
 
@@ -56,6 +56,12 @@ Sandbox restores retain the current authorization when the backup belongs to the
 Existing `.db` backups are also listed. They are checked and migrated on a temporary copy; current chart selection is retained because legacy files do not include it. Corrupt, incompatible, oversized, or stale restore previews are rejected. The UI supports databases up to approximately 256 MB. Bundles contain private financial records; only the stored bank tokens are Windows-user encrypted. Keep a separate copy on storage you control if you need protection from loss of the project or drive.
 
 The original Personal-only CLI remains available: `.venv\Scripts\python.exe -m finance.backup`. It creates a consistent, integrity-checked `.db` file in `backups/`. Context notes and checkpoints remain local-only in `context_docs/`.
+
+## Prepare Live bank connections
+
+Choose **Workspace → Live → Bank sync** for the readiness checks. Live data, credentials, authorizations, chart settings and backups are isolated from Sandbox. Your confirmed Trial allowance (20) and Transactions access are recorded locally; Production credentials, OAuth/Hosted Link confirmations and actual institution coverage still need verification. Real-bank linking remains locked with `PLAID_LIVE_ENABLED=false` and cannot be enabled from the browser.
+
+Follow [Live setup and BofA pilot](LIVE_SETUP.md) to finish configuration without connecting a bank. Use the explicit Production entries in `.env.example`; keep the existing Sandbox secret. The first separately approved pilot supports Transactions and balances. New real-bank Item creation, investment/debt-term product rollout and live stock quotes are outside this preparation. This app remains a local, single-user desktop service, not an internet deployment.
 
 ## Try Plaid Sandbox
 
@@ -98,7 +104,7 @@ Choose **Workspace: Sandbox preview → Test scenario: Combined**. The prepared 
 - **Include manual accounts from Personal** explicitly selects read-only mirrors, such as a manually entered Nelnet student loan. Add/edit the original balance, transactions and debt terms in Personal. Selected records refresh when Combined reloads; deselecting removes them from Combined without deleting the originals. Include only accounts not already represented by a bank connection. No real manual loan or invented balance is created for you.
 - Use **Investments** for the combined portfolio and **Bank sync** to sync holdings/activity for the relevant institution. Product support and consent still vary; a displayed investment account balance alone does not establish Holdings API support. Syncing account balances does not count holdings again in net worth.
 
-Combined data is project-local in `data/finance.plaid-combined-sandbox.db` (schema 8). The existing single-Item scenarios stay at schema 7 and Personal at schema 4. Production remains disabled; these changes do not connect real banks or consume Trial Production connections.
+Combined data is project-local in `data/finance.plaid-combined-sandbox.db` (schema 8). The existing single-Item scenarios stay at schema 7 and Personal at schema 4. Live bank linking remains locked; these changes do not connect real banks or consume Trial Production connections. See the Live setup guide to prepare real-data access.
 
 Back up Combined from **Backup & restore → Sandbox · Combined**. Restore requires the same connected Item set when authorizations are already present; a backup cannot silently remove a newer connection. Pending Link sessions block restore. Manual mirrors refresh from Personal, so back up Personal separately to preserve their canonical records. No new connection or provider request occurs during restore.
 
@@ -110,7 +116,7 @@ Holdings include existing positions, cash/equivalents, quantities, broker prices
 
 The **Activity** tab has account, security/description, type, and date filters with 25 records per page. Buys, sells, dividends, contributions, withdrawals, fees, and cancellations stay separate from everyday spending and budgets. Positive provider amounts use cash; negative amounts add cash. Initial sync requests up to two years of available history. Later syncs reconcile a seven-day overlap plus the period since the previous sync; **History coverage → Reload available history** rechecks older corrections within the available two-year range. Holdings sync separately, so a delayed activity request does not discard loaded positions. No automated polling or public webhook service is added.
 
-The original banking test institution returns `PRODUCTS_NOT_SUPPORTED` for Investments despite exposing investment-type account balances. It stays in the Banking scenario, with its original data intact. The separate Investments scenario has been populated with an investment-capable Sandbox connection. Custom Sandbox users require `investments` in the initial required products, rather than only additional consent. Multiple Sandbox institutions can now share Combined. Real-bank connections remain a separately approved milestone.
+The original banking test institution returns `PRODUCTS_NOT_SUPPORTED` for Investments despite exposing investment-type account balances. It stays in the Banking scenario, with its original data intact. The separate Investments scenario has been populated with an investment-capable Sandbox connection. Custom Sandbox users require `investments` in the initial required products, rather than only additional consent. Multiple Sandbox institutions can now share Combined. Real-bank linking remains a separately approved milestone; a separate Live workspace/readiness flow is now prepared.
 
 ## Local development
 
