@@ -144,7 +144,7 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
       </div>
       <span className="chip">USD · {workspaceLabel ? workspaceLabel + ' balances' : mode === 'sandbox' ? 'Sandbox balances' : 'Manual balances'}</span>
     </div>
-    <div className="segmented net-worth-modes" aria-label="Balance chart measure">{[['net', 'Net worth'], ['assets', 'Assets'], ['debt', 'Debt']].map(([value, label]) => <button key={value} aria-pressed={chartMode === value} onClick={() => setChartMode(value)}>{label}</button>)}</div>
+    <div className="hero-controls"><div className="segmented net-worth-modes" aria-label="Balance chart measure">{[['net', 'Net worth'], ['assets', 'Assets'], ['debt', 'Debt']].map(([value, label]) => <button key={value} aria-pressed={chartMode === value} onClick={() => setChartMode(value)}>{label}</button>)}</div>
     {error && <p className="notice" role="alert">{error}{excluded === null && <button className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button>}</p>}
     {eligible.length > 0 && excluded !== null && <details ref={picker} className="account-picker" onKeyDown={event => {
       if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus() }
@@ -176,6 +176,7 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
         <button className="secondary small picker-done" onClick={() => { if (picker.current) { picker.current.open = false; picker.current.querySelector('summary')?.focus() } }}>Done</button>
       </div>
     </details>}
+    </div>
     {excluded === null && !error && <p className="muted">Loading chart selection…</p>}
     {excluded !== null && eligible.length === 0 && <div className="welcome">
       <h2>{accounts.length ? 'No eligible USD accounts' : 'Start with an account'}</h2>

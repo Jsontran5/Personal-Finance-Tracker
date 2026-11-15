@@ -143,7 +143,8 @@ def run():
                 js('[...document.querySelectorAll(' + json.dumps(selector) + ')].find(b=>b.textContent===' + json.dumps(text) + ').click()')
             def screenshot(name):
                 time.sleep(.2)
-                assert js('document.documentElement.scrollWidth <= innerWidth'), name
+                assert js('document.documentElement.scrollWidth <= document.documentElement.clientWidth'), name
+                assert js("[...document.querySelectorAll('dialog[open]')].every(e=>e.scrollWidth<=e.clientWidth+1)"), 'Dialog overflow: '+name
                 data = cdp('Page.captureScreenshot', {'format': 'png', 'captureBeyondViewport': False})
                 (OUTPUT / (name + '.png')).write_bytes(base64.b64decode(data['data']))
 
@@ -151,6 +152,13 @@ def run():
 
 
 
+            def contrast(first, second):
+                def luminance(value):
+                    value=value.lstrip('#');value=''.join(c*2 for c in value) if len(value)==3 else value;channels=[int(value[index:index+2],16)/255 for index in (0,2,4)]
+                    values=[v/12.92 if v<=.04045 else ((v+.055)/1.055)**2.4 for v in channels]
+                    return sum(a*b for a,b in zip(values,[.2126,.7152,.0722]))
+                low,high=sorted([luminance(first),luminance(second)])
+                return (high+.05)/(low+.05)
             def click(selector, text=None):
                 expression="(()=>{const list=[...document.querySelectorAll("+json.dumps(selector)+")];const e=list.find(e=>e.getClientRects().length && getComputedStyle(e).visibility!=='hidden'"+(" && e.textContent.trim()==="+json.dumps(text) if text else '')+");if(!e)throw Error('Visible control missing');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()"
                 point=js(expression)
@@ -178,6 +186,11 @@ def run():
                 for theme in ('dark','light'):
                     if js('document.documentElement.dataset.theme')!=theme:
                         click('.theme-toggle');ready("!document.querySelector('.theme-toggle').disabled")
+                    palette=js("Object.fromEntries(['--text','--muted','--surface','--accent','--accent-ink','--control-line','--field'].map(k=>[k,getComputedStyle(document.documentElement).getPropertyValue(k).trim()]))")
+                    assert contrast(palette['--text'],palette['--surface'])>=4.5
+                    assert contrast(palette['--muted'],palette['--surface'])>=4.5
+                    assert contrast(palette['--accent-ink'],palette['--accent'])>=4.5
+                    assert contrast(palette['--control-line'],palette['--field'])>=3
                     for page in pages:
                         nav(page)
                         ready("!document.querySelector('main > [role=status]')")
@@ -189,6 +202,10 @@ def run():
                         click('button[aria-label="More sections"]');ready("document.querySelector('.navigation-sheet[open]')")
                         screenshot(f'{width}-{theme}-redesign-more')
                         key('Escape');ready("!document.querySelector('dialog[open]')")
+                    nav('Overview');ready("document.querySelector('.account-picker')")
+                    click('.account-picker > summary')
+                    screenshot(f'{width}-{theme}-redesign-chart-account-picker')
+                    click('.account-picker button','Done')
                     # Inspect an account using real pointer input, then keyboard close/focus return.
                     nav('Accounts');ready("document.querySelector('.account-summary')")
                     click('.account-summary');ready("document.querySelector('.account-inspector[open]')")

@@ -1,3 +1,4 @@
+import { trapDialogFocus } from './dialogFocus'
 import { useEffect, useRef, useState } from 'react'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
@@ -61,7 +62,7 @@ export function TransactionReview<T extends Tx>({ path, request, transactions, c
     <div className="review-heading"><label>Review view<select aria-label="Review filter" value={filter} disabled={!data} onChange={event => setFilter(event.target.value)}>
       <option value="all">All activity</option><option value="needs_review">Needs review ({needsReview}{allDates ? ' across all dates' : ' this month'})</option><option value="uncategorized">Uncategorized</option><option value="reviewed">Reviewed</option>
     </select></label><label>Date scope<select aria-label="Review date scope" value={allDates ? 'all' : 'month'} disabled={!data} onChange={event => setAllDates(event.target.value === 'all')}><option value="month">Reporting month</option><option value="all">All saved dates</option></select></label><button className="secondary small" disabled={!data} onClick={() => start('rule')}>New merchant rule</button></div>
-    <p className="analytics-note">Backfills do not require reviewing every purchase. Needs review contains ambiguous credits and entries you flag. Uncategorized is separate. Flagging a purchase does not remove it from spending.</p>
+    <details className="review-help"><summary>How review works</summary><p className="analytics-note">Backfills do not require reviewing every purchase. Needs review contains ambiguous credits and entries you flag. Uncategorized is separate. Flagging a purchase does not remove it from spending.</p></details>
     {error && <p className="notice" role="alert">{error}{!data && <button className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button>}</p>}
     {data && <div className="review-selection"><div className="inline-actions"><button className="secondary small" onClick={() => setSelected([...new Set([...selected, ...pageIds])])} disabled={!pageIds.length}>Select page</button>
       <button className="secondary small" disabled={!matchingIds.length || matchingIds.length > 10000} onClick={() => setSelected(matchingIds)}>Select matching ({matchingIds.length})</button>
@@ -74,7 +75,7 @@ export function TransactionReview<T extends Tx>({ path, request, transactions, c
           const active = event.target.checked
           void run(async () => { await request(path + '/rules/' + rule.id, 'PUT', { active }); setAttempt(value => value + 1) })
         }} />Future imports</label></div>)}</div></details>}
-    {operation && <dialog ref={dialog} aria-labelledby="review-title" onCancel={event => { event.preventDefault(); if (!busy) setOperation(null) }}>
+    {operation && <dialog onKeyDown={trapDialogFocus} ref={dialog} aria-labelledby="review-title" onCancel={event => { event.preventDefault(); if (!busy) setOperation(null) }}>
       <div className="dialog-heading"><h2 id="review-title">{operation === 'rule' ? 'Merchant rule' : operation === 'classify' ? 'Classify selected transactions' : operation === 'review' ? 'Mark selected as reviewed' : 'Flag selected for review'}</h2><button type="button" className="icon" disabled={busy} aria-label="Close review dialog" onClick={() => setOperation(null)}>×</button></div>
       <form onSubmit={event => { event.preventDefault(); const batch = makeBatch(); void run(async () => { setPreview({ result: await request<Preview>(path + '/preview', 'POST', batch), batch }) }) }}>
         <fieldset disabled={busy} onChange={() => setPreview(undefined)}>
