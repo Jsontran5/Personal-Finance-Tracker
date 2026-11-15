@@ -10,6 +10,16 @@ A local Windows ledger for manual transactions, budgets, account balances, and n
 
 From the VS Code PowerShell terminal, run `& .\.venv\Scripts\python.exe -m finance`, or use `.\Start Finance.ps1`. Both run directly in the terminal, so **Ctrl+C** stops the server without the batch-file **Terminate batch job (Y/N)?** prompt. Run the same command again to restart. If local PowerShell policy blocks the script, use the direct Python command.
 
+## Dashboard layout
+
+The interface uses graphite/blue dark mode and a complete light theme. On desktop, all eight sections are in the sidebar. On phones and smaller tablets, use the bottom navigation for **Overview**, **Spending**, **Transactions**, and **Accounts**; **More** opens **Budgets**, **Investments**, **Bank sync**, and **Backup & restore**. Workspace/scenario selectors and the appearance switch stay in the top area.
+
+Select an account to open its inspector: balance, source information, history, transactions, manual editing and debt details remain available there. Transaction editors open as side panels on desktop and tall sheets on phones, with explicit Save/Cancel. Provider details remain collapsed until opened. Press Escape or use Close to dismiss a panel; keyboard focus returns to its source.
+
+Overview places cash flow and budget progress alongside net worth, followed by the spending calendar, recent activity and account composition. Net worth account selection is beside its measure controls; its phone/tablet picker stays above the bottom navigation. **About this workspace** expands the environment explanation. Relevant warnings and the Live readiness/linking lock remain visible in their existing workflows. These layout changes preserve financial calculations, stored data, workspace separation and all connection/restore safeguards.
+
+Reduced-motion, reduced-transparency and higher-contrast preferences have dedicated fallbacks. The interface uses local system fonts and adds no external font or motion dependency.
+
 ## Record your finances
 
 - Deleting a manual transaction opens a warning with its saved merchant, amount, date, and account. Tick **I understand this permanently deletes the transaction.** to enable **Delete transaction**. Cancel or Escape returns to your unsaved edits. Deletion has no Undo.
@@ -132,3 +142,5 @@ With both saved scenarios and Chrome available, run `python tests/check_scenario
 
 
 For Combined browser verification, run `python tests/check_combined_ui.py` after the build, with Chrome and the prepared Combined fixture available. It uses isolated copies, adds only synthetic manual accounts/institution rows to those copies, checks long lists and expanded/collapsed details in both themes at desktop/phone widths, restarts the backend, and performs a confirmed restore. Add `--live` to sync transactions and holdings/activity on the existing Sandbox Items without creating new Items. Screenshots stay ignored under `data/ui-qa`.
+
+For the complete redesign/browser checks, run `python tests/check_redesign_ui.py` after building. It uses isolated data copies and a synthetic Production provider, verifies all eight screens in both themes at 1440/1280/768/390/320 widths, uses real pointer/keyboard events for navigation/inspectors, checks chart picker reachability, text/control palette contrast, focus return, reduced-motion/material/contrast fallbacks and 200%-equivalent reflow. It never links a real bank. Screenshots remain ignored under `data/ui-qa`.
