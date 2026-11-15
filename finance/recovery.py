@@ -19,7 +19,7 @@ from .db import connect, database_lock, initialize
 from .scenarios import sandbox_path, chart_path
 
 MAX_SIZE = 256 * 1024 * 1024
-VERSIONS = {'personal': 4, 'sandbox': 7, 'sandbox_investments': 7}
+VERSIONS = {'personal': 4, 'sandbox': 7, 'sandbox_investments': 7, 'sandbox_combined': 8}
 
 
 def checksum(path):
@@ -54,7 +54,7 @@ def check_database(path):
         if db.execute("SELECT 1 FROM sqlite_schema WHERE type IN ('trigger','view')").fetchone():
             raise ValueError('Backups containing triggers or views are not supported.')
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        mode = 'sandbox' if {'connection', 'link', 'accounts', 'transactions'} <= tables else 'personal' if {'settings', 'balance_snapshots', 'net_worth_snapshots'} <= tables else None
+        mode = 'sandbox_combined' if 'multi_connections' in tables else 'sandbox' if {'connection', 'link', 'accounts', 'transactions'} <= tables else 'personal' if {'settings', 'balance_snapshots', 'net_worth_snapshots'} <= tables else None
         if mode is None:
             raise ValueError('This is not a recognized Finance database.')
         version = db.execute('PRAGMA user_version').fetchone()[0]
@@ -63,18 +63,24 @@ def check_database(path):
         counts = {name: db.execute(f'SELECT COUNT(*) FROM {name}').fetchone()[0] for name in ['accounts', 'transactions']}
         if 'manual_debt_details' in tables:
             counts['debt_details'] = db.execute('SELECT COUNT(*) FROM manual_debt_details').fetchone()[0]
-        if mode == 'sandbox':
+        if mode != 'personal':
             counts['active_transactions'] = db.execute('SELECT COUNT(*) FROM transactions WHERE removed=0').fetchone()[0]
             if 'investment_holdings' in tables:
                 counts['holdings'] = db.execute('SELECT COUNT(*) FROM investment_holdings').fetchone()[0]
                 counts['investment_activity'] = db.execute('SELECT COUNT(*) FROM investment_activity WHERE removed=0').fetchone()[0]
             if 'liability_details' in tables:
                 counts['debt_details'] = db.execute('SELECT COUNT(*) FROM liability_details').fetchone()[0]
+            if mode == 'sandbox_combined':
+                counts['connections'] = db.execute('SELECT COUNT(*) FROM multi_connections WHERE item_id IS NOT NULL').fetchone()[0]
         return {'workspace': mode, 'schema_version': version, 'counts': counts}
 
 
 def migrate(path, mode):
-    if mode == 'personal':
+    if mode == 'sandbox_combined':
+        from .multi_bank import initialize_combined
+        with connect(path, write=True) as db:
+            initialize_combined(db)
+    elif mode == 'personal':
         initialize(path)
     else:
         from .sandbox_preview import initialize_preview
@@ -86,7 +92,7 @@ def validate_current_schema(path, mode, directory):
     """Compare all required table/column types with a newly initialized reference."""
     mode = 'sandbox' if mode == 'sandbox_investments' else mode
     reference = directory / 'reference.db'
-    if mode == 'sandbox':
+    if mode in {'sandbox', 'sandbox_combined'}:
         from .plaid_sandbox import SCHEMA
         with connect(reference, write=True) as db:
             for statement in SCHEMA:
@@ -102,9 +108,9 @@ def validate_current_schema(path, mode, directory):
             actual = {row['name']: row['type'].upper() for row in candidate.execute(f'PRAGMA table_info({table})')}
             if actual != required:
                 raise ValueError('Backup columns do not match the supported workspace schema.')
-        if mode == 'sandbox' and candidate.execute('SELECT 1 FROM transaction_details WHERE NOT json_valid(payload) LIMIT 1').fetchone():
+        if mode != 'personal' and candidate.execute('SELECT 1 FROM transaction_details WHERE NOT json_valid(payload) LIMIT 1').fetchone():
             raise ValueError('Saved transaction metadata is not valid JSON.')
-        if mode == 'sandbox':
+        if mode != 'personal':
             for table, columns in [('investment_holdings', ['payload', 'security']),
                                    ('investment_activity', ['payload', 'security']),
                                    ('investment_observations', ['accounts']), ('liability_details', ['payload', 'balances'])]:
@@ -154,7 +160,7 @@ class BackupStore:
         self.guard = database.parent / 'backup-management'
 
     def target(self, mode):
-        return self.database if mode == 'personal' else sandbox_path(self.database, 'investments' if mode == 'sandbox_investments' else 'banking')
+        return self.database if mode == 'personal' else sandbox_path(self.database, 'combined' if mode == 'sandbox_combined' else 'investments' if mode == 'sandbox_investments' else 'banking')
 
     def preference(self, mode):
         return chart_path(self.database, mode)
@@ -251,6 +257,27 @@ class BackupStore:
             yield source, copy, info, manifest, settings
 
     def bank_policy(self, candidate, target):
+        with readonly(candidate) as check:
+            multi = check.execute("SELECT 1 FROM sqlite_schema WHERE name='multi_connections'").fetchone()
+        if multi:
+            with readonly(candidate) as db:
+                saved = {row['item_id']: dict(row) for row in db.execute('SELECT * FROM multi_connections WHERE item_id IS NOT NULL')}
+            current = {}
+            if target.is_file():
+                with readonly(target) as db:
+                    if db.execute('SELECT 1 FROM multi_sessions LIMIT 1').fetchone():
+                        raise ValueError('Finish or cancel all pending Combined Link sessions before restoring.')
+                    current = {row['item_id']: dict(row) for row in db.execute('SELECT * FROM multi_connections WHERE item_id IS NOT NULL')}
+            if current and set(current) != set(saved):
+                raise ValueError('Combined backup has a different set of Items. Choose a backup matching the current connections; no authorization was changed.')
+            from .plaid_vault import protect
+            if not current:
+                for row in saved.values():
+                    try:
+                        protect(row['token'], False)
+                    except Exception:
+                        raise ValueError('Combined saved authorization cannot be unlocked by this Windows user.') from None
+            return ('keep_multiple_authorizations' if current else 'restore_multiple_authorizations'), current
         with readonly(candidate) as db:
             saved = db.execute('SELECT * FROM connection WHERE id=1').fetchone()
             saved = dict(saved) if saved else None
@@ -327,7 +354,12 @@ class BackupStore:
                     migrate(target, mode)
                 if mode != 'personal':
                     policy, current = self.bank_policy(copy, target)
-                    if current:
+                    if mode == 'sandbox_combined':
+                        with connect(copy, write=True) as db:
+                            for item_id, row in current.items():
+                                db.execute('UPDATE multi_connections SET token=?,needs_reauth=?,balance_checked_at=? WHERE item_id=?', (row['token'], row['needs_reauth'], row['balance_checked_at'], item_id))
+                            db.execute('DELETE FROM multi_sessions')
+                    elif current:
                         with connect(copy, write=True) as db:
                             if db.execute('SELECT 1 FROM connection WHERE id=1').fetchone():
                                 db.execute('UPDATE connection SET item_id=?,token=?,needs_reauth=?,balance_checked_at=? WHERE id=1',
@@ -360,7 +392,7 @@ class BackupStore:
 
 
 class CreateBackup(BaseModel):
-    workspace: Literal['personal', 'sandbox', 'sandbox_investments']
+    workspace: Literal['personal', 'sandbox', 'sandbox_investments', 'sandbox_combined']
 
 
 class RestoreBackup(BaseModel):

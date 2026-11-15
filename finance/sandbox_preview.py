@@ -34,7 +34,7 @@ class BudgetEdit(BaseModel):
 
 def initialize_preview(db):
     version = db.execute("PRAGMA user_version").fetchone()[0]
-    if version == 7:
+    if version in {7, 8}:
         return
     if version == 6:
         from .debt import initialize_liabilities
@@ -113,12 +113,15 @@ def initialize_preview(db):
 
 
 def preview_accounts(db):
-    return [dict(row) for row in db.execute("""
+    multi = db.execute("SELECT 1 FROM sqlite_schema WHERE name='connection_accounts'").fetchone()
+    inclusion = "COALESCE((SELECT included FROM connection_accounts m WHERE m.account_id=accounts.id),1)" if multi else '1'
+    institution = "(SELECT COALESCE(c.name,'Personal') FROM connection_accounts m LEFT JOIN multi_connections c ON c.id=m.connection_id WHERE m.account_id=accounts.id)" if multi else 'NULL'
+    return [dict(row) for row in db.execute(f"""
         SELECT rowid AS id, name, type AS provider_type, subtype,
           CASE type WHEN 'depository' THEN COALESCE(subtype,'depository') WHEN 'loan' THEN 'loan'
             WHEN 'credit' THEN 'credit' WHEN 'investment' THEN 'investment' ELSE 'other' END AS kind,
           currency, current_minor AS balance_minor, checked_at AS balance_date,
-          1 AS include_in_net_worth, source AS balance_source,
+          {inclusion} AS include_in_net_worth, source AS balance_source,{institution} AS institution_name,
           (SELECT COUNT(*) FROM transactions t WHERE t.account_id=accounts.id AND t.removed=0) AS transaction_count
         FROM accounts WHERE active=1 ORDER BY rowid
     """)]
@@ -147,7 +150,8 @@ def preview_transactions(db, month):
           COALESCE(e.merchant,t.name) AS merchant, t.name AS source_merchant, COALESCE(e.notes,'') AS notes,
           t.date,t.currency,t.pending,a.name AS account_name,c.name AS category_name,
           json_extract(d.payload,'$.personal_finance_category.primary') AS bank_category,
-          NULL AS destination_name, CASE WHEN t.kind='credit' AND e.kind IS NULL THEN 1 ELSE 0 END AS needs_review
+          NULL AS destination_name, CASE WHEN t.kind='credit' AND e.kind IS NULL THEN 1 ELSE 0 END AS needs_review,
+          COALESCE(json_extract(d.payload,'$._finance_manual'),0) AS manual_source
         FROM transactions t JOIN accounts a ON a.id=t.account_id
         LEFT JOIN preview_edits e ON e.transaction_id=t.id
         LEFT JOIN preview_categories c ON c.id=e.category_id
@@ -225,6 +229,9 @@ def sandbox_preview_router(database, initialize_sandbox, *, path=None):
             row = db.execute("SELECT id,amount_minor FROM transactions WHERE rowid=? AND removed=0", (row_id,)).fetchone()
             if row is None:
                 raise HTTPException(404, "Transaction no longer available. Refresh this view.")
+            manual = db.execute("SELECT 1 FROM transaction_details WHERE transaction_id=? AND json_extract(payload,'$._finance_manual')=1", (row['id'],)).fetchone()
+            if manual:
+                raise HTTPException(409, 'Manage this manual transaction in Personal.')
             require_unlinked(db, row['id'])
             if (row["amount_minor"] > 0 and item.kind in {"income", "refund"}) or (
                 row["amount_minor"] < 0 and item.kind == "expense"

@@ -95,7 +95,7 @@ def manual_debt_router(database):
     return router
 
 
-def save_liabilities(db, response, retrieved_at):
+def save_liabilities(db, response, retrieved_at, *, scope=None):
     accounts = {item['account_id']: item for item in response['accounts']}
     rows = []
     for category in ['credit', 'student', 'mortgage', 'loan', 'line_of_credit']:
@@ -107,7 +107,10 @@ def save_liabilities(db, response, retrieved_at):
             payload = {key: value for key, value in supplied.items() if key not in {'account_number', 'payment_reference_number'}}
             rows.append((identifier, category, json.dumps(payload, default=str, ensure_ascii=False),
                          json.dumps(accounts[identifier]['balances'], default=str), retrieved_at))
-    db.execute('DELETE FROM liability_details')
+    if scope is None:
+        db.execute('DELETE FROM liability_details')
+    else:
+        db.executemany('DELETE FROM liability_details WHERE account_id=?', [(identifier,) for identifier in scope])
     db.executemany('INSERT INTO liability_details VALUES (?,?,?,?,?)', rows)
     db.execute('INSERT INTO liability_state VALUES (1,?) ON CONFLICT(id) DO UPDATE SET synced_at=excluded.synced_at', (retrieved_at,))
 

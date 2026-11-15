@@ -40,9 +40,11 @@ def review_rows(db, sandbox):
           e.category_id,COALESCE(e.notes,'') AS notes,t.date,t.amount_minor,t.currency,t.pending,
           CASE WHEN t.kind='credit' AND e.kind IS NULL THEN 1 ELSE 0 END AS needs_review,
           CASE WHEN e.transaction_id IS NOT NULL THEN 1 ELSE 0 END AS has_edit,
-          NULL AS destination_id,r.state,r.origin,a.name AS account_name
+          NULL AS destination_id,r.state,r.origin,a.name AS account_name,
+          COALESCE(json_extract(d.payload,'$._finance_manual'),0) AS manual_source
           FROM transactions t JOIN accounts a ON a.id=t.account_id
           LEFT JOIN preview_edits e ON e.transaction_id=t.id
+          LEFT JOIN transaction_details d ON d.transaction_id=t.id
           LEFT JOIN transaction_reviews r ON r.transaction_id=t.id WHERE t.removed=0"""
     else:
         sql = """SELECT t.id,t.id AS source_id,t.account_id,t.account_id AS source_account,
@@ -94,6 +96,8 @@ def matches(row, merchant, account_id, kind):
 
 
 def reason(db, row, action, sandbox, rule=False):
+    if row.get('manual_source'):
+        return 'Manage this manual transaction in Personal'
     if row['pending']:
         return 'Pending: wait until posted'
     protected = (row['has_edit'] and row['origin'] != 'rule') if sandbox else (row['origin'] == 'user' or (row['category_id'] is not None and row['origin'] != 'rule'))
@@ -198,7 +202,7 @@ def review_router(database, sandbox=False, initialize=None, after_write=None):
             categories = dict(db.execute('SELECT id,name FROM ' + ('preview_categories' if sandbox else 'categories')))
             accounts = dict(db.execute('SELECT id,name FROM accounts'))
             fields = ['id', 'account_id', 'destination_id', 'category_id', 'kind', 'currency', 'merchant', 'notes', 'date', 'account_name', 'pending', 'needs_review', 'source_merchant', 'transfer_pair_id', 'transfer_kind', 'transfer_role', 'transfer_other_account']
-            items = [{**{key: row[key] for key in fields}, 'amount_minor': abs(row['amount_minor']),
+            items = [{**{key: row[key] for key in fields}, 'manual_source': row.get('manual_source', 0), 'amount_minor': abs(row['amount_minor']),
                       'category_name': categories.get(row['category_id']), 'destination_name': accounts.get(row['destination_id']),
                       'review_status': status(row)} for row in rows]
             return {'counts': counts, 'uncategorized': sum(not row['transfer_pair_id'] and row['category_id'] is None and row['kind'] in {'expense', 'income', 'refund'} for row in rows),

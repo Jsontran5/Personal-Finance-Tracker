@@ -46,7 +46,7 @@ def compatible(outgoing, incoming):
         gap = abs((date.fromisoformat(outgoing['date']) - date.fromisoformat(incoming['date'])).days)
     except (ValueError, TypeError):
         return False
-    return (not any(row['pending'] or row['removed'] for row in (outgoing, incoming))
+    return (not any(row['pending'] or row['removed'] or str(row['source_id']).startswith('m:') for row in (outgoing, incoming))
             and outgoing['amount_minor'] > 0 and outgoing['amount_minor'] == -incoming['amount_minor']
             and outgoing['source_account'] != incoming['source_account'] and outgoing['currency'] is not None
             and outgoing['currency'] == incoming['currency'] and gap <= 5

@@ -58,7 +58,7 @@ def fetch_activity(call, token, start, end):
     return rows
 
 
-def save_holdings(db, result, retrieved_at):
+def save_holdings(db, result, retrieved_at, *, scope=None, observation_accounts=None):
     securities = {security['security_id']: security for security in result.get('securities', [])}
     accounts = {account['account_id']: account for account in result['accounts'] if account['type'] == 'investment'}
     rows = []
@@ -67,21 +67,27 @@ def save_holdings(db, result, retrieved_at):
             raise ValueError('A holding has no matching investment account.')
         rows.append((holding['account_id'], holding['security_id'], encode(holding),
                      encode(securities.get(holding['security_id'], {})), retrieved_at))
-    db.execute('DELETE FROM investment_holdings')
+    if scope is None:
+        db.execute('DELETE FROM investment_holdings')
+    else:
+        db.executemany('DELETE FROM investment_holdings WHERE account_id=?', [(identifier,) for identifier in scope])
     db.executemany('INSERT INTO investment_holdings VALUES (?,?,?,?,?)', rows)
     db.execute('INSERT OR IGNORE INTO investment_state(id) VALUES (1)')
     db.execute('UPDATE investment_state SET holdings_at=? WHERE id=1', (retrieved_at,))
     observations = [{'account_id': key, 'name': account['name'],
                      'currency': account['balances'].get('iso_currency_code'),
                      'value_minor': money_minor(account['balances'].get('current'), account['balances'].get('iso_currency_code'))}
-                    for key, account in accounts.items()]
+                    for key, account in accounts.items()] if observation_accounts is None else observation_accounts
     db.execute('INSERT INTO investment_observations(date,retrieved_at,accounts) VALUES (?,?,?)',
                (date.today().isoformat(), retrieved_at, encode(observations)))
 
 
-def save_activity(db, rows, start, end, retrieved_at):
+def save_activity(db, rows, start, end, retrieved_at, *, scope=None):
     # Absences in a complete queried range remove corrected/cancelled source records.
-    db.execute('UPDATE investment_activity SET removed=1 WHERE date BETWEEN ? AND ?', (start, end))
+    if scope is None:
+        db.execute('UPDATE investment_activity SET removed=1 WHERE date BETWEEN ? AND ?', (start, end))
+    else:
+        db.executemany('UPDATE investment_activity SET removed=1 WHERE account_id=? AND date BETWEEN ? AND ?', [(identifier, start, end) for identifier in scope])
     for tx, security in rows:
         db.execute('''INSERT INTO investment_activity VALUES (?,?,?,?,?,0)
             ON CONFLICT(id) DO UPDATE SET account_id=excluded.account_id,date=excluded.date,
