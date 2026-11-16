@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, StringConstraints
 
 from .db import connect
+from .transaction_flow import project_flow
 from .ledger import attach_snapshot_accounts, monthly_activity, totals
 from .spending import previous_month, spending_report
 from .review import initialize_review, mark, review_router
@@ -157,8 +158,8 @@ def record_preview_snapshot(db):
 
 
 def preview_transactions(db, month):
-    return project_transfers(db, [dict(row) for row in db.execute("""
-        SELECT t.rowid AS id, a.rowid AS account_id, NULL AS destination_id,
+    return project_flow(project_transfers(db, [dict(row) for row in db.execute("""
+        SELECT t.amount_minor AS _flow_amount_minor,d.payload AS _flow_payload,t.rowid AS id, a.rowid AS account_id, NULL AS destination_id,
           e.category_id, ABS(t.amount_minor) AS amount_minor,
           COALESCE(e.kind, CASE WHEN t.kind='credit' THEN 'refund' ELSE t.kind END) AS kind,
           COALESCE(e.merchant,t.name) AS merchant, t.name AS source_merchant, COALESCE(e.notes,'') AS notes,
@@ -172,7 +173,7 @@ def preview_transactions(db, month):
         LEFT JOIN transaction_details d ON d.transaction_id=t.id
         WHERE t.removed=0 AND t.date>=? AND t.date<=?
         ORDER BY t.date DESC,t.rowid DESC
-    """, (month + "-01", month + "-31"))], True)
+    """, (month + "-01", month + "-31"))], True), provider=True)
 
 
 def preview_overview(db, month):
