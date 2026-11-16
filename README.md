@@ -169,3 +169,11 @@ In **Live > Accounts** or **Live > Bank sync**, choose **Refresh all** to fetch 
 Account rows show relative times for applicable data. Open an account's **Data updates** section for exact local timestamps, cached-balance labels and per-product failed attempts. Balance time belongs to the account's saved observation; transaction, holdings and activity times are shared institution fetch times. These are retrieval times, not the latest transaction date, broker valuation date or a guarantee of live prices. **Needs refresh** is a reminder after 24 hours without a successful fetch or when data has never been fetched. Product errors remain visible even if a different product sync succeeds; a successful retry clears only that product's error. Manual mirrors are maintained in Manual.
 
 Live schema 14 adds product-specific sync outcomes and includes them in backups. Existing Live schemas 9/10/13 migrate locally; Banking/Investments remain 11, Combined 12, Manual 4. Existing account names, financial data and authorizations remain intact.
+
+## Transaction direction and readable text
+
+The app uses locally bundled **Lexend** with higher-contrast primary/secondary text in both themes. The font license and source are included under frontend/fonts. Disabled buttons remain disabled and use readable muted text rather than low-opacity text.
+
+Ledger rows, recent spending and transaction inspectors show explicit **From / To** endpoints and signed amounts with **In / Out**. The direction comes from the bank-reported amount sign, independently of the income/spending/transfer classification. A card payment into a credit-card account can be incoming while remaining a transfer. Dates, posted/pending state, classification and review state remain visible.
+
+Confirmed pairs use the current local names of the two accounts. Otherwise, the app uses supplied payer/payee, a unique reported counterparty or merchant name, or an explicit “From …” / “To …” description. Bank-reported names and descriptions are labeled as such; they do not establish a match to one of your other accounts. Missing endpoints stay marked as not supplied. Manual entries use their selected destination or entered merchant. This is display-only metadata: no transaction, matching decision, classification, balance or net-worth calculation changes.
