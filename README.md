@@ -1,14 +1,29 @@
 # Personal Finance
 
-A local Windows ledger for manual transactions, budgets, account balances, and net worth. It serves the dashboard from your own computer and stores the database at `data/finance.db`.
+A local Windows personal-finance app for connected banks, manual accounts, transactions, budgets, investments, debt and net worth. Run your own copy with your own Plaid credentials. The app serves only your local computer; financial databases, keys, backups and local context stay outside Git.
 
 ## Start on Windows
 
 1. Install Python 3.13 and Node.js 22.12 or later if needed.
 2. Run **Setup Finance.cmd** once to install dependencies and build the dashboard. This step needs internet access.
-3. Double-click **Start Finance.cmd** to open the app in its own Python console. Leave that console open while using the dashboard. Press **Ctrl+C** there to stop it. Normal use works offline.
+3. Copy `.env.example` to `.env` in the project root. Keep `APP_ENV=production` for the everyday **All accounts** interface. Manual accounts work without Plaid keys. For bank connections, enter your own Client ID and Production secret locally, complete Bank sync setup and enable `PLAID_LIVE_ENABLED=true` when ready. Never commit or share `.env`.
+4. Double-click **Start Finance.cmd** to open the app in its own Python console. Leave that console open while using the dashboard. Press **Ctrl+C** there to stop it. Saved data and manual entry work offline; bank sync requires internet access.
 
 From the VS Code PowerShell terminal, run `& .\.venv\Scripts\python.exe -m finance`, or use `.\Start Finance.ps1`. Both run directly in the terminal, so **Ctrl+C** stops the server without the batch-file **Terminate batch job (Y/N)?** prompt. Run the same command again to restart. If local PowerShell policy blocks the script, use the direct Python command.
+
+## Everyday mode and developer mode
+
+```dotenv
+APP_ENV=production
+```
+
+Production opens one **All accounts** app. There is no workspace switch or Sandbox preview. Add manual accounts (including Nelnet) in **Accounts → Add manual account**; edit balances, names and debt details from their account inspector. Use **Transactions → Add manual transaction** for manual-account entries, or select an existing manual entry to edit/delete it. Templates and categories remain available. Connected bank transactions retain their existing classification/sync behavior. All manual accounts are included automatically; avoid creating manual duplicates of already connected bank accounts.
+
+Bank feeds and manually entered records retain their existing separate files internally, so existing data and saved bank authorizations are preserved. They share the same overview, reports, budgets and account list. **Backup & restore → Back up all accounts** saves both source files together under locks. Keep both backups; to recover everything, restore the manual backup first and the connected backup second. Individual-source backups/restores remain available.
+
+Set `APP_ENV=development` and restart to expose the separate Manual, Sandbox preview and Live workspaces for testing. Existing installations without APP_ENV retain that development interface until configured. Mode changes do not delete, merge or move existing databases. Production also rejects Sandbox API routes. `APP_ENV` controls the app interface, while `PLAID_LIVE_ENABLED` independently controls real-bank authorization; production mode never enables linking by itself. The legacy `PLAID_ENV=sandbox` and Sandbox secret are only for developer testing; real connections use the explicit Production secret.
+
+The instructions below that mention a Workspace selector or Sandbox scenario apply to **development mode**. For everyday production use, stay in All accounts and open the same destination directly.
 
 ## Dashboard layout
 
@@ -20,7 +35,7 @@ Select an account to open its inspector: balance, source information, history, t
 
 Overview places cash flow and budget progress alongside net worth, followed by the spending calendar, recent activity and account composition. Net worth account selection is beside its measure controls; its phone/tablet picker stays above the bottom navigation. **About this workspace** expands the environment explanation. Relevant warnings and the Live readiness/linking lock remain visible in their existing workflows. These layout changes preserve financial calculations, stored data, workspace separation and all connection/restore safeguards.
 
-Reduced-motion, reduced-transparency and higher-contrast preferences have dedicated fallbacks. The interface uses local system fonts and adds no external font or motion dependency.
+Reduced-motion, reduced-transparency and higher-contrast preferences have dedicated fallbacks. The interface bundles Lexend locally and adds no external font request or motion dependency.
 
 ## Record your finances
 
@@ -49,7 +64,7 @@ Reduced-motion, reduced-transparency and higher-contrast preferences have dedica
 
 ## Debt details and manual student loans
 
-For Nelnet, select **Manual → Accounts → Add account → Student loan (manual)**. Enter the current total amount owed as a positive opening balance. Expand the account, then **Debt details → Add debt details** to enter the servicer, APR/interest rate, fixed/variable rate type, original principal, principal balance, accrued interest, repayment plan, status, and notes. **More balances, payments and dates** contains optional credit limits, payment/statement information, and loan dates. Each Nelnet loan group can have its own account and rate. No Plaid connection is needed.
+For Nelnet, select **Accounts → Add manual account → Student loan (manual)** in production mode. In development, choose Manual first and use Add account. Enter the current total amount owed as a positive opening balance. Expand the account, then **Debt details → Add debt details** to enter the servicer, APR/interest rate, fixed/variable rate type, original principal, principal balance, accrued interest, repayment plan, status, and notes. **More balances, payments and dates** contains optional credit limits, payment/statement information, and loan dates. Each Nelnet loan group can have its own account and rate. No Plaid connection is needed.
 
 Saving or clearing debt terms does not change the account balance or create transactions. Use **Record balance** to reconcile with the servicer's reported total. For a manual loan payment, record principal as a transfer to the loan and interest/fees as a separate expense; this keeps principal out of spending and reduces net worth only by the expense. There is no automatic interest accrual, amortization calculation, or upcoming-bills feature.
 
@@ -59,7 +74,7 @@ Debt details are stored locally and included in workspace/scenario backups. Manu
 
 ## Back up the database
 
-Open **Backup & restore** in the sidebar. Choose **Manual**, **Sandbox · Banking**, **Sandbox · Investments**, **Sandbox · Combined**, or **Live**, then **Create backup**. Back up each separately. Bundles in the project `backups/` folder include its database and chart selection: accounts, transactions, budgets, balance history, debt details, review/rule state, confirmed/dismissed transfer links, and investment holdings/activity. Appearance, the current workspace/scenario choices, `.env` credentials, and context documents are not included.
+Open **Backup & restore** in the sidebar. In production, **Back up all accounts** creates a pair of bundles for Manual and Connected account data; restore Manual first, then Connected for a full recovery. Individual-source backups remain available. In development, choose Manual, a Sandbox scenario, or Live and back up each separately. Bundles in the project `backups/` folder include its database and chart selection: accounts, transactions, budgets, balance history, debt details, review/rule state, confirmed/dismissed transfer links, and investment holdings/activity. Appearance, the current workspace/scenario choices, `.env` credentials, and context documents are not included.
 
 Choose **Preview restore** to validate a bundle and inspect its workspace/scenario, snapshot date, account/transaction and investment counts, sample accounts, and activity dates. Type the displayed confirmation phrase before restoring. A validated `recovery-…finance-backup.zip` of the current workspace is created first; use it to recover the previous data if needed. A bundle restores to its own named workspace/scenario, regardless of the current sidebar selection. The app refreshes its cached records after success. Other workspaces/scenarios are unaffected. Close other Finance instances and finish/cancel pending bank authorization for the destination before restoring.
 
@@ -71,16 +86,17 @@ The original Manual-only CLI remains available: `.venv\Scripts\python.exe -m fin
 
 ## Prepare Live bank connections
 
-Choose **Workspace → Live → Bank sync** for the readiness checks. Live data, credentials, authorizations, chart settings and backups are isolated from Sandbox. Completed checks are collapsed under **Setup details**; outstanding checks stay visible. Production credentials are configured locally, and the confirmed Trial allowance (20), Transactions and automatic OAuth access are recorded. Hosted Link is requested automatically and needs no separate Dashboard enablement. Use **Find your bank** to check actual institution coverage and prepare its entry. Real-bank linking is controlled by `PLAID_LIVE_ENABLED`; it cannot be enabled from the browser.
+In production, open **Bank sync** for readiness checks. In development, choose **Workspace → Live → Bank sync**. Live data, credentials, authorizations, chart settings and backups are isolated from Sandbox. Completed checks are collapsed under **Setup details**; outstanding checks stay visible. Production credentials are configured locally, and record your own Dashboard connection allowance, product access and institution/OAuth availability. Trial entitlements and supported institutions can differ between developers. Hosted Link is requested automatically and needs no separate Dashboard enablement. Use **Find your bank** to check actual institution coverage and prepare its entry. Real-bank linking is controlled by `PLAID_LIVE_ENABLED`; it cannot be enabled from the browser.
 
 Follow [Live setup and BofA pilot](LIVE_SETUP.md) to finish configuration without connecting a bank. Use the explicit Production entries in `.env.example`; keep the existing Sandbox secret. Live supports Transactions, balances and explicitly selected Investments. Live debt-provider sync and live stock quotes remain deferred. This app remains a local, single-user desktop service, not an internet deployment.
 
-## Try Plaid Sandbox
+## Try Plaid Sandbox (development mode)
 
 1. Open [Plaid Dashboard → Developers → Keys](https://dashboard.plaid.com/developers/keys) and locate the Sandbox credentials.
 2. In the project root, create a local `.env` file with the following names. Replace the placeholders in your editor.
 
    ```dotenv
+   APP_ENV=development
    PLAID_ENV=sandbox
    PLAID_CLIENT_ID=your_client_id
    PLAID_SECRET=your_sandbox_secret
@@ -119,7 +135,7 @@ In **Live > Bank sync > Setup details**, confirm Investments product access from
 
 Official references: [Investments](https://plaid.com/docs/investments/), [update mode](https://plaid.com/docs/link/update-mode/), [Trial product access](https://support.plaid.com/hc/en-us/articles/16186552926743-How-do-I-add-new-Plaid-products). Production portfolio coverage must be checked with your actual institution; Sandbox/synthetic success does not establish it.
 
-## Multiple institutions and manual accounts
+## Multiple institutions and manual accounts (development workspaces)
 
 Choose **Workspace: Sandbox preview → Test scenario: Combined**. The prepared Combined workspace already includes the two saved test connections (Bank of America and First Platypus), with 16 accounts, spending data, holdings/activity and debt details. **Bank sync → Import saved Sandbox connections** can safely copy any not-yet-imported Banking/Investments fixture again. It reuses the existing encrypted authorizations and transaction cursors, without creating or exchanging another Item. The original scenarios remain independent afterward; edits and later syncs in one do not change another. Budgets, merchant rules and older charts are not copied from the fixtures; Combined has its own settings and observation history.
 
@@ -201,3 +217,7 @@ Estimates work backward from the latest saved banking balance using raw signed p
 To collect more snapshots, use **Accounts → Refresh all** or **Bank sync → Refresh all**; alternatively choose **Refresh balances** for every included institution. Successful balance fetches save observations and now also feed the investment portfolio chart. Holdings sync can save balance observations when those balances update. A failed fetch contributes no fresh balance for that account; the combined chart leaves a gap if any selected account is missing. Repeat on another day for another daily point. Browser reloads/app launch do not automatically sync banks, and missing days are not invented. For Manual accounts, **Accounts → Record balance** updates dated account history and records net worth when saved.
 
 The Investments chart continues to show recorded account values only. Historical market-value estimates need historical positions/cash and prices, which this app does not fetch. Portfolio value includes deposits and withdrawals and is not an investment-return calculation. Expand **Snapshots, estimates & adding history** on either chart for guidance and a link to the refresh controls.
+
+## Source code and privacy
+
+Clone this repository, run setup locally, and configure your own `.env`. This repository contains application source and synthetic test fixtures, not the author’s financial records or credentials. `.env`, `data/`, `backups/`, local context folders and development skills are ignored. Plaid authorizations in backups are encrypted for the Windows user that created them; configure and connect your own accounts. No GitHub Actions workflows or hosted service are required. Optional local regression-test commands are documented under Local development.

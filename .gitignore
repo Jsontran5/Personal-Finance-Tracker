@@ -18,3 +18,5 @@ context_folder/
 *.log
 *.pem
 *.key
+.agents/
+skills-lock.json
