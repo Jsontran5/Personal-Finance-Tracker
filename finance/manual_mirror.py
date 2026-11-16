@@ -24,10 +24,17 @@ def category(db, row):
     return db.execute('INSERT INTO preview_categories(name,kind) VALUES (?,?)', (name, kind)).lastrowid
 
 
-def refresh_manual(database, combined):
+def refresh_manual(database, combined, *, include_all=False):
     if not database.is_file():
         return
-    with database_lock(combined), connect(database) as source, connect(combined, write=True) as db:
+    with database_lock(database), database_lock(combined), connect(database, write=include_all) as source, connect(combined, write=True) as db:
+        if include_all:
+            db.executemany('INSERT OR IGNORE INTO manual_selection(account_id) VALUES (?)', [(r[0],) for r in source.execute('SELECT id FROM accounts')])
+            # Shared category names, with no changes to existing classifications.
+            for row in source.execute('SELECT * FROM categories').fetchall():
+                category(db, dict(row))
+            for row in db.execute('SELECT name,kind FROM preview_categories').fetchall():
+                source.execute('INSERT OR IGNORE INTO categories(name,kind) VALUES (?,?)', (row['name'],row['kind']))
         selected = dict(db.execute('SELECT account_id,fingerprint FROM manual_selection'))
         accounts = {row['id']: row for row in account_balances(source, date.today())}
         transactions = [dict(row) for row in source.execute('SELECT * FROM transactions ORDER BY id')]

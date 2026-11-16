@@ -212,6 +212,8 @@ class ManualSelection(BaseModel):
 
 
 def combined_router(database: Path, *, client_factory=plaid_client, production=False):
+    from .app_config import application_config
+    unified = production and application_config(database.parent.parent)['unified']
     path = database.with_suffix('.plaid-live.db') if production else sandbox_path(database, 'combined')
     router = APIRouter(prefix='/api/plaid/live' if production else '/api/plaid/combined-sandbox')
 
@@ -223,7 +225,7 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
             else:
                 initialize_combined(db)
         from .manual_mirror import refresh_manual
-        refresh_manual(database, path)
+        refresh_manual(database, path, include_all=unified)
 
     def client():
         from .live_setup import production_credentials
@@ -609,12 +611,14 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
     def manual_accounts():
         from .ledger import account_balances
         initialize()
-        with connect(path) as db, connect(database) as source:
+        with connect(database) as source, connect(path) as db:
             selected = {row[0] for row in db.execute('SELECT account_id FROM manual_selection')}
             return {'accounts': [{**row, 'selected': row['id'] in selected} for row in account_balances(source, date.today())]}
 
     @router.put('/manual')
     def select_manual(item: ManualSelection):
+        if unified:
+            raise HTTPException(409, 'All manual accounts are included automatically in All accounts.')
         initialize()
         with connect(database) as source:
             valid = {row[0] for row in source.execute('SELECT id FROM accounts')}

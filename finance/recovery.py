@@ -432,6 +432,8 @@ class RestoreBackup(BaseModel):
 
 
 def backup_router(database):
+    from .app_config import application_config
+    unified = application_config(database.parent.parent)['unified']
     store = BackupStore(database)
     router = APIRouter(prefix='/api/backups')
 
@@ -448,18 +450,43 @@ def backup_router(database):
 
     @router.get('')
     def list_backups():
-        return {'backups': guarded(store.list)}
+        records = guarded(store.list)
+        if unified:
+            records = [row for row in records if row['id'].startswith(('personal-', 'live-', 'recovery-personal-', 'recovery-live-'))]
+        return {'backups': records}
 
     @router.post('', status_code=201)
     def create(item: CreateBackup):
+        if unified and item.workspace not in {'personal', 'live'}:
+            raise HTTPException(409, 'Sandbox backups are available only in development mode.')
         return guarded(lambda: store.create(item.workspace))
+
+    @router.post('/all', status_code=201)
+    def create_all():
+        if not unified:
+            raise HTTPException(409, 'Use an individual workspace backup in development mode.')
+        def work():
+            from .live_setup import initialize_live
+            from .manual_mirror import refresh_manual
+            live = database.with_suffix('.plaid-live.db')
+            with database_lock(store.guard), database_lock(database), database_lock(live):
+                with connect(live, write=True) as db:
+                    initialize_live(db)
+                refresh_manual(database, live, include_all=True)
+                return {'manual': store.create('personal'), 'connected': store.create('live')}
+        return guarded(work)
 
     @router.get('/preview')
     def preview(id: str):
-        return guarded(lambda: store.preview(id))
+        result = guarded(lambda: store.preview(id))
+        if unified and result['workspace'] not in {'personal', 'live'}:
+            raise HTTPException(409, 'Use development mode to restore a Sandbox backup.')
+        return result
 
     @router.post('/restore')
     def restore(item: RestoreBackup):
+        if unified and guarded(lambda: store.preview(item.id))['workspace'] not in {'personal', 'live'}:
+            raise HTTPException(409, 'Use development mode to restore a Sandbox backup.')
         return guarded(lambda: store.restore(item.id, item.preview_token, item.confirmation))
 
     return router

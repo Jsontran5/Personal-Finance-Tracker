@@ -23,6 +23,7 @@ from .scenarios import Scenario, sandbox_path, chart_path
 from .debt import manual_debt_router, ManualDebt, DebtSubtype
 from .multi_bank import combined_router
 from .live_setup import live_router
+from .app_config import application_config
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 Notes = Annotated[str, StringConstraints(max_length=2000)]
@@ -155,6 +156,7 @@ def validate_transaction(db, tx, today):
 
 
 def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
+    app_config = application_config(database.parent.parent)
     theme_path = database.with_suffix(".theme")
     workspace_path = database.with_suffix(".workspace")
 
@@ -175,6 +177,8 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
 
     @app.middleware("http")
     async def protect_local_writes(request: Request, call_next):
+        if app_config['unified'] and (request.url.path.startswith(('/api/plaid/sandbox', '/api/plaid/investments-sandbox', '/api/plaid/combined-sandbox', '/api/sandbox-scenario', '/api/chart-selection/sandbox'))):
+            return JSONResponse({'detail': 'Sandbox is available only with APP_ENV=development.'}, status_code=404)
         if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             origin = request.headers.get("origin")
             try:
@@ -217,8 +221,14 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
             saved = "dark"
         return {"theme": "light" if saved == "light" else "dark"}
 
+    @app.get('/api/app-config')
+    def get_app_config():
+        return app_config
+
     @app.get("/api/workspace", response_model=Workspace)
     def get_workspace():
+        if app_config['unified']:
+            return {'mode': 'live'}
         try:
             saved = workspace_path.read_text(encoding="ascii").strip()
         except (FileNotFoundError, UnicodeError):
@@ -270,6 +280,8 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
 
     @app.put("/api/workspace", response_model=Workspace)
     def set_workspace(item: Workspace):
+        if app_config['unified'] and item.mode != 'live':
+            raise HTTPException(409, 'Production uses All accounts. Set APP_ENV=development to enable separate test workspaces.')
         temporary = None
         try:
             with NamedTemporaryFile(dir=workspace_path.parent, delete=False) as file:

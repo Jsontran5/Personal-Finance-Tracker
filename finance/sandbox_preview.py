@@ -128,6 +128,7 @@ def preview_accounts(db):
     multi = db.execute("SELECT 1 FROM sqlite_schema WHERE name='connection_accounts'").fetchone()
     inclusion = "COALESCE((SELECT included FROM connection_accounts m WHERE m.account_id=accounts.id),1)" if multi else '1'
     institution = "(SELECT COALESCE(c.name,'Manual') FROM connection_accounts m LEFT JOIN multi_connections c ON c.id=m.connection_id WHERE m.account_id=accounts.id)" if multi else 'NULL'
+    manual_id = '(SELECT manual_id FROM connection_accounts m WHERE m.account_id=accounts.id)' if multi else 'NULL'
     accounts = [dict(row) for row in db.execute(f"""
         SELECT rowid AS id, name,
           (SELECT provider_name FROM account_names n WHERE n.account_id=accounts.id) AS provider_name,
@@ -136,7 +137,7 @@ def preview_accounts(db):
           CASE type WHEN 'depository' THEN COALESCE(subtype,'depository') WHEN 'loan' THEN 'loan'
             WHEN 'credit' THEN 'credit' WHEN 'investment' THEN 'investment' ELSE 'other' END AS kind,
           currency, current_minor AS balance_minor, checked_at AS balance_date,
-          {inclusion} AS include_in_net_worth, source AS balance_source,{institution} AS institution_name,
+          {inclusion} AS include_in_net_worth, source AS balance_source,{institution} AS institution_name,{manual_id} AS manual_id,
           (SELECT COUNT(*) FROM transactions t WHERE t.account_id=accounts.id AND t.removed=0) AS transaction_count
         FROM accounts WHERE active=1 ORDER BY rowid
     """)]
@@ -168,7 +169,8 @@ def preview_transactions(db, month):
           t.date,t.currency,t.pending,a.name AS account_name,c.name AS category_name,
           json_extract(d.payload,'$.personal_finance_category.primary') AS bank_category,
           NULL AS destination_name, CASE WHEN t.kind='credit' AND e.kind IS NULL THEN 1 ELSE 0 END AS needs_review,
-          COALESCE(json_extract(d.payload,'$._finance_manual'),0) AS manual_source
+          COALESCE(json_extract(d.payload,'$._finance_manual'),0) AS manual_source,
+          CASE WHEN json_extract(d.payload,'$._finance_manual') THEN json_extract(d.payload,'$.id') END AS manual_transaction_id
         FROM transactions t JOIN accounts a ON a.id=t.account_id
         LEFT JOIN preview_edits e ON e.transaction_id=t.id
         LEFT JOIN preview_categories c ON c.id=e.category_id
