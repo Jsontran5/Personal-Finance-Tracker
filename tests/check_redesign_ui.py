@@ -68,7 +68,7 @@ def run():
         from finance.live_setup import initialize_live
         from finance.multi_bank import map_accounts
         # Synthetic activity in an isolated copy: no provider calls.
-        from datetime import date
+        from datetime import date, timedelta
         from finance.multi_bank import initialize_combined
         from finance.plaid_sandbox import save_transactions
         from finance.sandbox_preview import initialize_preview
@@ -82,6 +82,13 @@ def run():
                 personal_finance_category={'primary':'GENERAL_MERCHANDISE'}) for index in range(36)] +
                 [dict(transaction_id='report-income', account_id=account, name='Report salary', date=month+'-01',
                 amount=-5000, iso_currency_code='USD', pending=False, personal_finance_category={'primary':'INCOME'})], [], [])
+            fixture.execute('DELETE FROM preview_snapshot_accounts')
+            fixture.execute('DELETE FROM preview_snapshots')
+            fixture.execute("UPDATE accounts SET source='fresh',checked_at=?", (date.today().isoformat()+'T12:00:00',))
+            fixture.execute("UPDATE multi_connections SET history_status='HISTORICAL_UPDATE_COMPLETE' WHERE profile='banking'")
+            identifier=fixture.execute('INSERT INTO preview_snapshots(recorded_at,date,assets_minor,liabilities_minor) VALUES (?,?,0,0)',
+                                       (date.today().isoformat()+'T12:00:00',date.today().isoformat())).lastrowid
+            fixture.execute('INSERT INTO preview_snapshot_accounts SELECT ?,id,name,currency,current_minor,source,checked_at FROM accounts WHERE active=1',(identifier,))
         live_path=database.with_suffix('.plaid-live.db')
         with connect(live_path,write=True) as fixture:
             initialize_live(fixture)
@@ -197,6 +204,21 @@ def run():
             ready("document.querySelector('select[aria-label=\"Workspace\"]')?.value==='live'")
             select('Workspace','sandbox');ready("document.querySelector('select[aria-label=\"Sandbox scenario\"]')")
             select('Sandbox scenario','combined');ready("document.querySelector('.hero-value')")
+            ready("document.querySelector('.hero [data-history-start]')")
+            for width in (1440,390):
+                cdp('Emulation.setDeviceMetricsOverride',{'width':width,'height':1000 if width>850 else 844,'deviceScaleFactor':1,'mobile':False})
+                for theme in ('dark','light'):
+                    if js('document.documentElement.dataset.theme')!=theme:
+                        click('.theme-toggle');ready("!document.querySelector('.theme-toggle').disabled")
+                    js("document.querySelector('[data-history-start]').scrollIntoView({block:'center'})")
+                    screenshot(f'{width}-{theme}-snapshot-tracking-started')
+            # Add synthetic older observations without touching current balances.
+            # A missing day between observations must break the solid line.
+            with connect(database.with_suffix('.plaid-combined-sandbox.db'),write=True) as fixture:
+                for days in (1,3):
+                    day=(date.today()-timedelta(days=days)).isoformat()
+                    identifier=fixture.execute('INSERT INTO preview_snapshots(recorded_at,date,assets_minor,liabilities_minor) VALUES (?,?,0,0)',(day+'T12:00:00',day)).lastrowid
+                    fixture.execute('INSERT INTO preview_snapshot_accounts SELECT ?,id,name,currency,current_minor-?,source,? FROM accounts WHERE active=1',(identifier,days*100,day+'T12:00:00'))
             # Drilldowns reconcile with the report's exact eligible IDs. Sorting
             # is global before pagination, and return navigation retains scope.
             report_month = js("document.querySelector('[aria-label=\"Reporting month\"]').value")
@@ -314,6 +336,21 @@ def run():
                         if js("Boolean(document.querySelector('dialog[open]'))"): key('Escape')
                         ready("!document.querySelector('dialog[open]')")
                     nav('Overview');ready("document.querySelector('.account-picker')")
+                    assert js("document.querySelector('.history-switch button[aria-pressed=true]')?.textContent")=='Snapshots'
+                    assert js("document.querySelectorAll('.hero [data-chart-segment]').length")>=2, 'Missing dates were connected'
+                    click('.history-switch button','Banking estimates')
+                    ready("document.querySelector('.banking-history .estimated-chart .chart-line')")
+                    assert 'banking accounts only' in js("document.querySelector('.banking-history').textContent")
+                    click('.history-coverage > summary')
+                    js("document.querySelector('.banking-history').scrollIntoView({block:'start'})")
+                    screenshot(f'{width}-{theme}-banking-estimates-expanded')
+                    click('.history-coverage > summary')
+                    click('.history-switch button','Snapshots')
+                    ready("document.querySelector('.hero .balance-chart:not(.estimated-chart)')")
+                    click('.hero .snapshot-guide > summary')
+                    js("document.querySelector('.hero .snapshot-guide').scrollIntoView({block:'center'})")
+                    screenshot(f'{width}-{theme}-snapshot-guide')
+                    click('.hero .snapshot-guide > summary')
                     click('.account-picker > summary')
                     if width<=850:
                         assert js("document.querySelector('.picker-done').getBoundingClientRect().bottom <= document.querySelector('.mobile-navigation').getBoundingClientRect().top"), 'Picker action covered by navigation'

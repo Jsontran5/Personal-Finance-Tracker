@@ -210,10 +210,10 @@ def run():
                     js("document.querySelector('.drilldown-filter button').click()")
                     assert not js("Boolean(document.querySelector('.drilldown-filter'))")
                     nav('Spending')
+                    ready("document.querySelector('select[aria-label=\"Category source\"]')")
                     change('select[aria-label="Category source"]', 'local')
                     assert js("document.querySelector('select[aria-label=\"Category source\"]').value") == 'local'
-                    js("[...document.querySelectorAll('[aria-label=\"Spending display\"] button')].find(b=>b.textContent==='Calendar').click()")
-                    js("document.querySelector('.spending-main').scrollIntoView({block:'start'})")
+                    js("document.querySelector('.report-calendar').scrollIntoView({block:'start'})")
                     screenshot(label + '-spending-calendar')
                     js("document.querySelector('.calendar-day:not(:disabled)').click()")
                     ready("document.querySelector('.drilldown-filter')")
@@ -226,7 +226,7 @@ def run():
                     if width == 1920 and theme == 'dark':
                         js("[...document.querySelectorAll('.account-summary')].find(e=>e.textContent.includes('Plaid Checking')).click()")
                         js("document.querySelector('.compact-account[open] .account-expanded details > summary').click()")
-                        ready("document.querySelector('.compact-account[open] .balance-chart svg')")
+                        ready("document.querySelector('.compact-account[open] .balance-chart')")
                         screenshot(label + '-balance-history')
                         js("[...document.querySelectorAll('.compact-account[open] button')].find(b=>b.textContent.includes('View account transactions')).click()")
                         ready("document.querySelector('h1')?.textContent==='Transactions' && document.querySelector('input[type=month]').disabled")
