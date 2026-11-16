@@ -69,9 +69,9 @@ The original Manual-only CLI remains available: `.venv\Scripts\python.exe -m fin
 
 ## Prepare Live bank connections
 
-Choose **Workspace → Live → Bank sync** for the readiness checks. Live data, credentials, authorizations, chart settings and backups are isolated from Sandbox. Completed checks are collapsed under **Setup details**; outstanding checks stay visible. Production credentials are configured locally, and the confirmed Trial allowance (20), Transactions and automatic OAuth access are recorded. Hosted Link is requested automatically and needs no separate Dashboard enablement. Use **Find your bank** to check actual institution coverage and prepare its entry. Real-bank linking remains locked with `PLAID_LIVE_ENABLED=false` and cannot be enabled from the browser.
+Choose **Workspace → Live → Bank sync** for the readiness checks. Live data, credentials, authorizations, chart settings and backups are isolated from Sandbox. Completed checks are collapsed under **Setup details**; outstanding checks stay visible. Production credentials are configured locally, and the confirmed Trial allowance (20), Transactions and automatic OAuth access are recorded. Hosted Link is requested automatically and needs no separate Dashboard enablement. Use **Find your bank** to check actual institution coverage and prepare its entry. Real-bank linking is controlled by `PLAID_LIVE_ENABLED`; it cannot be enabled from the browser.
 
-Follow [Live setup and BofA pilot](LIVE_SETUP.md) to finish configuration without connecting a bank. Use the explicit Production entries in `.env.example`; keep the existing Sandbox secret. The first separately approved pilot supports Transactions and balances. New real-bank Item creation, investment/debt-term product rollout and live stock quotes are outside this preparation. This app remains a local, single-user desktop service, not an internet deployment.
+Follow [Live setup and BofA pilot](LIVE_SETUP.md) to finish configuration without connecting a bank. Use the explicit Production entries in `.env.example`; keep the existing Sandbox secret. Live supports Transactions, balances and explicitly selected Investments. Live debt-provider sync and live stock quotes remain deferred. This app remains a local, single-user desktop service, not an internet deployment.
 
 ## Try Plaid Sandbox
 
@@ -103,6 +103,19 @@ Transactions display 25 entries per page. Click a synced transaction and expand 
 Use **Bank sync → Refresh transaction details** to replay the available history and fill in details for older imports. The saved Item and local transaction edits are retained. **Manage test accounts** reopens account selection on that Item so you can share additional eligible accounts. Accounts removed from sharing stop contributing to current balances while their existing transaction history is retained.
 
 Plaid Sandbox supports credit cards and loans. The sample [credit-card testing profile](sandbox_profiles/credit-card-testing.json) was verified against Plaid Sandbox. Import it as a custom user in Dashboard → Build → Sandbox Studio. Editing a custom profile does not change an existing Item. Banking and Investments each store one Item and refuse to overwrite it. Combined supports multiple institutions; add another institution there rather than deleting/relinking a saved scenario.
+
+## Live investments
+
+In **Live > Bank sync > Setup details**, confirm Investments product access from your Plaid Dashboard and save. This optional setting does not change existing banks or start consent. The Trial product bundle includes Investments; account/institution coverage still varies. Do not upgrade to a paid plan as part of this setup.
+
+- To add a broker, choose **Find your bank**, set **Connection type: Investments**, search and add the correct institution, then connect its saved entry. This requests Investments without banking Transactions.
+- For an institution that supports both, select **Banking transactions** and **Also connect investments** before searching. Both products must be advertised; account-level availability is confirmed during authorization and sync. One Item owns the selected banking and investment accounts.
+- For an existing banking institution, expand **Sync details and additional data**, choose **Enable investments on this connection**, then **Reconnect / manage accounts** to grant consent in update mode. This retains the saved Item/cursor; do not create a duplicate institution. Fresh product coverage and Dashboard confirmation are required. Merely clicking enable does not grant consent or fetch holdings.
+- After authorization, **Sync holdings** first, then **Sync activity** on that institution. Open **Investments** for accounts, holdings, quantities, broker-reported prices/value/cost basis, allocation and activity. Missing fields stay unavailable. Brokerage cash appears when reported as a holding; account balances include cash and securities and drive net worth once. Trades and dividends in investment activity do not enter the spending ledger automatically.
+- Data is broker-reported, not a live quote feed. No separate stock API or Investments Refresh calls are used. Initial activity can take time; failed syncs retain saved data. Later activity sync reconciles recent history; **Reload investment history** under the connection details checks the full available range.
+- Live backups include investment records and consent-flow status. Restore keeps current authorization for matching Items; older schema-9 backups migrate on a temporary copy. Schema 10 adds per-connection investment access, leaving existing banking Items and financial records intact.
+
+Official references: [Investments](https://plaid.com/docs/investments/), [update mode](https://plaid.com/docs/link/update-mode/), [Trial product access](https://support.plaid.com/hc/en-us/articles/16186552926743-How-do-I-add-new-Plaid-products). Production portfolio coverage must be checked with your actual institution; Sandbox/synthetic success does not establish it.
 
 ## Multiple institutions and manual accounts
 

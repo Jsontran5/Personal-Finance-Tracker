@@ -4,10 +4,10 @@ This is a single-user app served only on loopback. Production here means Plaid's
 
 ## What is prepared
 
-- A separate Live workspace: `data/finance.plaid-live.db`, schema 9, with an explicit Production environment marker. Manual and all Sandbox stores are unchanged. Sandbox tokens cannot be imported into Live, and Live backups restore only to Live.
-- Independent encrypted authorizations, cursors, pending Link sessions, connection ownership, reporting, chart preferences and backup/restore. Explicitly selected manually entered accounts from Manual can appear as read-only mirrors, including Nelnet. There are no sample balances or real bank connections in the project's Live workspace.
+- A separate Live workspace: `data/finance.plaid-live.db`, schema 10 (upgrades existing schema 9 locally), with an explicit Production environment marker. Manual and all Sandbox stores are unchanged. Sandbox tokens cannot be imported into Live, and Live backups restore only to Live.
+- Independent encrypted authorizations, cursors, pending Link sessions, connection ownership, reporting, chart preferences and backup/restore. Explicitly selected manually entered accounts from Manual can appear as read-only mirrors, including Nelnet. Live contains only accounts explicitly connected or selected by the user; no sample data is inserted.
 - Explicit Production credentials and a fixed Production API host. The Sandbox secret never serves as a Production fallback. The Production transport permits only the required read-only data/institution calls and Link/token-exchange operations; money movement, Item removal, identity/auth-number collection and paid Refresh operations are not enabled.
-- First pilot scope: checking/credit-card Transactions plus balances, on demand. Live investment/debt-term sync is deferred, while manual debt profiles remain usable through Manual. New Link requests require only Transactions, without requesting Auth, Identity, Investments or Liabilities consent. Existing purchases, ambiguous credits and transfers follow the app's current reporting/review rules.
+- Live scope: checking/credit-card Transactions and balances, plus opt-in investment holdings/activity. Banking-only Link requests still require only Transactions. Investment-only connections request Investments; explicitly mixed connections request both. Live debt-provider sync is deferred, while manual debt profiles remain usable through Manual. No Auth, Identity or Liabilities consent is added. Existing purchases, ambiguous credits and transfers follow the app's current reporting/review rules.
 - A server-side linking lock. Browser state cannot bypass it. This preparation did not enable the pilot or create a real Item.
 
 ## Finish local configuration before linking
@@ -30,7 +30,7 @@ This is a single-user app served only on loopback. Production here means Plaid's
 5. Click **Find your bank**, then search **Add another institution** for Bank of America. **Add institution** performs a read-only Production institution lookup and saves a local draft. It verifies advertised Transactions support and reports OAuth metadata. It does not create a Link token, authorize a bank, or exchange a public token. A successful institution response does not prove account-level coverage or successful real OAuth. Coverage must be checked again within 24 hours of linking and after any credential change. Failed checks invalidate cached success.
 6. Leave `PLAID_LIVE_ENABLED=false`. Real-bank linking is a separately approved next step. Readiness confirmations and backups cannot enable that environment switch. There is no enable-linking button in the browser.
 
-Current project status: Production credentials are configured locally and the Dashboard confirmations are complete. Actual BofA coverage and authorization remain unverified; no real bank is connected and linking remains locked. No Production request was made during preparation; all Production-path browser/API tests used a synthetic provider or intercepted transport. No claim of successful BofA OAuth/linking has been made.
+Current project status: the user has authorized BofA and Chase and verified their imported balances. BofA balance refresh later returned a Plaid INTERNAL_SERVER_ERROR; its saved data remains. Live investment support is implemented and tested with a synthetic provider; no real broker was linked during development. Confirm Investments access before adding a broker. See the README Live investments section for investment-only, mixed and existing-Item consent flows. The local environment switch remains under user control; development does not change it.
 
 ## Separately approved first pilot
 
@@ -46,7 +46,7 @@ Stop the pilot on missing/incorrect balances, unexpected accounts, incomplete co
 
 ## Backups and verification
 
-**Backup & restore → Live** includes Live data/setup/coverage and chart selection. Restore validates the environment/schema and matching connected Item set, preserves current encrypted authorization, and blocks pending Link sessions. It never restores API credentials or the environment linking switch. Manual mirrors refresh from Manual; back up Manual separately. Authorization is protected by the current Windows user's DPAPI; whole financial databases/backups are private local files and are not whole-file encrypted by this feature.
+**Backup & restore → Live** includes Live data/setup/coverage and chart selection. Restore validates the environment/schema and matching connected Item set, preserves current encrypted authorization and investment consent-flow status for matching Items, and blocks pending Link sessions. Schema-9 backups migrate on a temporary copy. It never restores API credentials or the environment linking switch. Manual mirrors refresh from Manual; back up Manual separately. Authorization is protected by the current Windows user's DPAPI; whole financial databases/backups are private local files and are not whole-file encrypted by this feature.
 
 - Build: `npm.cmd run build`
 - Unit/API checks: `.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"`
