@@ -20,6 +20,7 @@ import { Connections } from './Connections'
 import { Navigation, type Page } from './Navigation'
 import { PageHelp } from './Help'
 import { AccountNickname } from './AccountNickname'
+import { RefreshAll } from './RefreshAll'
 import './styles.css'
 import './interface.css'
 
@@ -516,6 +517,7 @@ function App() {
             : <button className="primary with-icon" disabled={!data} onClick={quickAdd}><Icon name="plus" />Add transaction</button>}
         </div>
       </header>
+      <RefreshAll request={request} visible={mode === 'live' && (page === 'Accounts' || page === 'Bank sync')} onChanged={() => setRevision(value => value + 1)} />
       {themeError && <p role="alert" className="notice">{themeError}</p>}
       {modeError && <p role="alert" className="notice">{modeError}</p>}
       {synced && page !== 'Backup & restore' && <details className="workspace-info"><summary><span className="status-dot" />{mode === 'live' ? 'Live data · Local storage' : 'Test data · Sandbox preview'}<span>About this workspace</span></summary><p>{mode === 'live' ? 'Real financial data stays separate from Sandbox. Manage connection readiness in Bank sync.' : 'Test accounts, categories, and budgets.'} Spending uses posted activity.</p></details>}
@@ -598,7 +600,7 @@ function App() {
           {isDebt(account.kind) && <DebtDetails live={mode === 'live'} account={account} sandbox={synced} managed={mode === 'live' || scenario === 'combined'} request={request} money={money} parseMoney={parseMoney} revision={revision} onChanged={() => setRevision(value => value + 1)} />}
           <BalanceHistory key={revision} account={account} sandbox={synced} request={request} />
         </>} />}
-      {page === 'Bank sync' && (mode === 'live' || scenario === 'combined' ? <Connections key={mode + scenario} live={mode === 'live'} request={request} onChanged={() => setRevision(value => value + 1)} /> : <BankSync key={scenario} investmentScenario={scenario === 'investments'} openInvestments={() => setPage('Investments')} request={request} money={money} onChanged={() => setRevision(value => value + 1)} />)}
+      {page === 'Bank sync' && (mode === 'live' || scenario === 'combined' ? <Connections key={mode + scenario} revision={revision} live={mode === 'live'} request={request} onChanged={() => setRevision(value => value + 1)} /> : <BankSync key={scenario} investmentScenario={scenario === 'investments'} openInvestments={() => setPage('Investments')} request={request} money={money} onChanged={() => setRevision(value => value + 1)} />)}
       {page === 'Investments' && <Investments live={mode === 'live'} key={mode + scenario} sandbox={synced} managed={mode === 'live' || scenario === 'combined'} request={request} money={money} openBank={() => setPage('Bank sync')} openTestScenario={mode === 'sandbox' && scenario === 'banking' ? () => void changeScenario('investments') : undefined} onChanged={() => setRevision(value => value + 1)} />}
       {page === 'Backup & restore' && <BackupRestore key={mode + scenario} request={request} initialWorkspace={mode === 'live' ? 'live' : synced && scenario === 'combined' ? 'sandbox_combined' : synced && scenario === 'investments' ? 'sandbox_investments' : mode ?? 'personal'} onRestored={() => {
         setData(undefined); setDialog(null); setSelectedTransactions([]); setReviewHistory([]); setReviewStatuses({}); setChartAccountIds(null)

@@ -9,7 +9,7 @@ type Status = { configured: boolean; linking_enabled?: boolean; connections: Con
 type ManualAccount = { id: number; name: string; kind: string; selected: boolean }
 const time = (value: string | null) => value ? new Date(value).toLocaleString() : 'Not synced'
 
-export function Connections({ request, onChanged, live = false }: { live?: boolean; request: Request; onChanged: () => void }) {
+export function Connections({ request, onChanged, live = false, revision }: { revision?: number; live?: boolean; request: Request; onChanged: () => void }) {
   const base = live ? '/plaid/live' : '/plaid/combined-sandbox'
   const addPanel = useRef<HTMLDetailsElement>(null)
   const [status, setStatus] = useState<Status>()
@@ -32,7 +32,7 @@ export function Connections({ request, onChanged, live = false }: { live?: boole
       setManual(result.accounts); setSelected(result.accounts.filter(account => account.selected).map(account => account.id))
     }).catch(failure => { if (!controller.signal.aborted) setError(failure.message) })
     return () => controller.abort()
-  }, [request, base])
+  }, [request, base, revision])
 
   async function action(label: string, work: () => Promise<string>) {
     setBusy(label); setError(''); setMessage('')

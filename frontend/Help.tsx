@@ -9,6 +9,7 @@ export const controlHelp: Record<string, string> = {
   'Sync transactions': 'Pull newly available checking, savings and credit-card transactions and corrections. Investment trades are loaded separately with Sync activity. This reuses your connection.',
   'Sync holdings': 'Load the latest positions available from Plaid: securities, quantities, reported prices and values, including cash when supplied. This does not request live market quotes. Run this before Sync activity.',
   'Sync activity': 'Load broker-reported trades, dividends, fees and investment transfers. These records stay separate from everyday spending. Run Sync holdings first.',
+  'Refresh all': 'Fetch applicable Live transactions, investment holdings and activity, then account balances, one institution at a time. Reuses saved connections, skips cooldowns or reconnect-required accounts, and continues after individual failures. This does not request live quotes or move money.',
   'Refresh balances': 'Request current account balances from the institution. Saved balances drive net worth and record a chart observation; they can differ from available cash or holdings values. A failure retains previous data.',
   'Reconnect / manage accounts': 'Reauthorize this existing connection or change shared accounts where supported. Update mode keeps the same bank-login connection (Plaid Item) rather than creating another one. It is not a normal data refresh.',
   'Connect institution': 'Start authorization for this saved institution. A successful new connection creates a Plaid Item that counts toward your Trial allowance. Select the same institution inside Plaid.',
@@ -68,6 +69,7 @@ export const controlHelp: Record<string, string> = {
   'Rename account': 'Set a local display name for this synced account throughout the workspace. Account IDs, balances, transactions and bank permissions stay the same.',
   'Save nickname': 'Save this workspace account nickname. Future syncs keep it; a blank nickname restores the latest bank-provided name.',
   'Use bank name': 'Remove the local nickname and display the latest name supplied by the bank. No financial data is changed.',
+  'Data updates': 'See exact successful fetch times and product-specific failures for an account. Balance time belongs to its saved observation; transactions, holdings and activity use institution fetch times. Needs refresh is a reminder after 24 hours or before the first fetch, not a live-data guarantee.',
   'Account nickname': 'Choose a local display name, up to 120 characters. Leave blank to use the bank name. This does not rename the account at your bank.',
   'Add account': 'Create a manually maintained account. A bank connection is added separately in Bank sync.',
   'Set limit': 'Set a monthly spending target for this category. It does not restrict payments or transfer money.',
@@ -106,9 +108,9 @@ const guides: Record<Page, [string, string][]> = {
   Spending: ['Reporting month', 'Bank categories', 'Your categories', 'Cash flow'].map(k => [k, controlHelp[k]]),
   Transactions: ['Sync transactions', 'New merchant rule', 'Classify selected', 'Mark reviewed', 'Flag for review', 'Provider transaction details'].map(k => [k, controlHelp[k]]),
   Budgets: [['Category limits', 'Set a monthly target for your own spending categories. Limits do not restrict bank spending or move money.'], ['Assigned spending', 'Posted expenses minus refunds count toward the category they are assigned to. Pending items, transfers and investment activity are excluded.'], ['Reporting month', controlHelp['Reporting month']]],
-  Accounts: ['Net worth', 'Balance chart & history', 'Rename account', 'Use bank name', 'Add account', 'Debt details'].map(k => [k, controlHelp[k]]),
+  Accounts: ['Refresh all', 'Data updates', 'Net worth', 'Balance chart & history', 'Rename account', 'Use bank name', 'Add account', 'Debt details'].map(k => [k, controlHelp[k]]),
   Investments: ['Portfolio value', 'Holdings', 'Where it’s invested', 'Activity', 'Sync holdings', 'Sync activity'].map(k => [k, controlHelp[k]]),
-  'Bank sync': ['Reconnect / manage accounts', 'Sync transactions', 'Sync holdings', 'Sync activity', 'Refresh balances', 'Connection type', 'Also connect investments', 'Investments product access confirmed (optional)', 'Sync details and additional data'].map(k => [k, controlHelp[k]]),
+  'Bank sync': ['Refresh all', 'Reconnect / manage accounts', 'Sync transactions', 'Sync holdings', 'Sync activity', 'Refresh balances', 'Connection type', 'Also connect investments', 'Investments product access confirmed (optional)', 'Sync details and additional data'].map(k => [k, controlHelp[k]]),
   'Backup & restore': ['Create backup', 'Preview restore', 'Restore workspace', 'Refresh list'].map(k => [k, controlHelp[k]]),
 }
 
@@ -123,6 +125,12 @@ export function explanation(element: HTMLElement): string | undefined {
   return undefined
 }
 
+function positionTooltip(anchor: HTMLElement, tooltip: HTMLElement) {
+  const rect = anchor.getBoundingClientRect(), size = tooltip.getBoundingClientRect()
+  tooltip.style.left = `${Math.max(12, Math.min(rect.left, document.documentElement.clientWidth - size.width - 12))}px`
+  tooltip.style.top = `${Math.max(12, rect.top >= size.height + 20 ? rect.top - size.height - 10 : Math.min(rect.bottom + 10, window.innerHeight - size.height - 12))}px`
+}
+
 function HoverHelp({ page }: { page: Page }) {
   const id = useId()
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
@@ -130,7 +138,8 @@ function HoverHelp({ page }: { page: Page }) {
   const message = anchor ? explanation(anchor) : undefined
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
-    const clear = () => { clearTimeout(timer); setAnchor(null) }
+    let focusedAnchor: HTMLElement | null = null
+    const clear = () => { clearTimeout(timer); focusedAnchor = null; setAnchor(null) }
     const show = (target: EventTarget | null, delay: number) => {
       clearTimeout(timer)
       const element = target instanceof Element ? target.closest<HTMLElement>('[data-help],button,input,select,summary,h2') : null
@@ -139,31 +148,42 @@ function HoverHelp({ page }: { page: Page }) {
       else setAnchor(element)
     }
     const over = (e: PointerEvent) => {
+      if (focusedAnchor === document.activeElement) { clearTimeout(timer); return }
       if (e.target instanceof Element && e.target.closest('.context-tooltip')) { clearTimeout(timer); return }
       if (e.pointerType !== 'touch') show(e.target, 450)
     }
     const out = (e: PointerEvent) => {
+      if (focusedAnchor === document.activeElement) { clearTimeout(timer); return }
       if (e.relatedTarget instanceof Element && e.relatedTarget.closest('.context-tooltip')) return
       clearTimeout(timer)
       timer = setTimeout(() => setAnchor(current => current?.contains(document.activeElement) ? current : null), 160)
     }
-    const focus = (e: FocusEvent) => show(e.target, 0)
+    const focus = (e: FocusEvent) => {
+      show(e.target, 0)
+      focusedAnchor = e.target instanceof HTMLElement && explanation(e.target) ? e.target : null
+    }
     const blur = () => clear()
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && bubble.current?.matches(':popover-open')) { e.preventDefault(); clear() } }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && bubble.current) { e.preventDefault(); e.stopPropagation(); clear() } }
+    const scrolled = () => {
+      const focused = document.activeElement
+      if (focusedAnchor && focusedAnchor === focused) {
+        if (bubble.current) positionTooltip(focusedAnchor, bubble.current)
+      } else clear()
+    }
     document.addEventListener('pointerover', over)
     document.addEventListener('pointerout', out)
     document.addEventListener('focusin', focus)
     document.addEventListener('focusout', blur)
-    document.addEventListener('keydown', key)
+    document.addEventListener('keydown', key, true)
     document.addEventListener('click', clear)
-    window.addEventListener('scroll', clear, true)
-    window.addEventListener('resize', clear)
+    window.addEventListener('scroll', scrolled, true)
+    window.addEventListener('resize', scrolled)
     return () => {
       clearTimeout(timer)
       document.removeEventListener('pointerover', over); document.removeEventListener('pointerout', out)
       document.removeEventListener('focusin', focus); document.removeEventListener('focusout', blur)
-      document.removeEventListener('keydown', key); document.removeEventListener('click', clear)
-      window.removeEventListener('scroll', clear, true); window.removeEventListener('resize', clear)
+      document.removeEventListener('keydown', key, true); document.removeEventListener('click', clear)
+      window.removeEventListener('scroll', scrolled, true); window.removeEventListener('resize', scrolled)
     }
   }, [page])
   useLayoutEffect(() => {
@@ -172,9 +192,7 @@ function HoverHelp({ page }: { page: Page }) {
     const descriptions = (anchor.getAttribute('aria-describedby') || '').split(' ').filter(Boolean)
     anchor.setAttribute('aria-describedby', [...descriptions, id].join(' '))
     tooltip.showPopover()
-    const rect = anchor.getBoundingClientRect(), size = tooltip.getBoundingClientRect()
-    tooltip.style.left = `${Math.max(12, Math.min(rect.left, document.documentElement.clientWidth - size.width - 12))}px`
-    tooltip.style.top = `${Math.max(12, rect.top >= size.height + 20 ? rect.top - size.height - 10 : Math.min(rect.bottom + 10, window.innerHeight - size.height - 12))}px`
+    positionTooltip(anchor, tooltip)
     return () => {
       const remaining = (anchor.getAttribute('aria-describedby') || '').split(' ').filter(value => value && value !== id)
       if (remaining.length) anchor.setAttribute('aria-describedby', remaining.join(' '))

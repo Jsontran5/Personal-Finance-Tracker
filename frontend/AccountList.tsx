@@ -1,9 +1,10 @@
 import { trapDialogFocus } from './dialogFocus'
+import { AccountFreshness, type AccountSync } from './AccountFreshness'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { accountLabel, accountGroups, groupedAccounts, type GroupAccount } from './accounts'
 
 export type Account = GroupAccount & {
-  id: number; name: string; provider_name?: string | null; nickname?: string | null; kind: string; currency: string; balance_minor: number | null;
+  id: number; sync?: AccountSync | null; name: string; provider_name?: string | null; nickname?: string | null; kind: string; currency: string; balance_minor: number | null;
   balance_date: string | null; include_in_net_worth: number; balance_source?: string; transaction_count?: number; institution_name?: string | null
 }
 
@@ -25,6 +26,8 @@ export function AccountList({ accounts, sandbox, live, primary, money, add, deta
   accounts: Account[]; sandbox: boolean; live?: boolean; primary: number | null;
   money: (amount: number, currency?: string) => string; add: () => void; details: (account: Account) => ReactNode
 }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(timer) }, [])
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('')
   const [expanded, setExpanded] = useState<string[]>(['Cash & savings', 'Credit cards'])
@@ -61,7 +64,7 @@ export function AccountList({ accounts, sandbox, live, primary, money, add, deta
           </summary>
           <div className="group-accounts">{group.accounts.map(account => <details name="account-inspector" className="compact-account" key={account.id} open={selected === account.id} onToggle={event => { if (event.target === event.currentTarget) { const isOpen = event.currentTarget.open; setSelected(value => isOpen ? account.id : value === account.id ? null : value) } }}>
             <summary className="account-summary"><span className="account-identity"><strong>{account.name}</strong><small>{accountLabel(account)}{account.institution_name && ` / ${account.institution_name}`} · {account.currency}
-              {account.id === primary && ' · Primary'}{!account.include_in_net_worth && ' · Excluded'}</small></span>
+              {account.id === primary && ' · Primary'}{!account.include_in_net_worth && ' · Excluded'}</small><AccountFreshness sync={account.sync} now={now} compact cached={account.balance_source === 'cached'} /></span>
               <span className={'numeric ' + ((account.balance_minor ?? 0) < 0 ? 'negative' : '')}>{account.balance_minor === null ? '—' : money(account.balance_minor, account.currency)}</span>
             </summary>
             <AccountInspector account={account} open={selected === account.id} close={() => setSelected(null)} money={money}><div className="account-expanded">
@@ -72,6 +75,7 @@ export function AccountList({ accounts, sandbox, live, primary, money, add, deta
               {sandbox && <p className="muted">{account.transaction_count ? account.transaction_count + ' saved transactions across all dates.' : 'No spending transactions saved for this account.'}
                 {account.provider_type === 'investment' ? ' See Investments for holdings and investment activity.'
                   : account.provider_type === 'loan' || account.provider_type === 'credit' ? ' Expand Debt details for terms and reported payment information.' : ''}</p>}
+              <AccountFreshness sync={account.sync} now={now} cached={account.balance_source === 'cached'} />
               {details(account)}
             </div></AccountInspector>
           </details>)}</div>

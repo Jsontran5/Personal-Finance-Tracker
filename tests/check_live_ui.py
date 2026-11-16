@@ -35,7 +35,36 @@ def serve(database, port):
                 return {'institutions':[{'institution_id':'ins_live_bofa','name':'Bank of America (test coverage response)'}]}
             if endpoint == '/institutions/get_by_id':
                 return {'institution':{'institution_id':payload['institution_id'],'name':'Bank of America (test coverage response)','oauth':True,'products':['transactions','liabilities']}}
-            raise AssertionError('Readiness test must never create Link or access real banks: '+endpoint)
+            if endpoint in {'/accounts/get','/accounts/balance/get','/investments/holdings/get','/investments/transactions/get','/transactions/sync'}:
+                from finance.plaid_sandbox import PlaidError
+                identifier=1 if payload.get('access_token')=='synthetic-ui-access' else 2
+                if endpoint=='/accounts/balance/get' and identifier==1:
+                    raise PlaidError('INTERNAL_SERVER_ERROR')
+                if endpoint=='/transactions/sync':
+                    return {'added':[],'modified':[],'removed':[],'has_more':False,'next_cursor':'synthetic-refreshed','transactions_update_status':'HISTORICAL_UPDATE_COMPLETE'}
+                with closing(sqlite3.connect(Path(database).with_suffix('.plaid-live.db').as_uri()+'?mode=ro',uri=True)) as source:
+                    source.row_factory=sqlite3.Row
+                    accounts=[]
+                    for a in source.execute('SELECT a.*,m.provider_id,n.provider_name FROM accounts a JOIN connection_accounts m ON m.account_id=a.id LEFT JOIN account_names n ON n.account_id=a.id WHERE m.connection_id=?',(identifier,)):
+                        amount=a['current_minor']/100 if a['current_minor'] is not None else None
+                        if amount is not None and a['type'] in {'credit','loan'}: amount=-amount
+                        accounts.append({'account_id':a['provider_id'],'name':a['provider_name'] or a['name'],'type':a['type'],'subtype':a['subtype'],'balances':{'current':amount,'iso_currency_code':a['currency']}})
+                    if endpoint.startswith('/accounts/'):
+                        return {'accounts':accounts}
+                    if endpoint=='/investments/holdings/get':
+                        rows=list(source.execute('SELECT h.payload,h.security FROM investment_holdings h JOIN connection_accounts m ON m.account_id=h.account_id WHERE m.connection_id=?',(identifier,)))
+                        holdings=[];securities=[]
+                        for row in rows:
+                            h=json.loads(row['payload']);h['account_id']=h['account_id'].split(':',1)[-1]
+                            holdings.append(h);securities.append(json.loads(row['security']))
+                        return {'accounts':[a for a in accounts if a['type']=='investment'],'holdings':holdings,'securities':securities}
+                    rows=list(source.execute('SELECT i.payload,i.security FROM investment_activity i JOIN connection_accounts m ON m.account_id=i.account_id WHERE m.connection_id=? AND removed=0',(identifier,)))
+                    records=[];securities=[]
+                    for row in rows:
+                        item=json.loads(row['payload']);item['account_id']=item['account_id'].split(':',1)[-1]
+                        records.append(item);securities.append(json.loads(row['security']))
+                    return {'total_investment_transactions':len(records),'investment_transactions':records,'securities':securities}
+            raise AssertionError('UI test must never create Link or access real banks: '+endpoint)
         return call
     with patch.dict(os.environ, {'PLAID_PRODUCTION_CLIENT_ID':'synthetic-client','PLAID_PRODUCTION_SECRET':'synthetic-production-secret','PLAID_LIVE_ENABLED':'false'}), patch('finance.api.live_router',lambda db:live_router(db,client_factory=factory)):
         uvicorn.run(create_app(Path(database)),host='127.0.0.1',port=int(port),access_log=False)
@@ -79,6 +108,8 @@ def run():
             from finance.plaid_vault import protect
             fixture.execute("UPDATE multi_connections SET item_id='synthetic-ui-item',token=? WHERE id=1", (protect(b'synthetic-ui-access',True),))
             fixture.execute('INSERT INTO live_investment_connections VALUES (1,1)')
+            fixture.execute("UPDATE multi_connections SET item_id='synthetic-banking-item',token=? WHERE id=2", (protect(b'synthetic-banking-access',True),))
+            fixture.execute("UPDATE connection_accounts SET connection_id=2 WHERE account_id='p1:3'")
         from seed_investment_ui import seed
         seed(live_path)
         database.with_suffix('.workspace').write_text('live')
@@ -298,6 +329,36 @@ def run():
                     screenshot(f'{width}-{theme}-live-backup-preview')
                     button('dialog button','Cancel')
                     print(f'{width}-{theme}: Live readiness, expanded settings, locked institutions, long accounts and backups fit.',flush=True)
+            nav('Accounts');ready("document.querySelector('.account-freshness')")
+            assert js("document.querySelector('.refresh-all button').textContent")=='Refresh all'
+            button('.refresh-all button','Refresh all')
+            ready("document.querySelector('.refresh-all > [role=status]')?.textContent.includes('finished')",timeout=40)
+            assert js("document.querySelectorAll('.refresh-results li').length")==6
+            assert js("document.querySelector('.refresh-results summary').textContent.includes('1 failed')")
+            button('.refresh-all button','Refresh all')
+            ready("document.querySelector('.refresh-all > [role=status]')?.textContent.includes('finished')",timeout=40)
+            assert js("document.querySelector('.refresh-results summary').textContent.includes('5 skipped')")
+            report=api('/plaid/live/preview?month=2026-11')
+            assert any(a['sync'] and 'balances' in a['sync']['errors'] for a in report['accounts'])
+            assert any(a['sync'] and not a['sync']['errors'] and a['sync']['timestamps'].get('transactions') for a in report['accounts'])
+            for width in [1280,390]:
+                cdp('Emulation.setDeviceMetricsOverride',{'width':width,'height':1000 if width>400 else 844,'deviceScaleFactor':1,'mobile':False})
+                for theme in ['dark','light']:
+                    if js('document.documentElement.dataset.theme')!=theme:
+                        js("document.querySelector('.theme-toggle').click()");ready("!document.querySelector('.theme-toggle').disabled")
+                    nav('Accounts');ready("document.querySelector('.account-freshness')")
+                    js("document.querySelector('.refresh-results').open=false;document.querySelectorAll('.account-group').forEach(e=>e.open=true);document.querySelector('.accounts-workspace').scrollIntoView({block:'start'})")
+                    screenshot(f'{width}-{theme}-account-freshness')
+                    js("[...document.querySelectorAll('.compact-account')].find(e=>e.querySelector('.sync-warning')?.textContent.includes('errors')).open=true")
+                    ready("document.querySelector('.account-inspector[open] .account-sync-details')")
+                    js("document.querySelector('.account-inspector[open] .account-sync-details').scrollIntoView({block:'start'})")
+                    screenshot(f'{width}-{theme}-account-update-details')
+                    js("document.querySelector('.account-inspector[open] button[aria-label=\"Close account details\"]').click()")
+                    nav('Bank sync');ready("document.querySelector('.refresh-results li')")
+                    js("document.querySelector('.refresh-results').open=true;document.querySelector('.refresh-all').scrollIntoView({block:'start'})")
+                    screenshot(f'{width}-{theme}-refresh-all-results')
+            nav('Backup & restore');ready("document.querySelector('.backup-create')")
+            button('.backup-create button','Create backup');ready("document.querySelector('.backup-message')")
             stop(server);server=start_server();wait_for(lambda:urllib.request.urlopen(url,timeout=1).status==200,'restart')
             cdp('Page.reload');ready("document.querySelector('select[aria-label=\"Workspace\"]')?.value==='live'")
             nav('Bank sync');ready("document.querySelector('.live-readiness form')")
