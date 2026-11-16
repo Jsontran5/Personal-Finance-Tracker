@@ -69,7 +69,7 @@ The original Manual-only CLI remains available: `.venv\Scripts\python.exe -m fin
 
 ## Prepare Live bank connections
 
-Choose **Workspace → Live → Bank sync** for the readiness checks. Live data, credentials, authorizations, chart settings and backups are isolated from Sandbox. Your confirmed Trial allowance (20) and Transactions access are recorded locally; Production credentials, OAuth/Hosted Link confirmations and actual institution coverage still need verification. Real-bank linking remains locked with `PLAID_LIVE_ENABLED=false` and cannot be enabled from the browser.
+Choose **Workspace → Live → Bank sync** for the readiness checks. Live data, credentials, authorizations, chart settings and backups are isolated from Sandbox. Completed checks are collapsed under **Setup details**; outstanding checks stay visible. Production credentials are configured locally, and the confirmed Trial allowance (20), Transactions and automatic OAuth access are recorded. Hosted Link is requested automatically and needs no separate Dashboard enablement. Use **Find your bank** to check actual institution coverage and prepare its entry. Real-bank linking remains locked with `PLAID_LIVE_ENABLED=false` and cannot be enabled from the browser.
 
 Follow [Live setup and BofA pilot](LIVE_SETUP.md) to finish configuration without connecting a bank. Use the explicit Production entries in `.env.example`; keep the existing Sandbox secret. The first separately approved pilot supports Transactions and balances. New real-bank Item creation, investment/debt-term product rollout and live stock quotes are outside this preparation. This app remains a local, single-user desktop service, not an internet deployment.
 

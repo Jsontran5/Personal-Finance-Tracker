@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { LiveReadiness } from './LiveReadiness'
 
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
@@ -11,6 +11,7 @@ const time = (value: string | null) => value ? new Date(value).toLocaleString() 
 
 export function Connections({ request, onChanged, live = false }: { live?: boolean; request: Request; onChanged: () => void }) {
   const base = live ? '/plaid/live' : '/plaid/combined-sandbox'
+  const addPanel = useRef<HTMLDetailsElement>(null)
   const [status, setStatus] = useState<Status>()
   const [manual, setManual] = useState<ManualAccount[]>([])
   const [selected, setSelected] = useState<number[]>([])
@@ -48,7 +49,13 @@ export function Connections({ request, onChanged, live = false }: { live?: boole
   }
 
   return <div className="connections-page">
-    {live && <LiveReadiness request={request} revision={status?.connections.length} />}
+    {live && <LiveReadiness request={request} revision={status?.connections.length} onFindInstitution={() => {
+      if (addPanel.current) {
+        addPanel.current.open = true
+        addPanel.current.scrollIntoView({ block: 'start' })
+        addPanel.current.querySelector<HTMLInputElement>('input[aria-label="Find institution"]')?.focus({ preventScroll: true })
+      }
+    }} />}
     <section className="card"><div className="section-heading"><div><h2>Connected institutions</h2><small>{live ? 'Live workspace' : 'Combined Sandbox'} · each connection keeps its own authorization and sync state</small></div><span className="chip">{live ? 'LIVE DATA' : 'TEST MODE'}</span></div>
       <p className="muted">Accounts, spending, investments and net worth share this workspace. Reconnect an existing institution to repair access or select more accounts.</p>
       {!live && <button className="secondary" disabled={!!busy || !status?.configured} onClick={() => void action('Import saved scenarios', async () => {
@@ -58,7 +65,7 @@ export function Connections({ request, onChanged, live = false }: { live?: boole
       {status && !status.configured && <p className="notice">Set local {live ? 'Production' : 'Sandbox'} credentials before connecting or syncing. Saved reports remain available.</p>}
     </section>
     {busy && <p className="muted" role="status">{busy}…</p>}{error && <p className="notice" role="alert">{error}</p>}{message && <p className="notice" role="status">{message}</p>}
-    <section className="card"><details className="connection-add"><summary>Add another institution</summary>
+    <section className="card"><details className="connection-add" ref={addPanel}><summary>Add another institution</summary>
       <p className="muted">This single-user app allows one connection per institution. Existing entries use Reconnect; adding the same login again can consume another connection slot.</p>
       <form className="filters" onSubmit={event => { event.preventDefault(); void action('Searching institutions', async () => {
         const found = await request<{ institutions: { id: string; name: string }[] }>(base + '/institutions?' + new URLSearchParams({ query, profile }))
@@ -77,7 +84,7 @@ export function Connections({ request, onChanged, live = false }: { live?: boole
     <section className="connections-list" aria-label="Saved institutions">
       <div className="filters"><input type="search" aria-label="Filter connections" placeholder="Find a saved institution" value={filter} onChange={event => { setFilter(event.target.value); setPage(0) }} /></div>
       {!status && !error && <p role="status">Loading connections…</p>}
-      {status && !matching.length && <p className="empty">{status.connections.length ? 'No connections match this filter.' : 'Import your saved Sandbox connections, or add an institution.'}</p>}
+      {status && !matching.length && <p className="empty">{status.connections.length ? 'No connections match this filter.' : live ? 'No institutions added yet. Use Find your bank above to get started.' : 'Import your saved Sandbox connections, or add an institution.'}</p>}
       {matching.slice(currentPage * 6, (currentPage + 1) * 6).map(connection => <article className="card connection-card" key={connection.id}>
         <div className="section-heading"><div><h3>{connection.name}</h3><small>{connection.profile === 'investments' ? 'Investments' : 'Banking'} · {connection.account_count} accounts</small></div><span className="chip">{connection.needs_reauth ? 'Reconnect needed' : connection.connected ? 'Connected' : 'Setup needed'}</span></div>
         {connection.last_error && <p className="notice">Last request: {connection.last_error}. Saved data is retained.</p>}

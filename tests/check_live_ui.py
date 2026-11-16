@@ -156,14 +156,19 @@ def run():
             assert not js("document.querySelector('select[aria-label=\"Sandbox scenario\"]')")
             nav('Bank sync');ready("document.querySelector('.live-readiness form')")
             js("document.querySelector('.readiness-settings').open=true")
-            for name in ['trial_confirmed','transactions_enabled']:
+            assert not js("document.querySelector('input[name=hosted_link_confirmed]')")
+            for name in ['trial_confirmed','transactions_enabled','oauth_confirmed']:
                 js("document.querySelector('input[name="+name+"]').click()")
             js("document.querySelector('input[name=item_limit]').focus()")
             cdp('Input.insertText',{'text':'20'})
             button('.live-readiness button','Save confirmations')
             ready("document.querySelector('.live-readiness [role=status]')?.textContent.includes('confirmations saved')")
             assert api('/plaid/live/readiness')['setup']['item_limit']==20
-            js("document.querySelector('.connection-add').open=true;document.querySelector('input[aria-label=\"Find institution\"]').focus()")
+            assert api('/plaid/live/readiness')['ready']
+            assert not js("document.querySelector('.readiness-outstanding')")
+            assert not js("document.querySelector('.readiness-configuration').open")
+            button('.live-readiness button','Find your bank')
+            ready("document.querySelector('.connection-add').open && document.activeElement.getAttribute('aria-label')==='Find institution'")
             cdp('Input.insertText',{'text':'Bank of America'})
             button('.connection-add button','Search institutions');ready("document.querySelector('.connection-result button')")
             button('.connection-result button','Add institution')
@@ -180,7 +185,8 @@ def run():
                     nav('Bank sync');ready("document.querySelector('.readiness-checks')")
                     js('window.scrollTo(0,0)')
                     screenshot(f'{width}-{theme}-live-readiness')
-                    js("document.querySelector('.readiness-checks').scrollIntoView({block:'start'})")
+                    assert not js("document.querySelector('.readiness-outstanding')")
+                    js("document.querySelector('.readiness-configuration').open=true;document.querySelector('.readiness-checks').scrollIntoView({block:'start'})")
                     screenshot(f'{width}-{theme}-live-checklist')
                     js("document.querySelectorAll('.readiness-settings').forEach(e=>e.open=true);document.querySelector('.readiness-settings').scrollIntoView({block:'start'})")
                     screenshot(f'{width}-{theme}-live-settings-expanded')
