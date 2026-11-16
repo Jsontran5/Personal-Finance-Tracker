@@ -27,6 +27,9 @@
   --chrome: #ededf0eb; --shadow: 0 3px 18px #1e293b05; --panel-shadow: 0 24px 90px #17283f29;
 }
 body { min-width: 0; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+.unified-workspace { display: grid; gap: 5px; padding: 14px 8px; margin: 18px 0; }
+.unified-workspace > strong { font-size: .85rem; }
+.unified-workspace > small { font-size: .7rem; color: var(--muted); }
 .reporting-month { display: grid; gap: 4px; color: var(--muted); font-size: .7rem; }
 .reporting-month input { font-size: .85rem; }
 .page-header .toolbar { align-items: flex-end; }

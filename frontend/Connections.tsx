@@ -9,7 +9,7 @@ type Status = { configured: boolean; linking_enabled?: boolean; connections: Con
 type ManualAccount = { id: number; name: string; kind: string; selected: boolean }
 const time = (value: string | null) => value ? new Date(value).toLocaleString() : 'Not synced'
 
-export function Connections({ request, onChanged, live = false, revision }: { revision?: number; live?: boolean; request: Request; onChanged: () => void }) {
+export function Connections({ request, onChanged, live = false, unified = false, revision }: { revision?: number; live?: boolean; unified?: boolean; request: Request; onChanged: () => void }) {
   const base = live ? '/plaid/live' : '/plaid/combined-sandbox'
   const addPanel = useRef<HTMLDetailsElement>(null)
   const [status, setStatus] = useState<Status>()
@@ -57,7 +57,7 @@ export function Connections({ request, onChanged, live = false, revision }: { re
         addPanel.current.querySelector<HTMLInputElement>('input[aria-label="Find institution"]')?.focus({ preventScroll: true })
       }
     }} />}
-    <section className="card"><div className="section-heading"><div><h2>Connected institutions</h2><small>{live ? 'Live workspace' : 'Combined Sandbox'} · each connection keeps its own authorization and sync state</small></div><span className="chip">{live ? 'LIVE DATA' : 'TEST MODE'}</span></div>
+    <section className="card"><div className="section-heading"><div><h2>Connected institutions</h2><small>{unified ? 'Your bank connections' : live ? 'Live workspace' : 'Combined Sandbox'} · each connection keeps its own authorization and sync state</small></div><span className="chip">{live ? 'LIVE DATA' : 'TEST MODE'}</span></div>
       <p className="muted">Accounts, spending, investments and net worth share this workspace. Reconnect an existing institution to repair access or select more accounts.</p>
       {!live && <button className="secondary" disabled={!!busy || !status?.configured} onClick={() => void action('Import saved scenarios', async () => {
         const result = await request<{ imported: number }>(base + '/import-scenarios', 'POST')
@@ -124,12 +124,12 @@ export function Connections({ request, onChanged, live = false, revision }: { re
       </article>)}
       {matching.length > 6 && <div className="pagination"><button className="secondary small" disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>Previous connections</button><small>Page {currentPage + 1} of {Math.ceil(matching.length / 6)}</small><button className="secondary small" disabled={(currentPage + 1) * 6 >= matching.length} onClick={() => setPage(currentPage + 1)}>Next connections</button></div>}
     </section>
-    <section className="card"><details className="manual-selection"><summary>Include accounts from Manual</summary><p className="muted">Choose only accounts that are not already connected through Plaid. Selected balances and transactions appear here as read-only mirrors; edit them in Manual. Updates are reflected when this workspace reloads.</p>
+    {unified ? <p className="analytics-note">Manual accounts are included automatically. Add or edit them from Accounts alongside your connected bank accounts.</p> : <section className="card"><details className="manual-selection"><summary>Include accounts from Manual</summary><p className="muted">Choose only accounts that are not already connected through Plaid. Selected balances and transactions appear here as read-only mirrors; edit them in Manual. Updates are reflected when this workspace reloads.</p>
       <div className="manual-selection-list">{manual.map(account => <label className="checkbox" key={account.id}><input type="checkbox" checked={selected.includes(account.id)} disabled={!!busy} onChange={event => setSelected(value => event.target.checked ? [...value, account.id] : value.filter(id => id !== account.id))} />{account.name}</label>)}</div>
       {!manual.length && <p className="empty">No Manual accounts yet. Add a manual account, such as Nelnet, in Manual first.</p>}
       <button className="secondary small" disabled={!!busy} onClick={() => void action('Saving manual selection', async () => {
         await request(base + '/manual', 'PUT', { account_ids: selected }); return 'Manual account selection saved. Manual records are unchanged.'
       })}>Include selected manual accounts</button>
-    </details></section>
+    </details></section>}
   </div>
 }

@@ -90,9 +90,9 @@ export function Chart({ history, money, currency = 'USD', label = 'Recorded net 
   </div>
 }
 
-export function NetWorth({ accounts, history, mode, request, money, onStart, onSelectionChange, workspaceLabel, revision, onUpdateSnapshots }: {
+export function NetWorth({ accounts, history, mode, request, money, onStart, onSelectionChange, workspaceLabel, revision, onUpdateSnapshots, unified = false }: {
   accounts: Account[]; history: HistoryPoint[]; mode: 'personal' | 'sandbox'; workspaceLabel?: string; request: Request; money: Money; onStart: () => void;
-  onSelectionChange: (ids: number[] | null) => void; revision: number; onUpdateSnapshots: () => void
+  onSelectionChange: (ids: number[] | null) => void; revision: number; onUpdateSnapshots: () => void; unified?: boolean
 }) {
   const [chartMode, setChartMode] = useState('net')
   const [historyView, setHistoryView] = useState('snapshots')
@@ -193,8 +193,8 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
     {excluded === null && !error && <p className="muted">Loading chart selection…</p>}
     {excluded !== null && eligible.length === 0 && <div className="welcome">
       <h2>{accounts.length ? 'No eligible USD accounts' : 'Start with an account'}</h2>
-      <p>{mode === 'sandbox' ? workspaceLabel === 'Live' ? 'Connect a bank after completing Live readiness to start recording balances.' : 'Sync a test bank to start recording balances.' : 'Add an included USD account to start tracking net worth.'}</p>
-      <button className="primary" onClick={onStart}>{mode === 'sandbox' ? 'Open Bank sync' : 'Add your first account'}</button>
+      <p>{unified ? 'Add a manual account or connect a bank to start tracking your finances. Manual accounts work without Plaid keys.' : mode === 'sandbox' ? workspaceLabel === 'Live' ? 'Connect a bank after completing Live readiness to start recording balances.' : 'Sync a test bank to start recording balances.' : 'Add an included USD account to start tracking net worth.'}</p>
+      <button className="primary" onClick={onStart}>{unified ? 'Add manual account' : mode === 'sandbox' ? 'Open Bank sync' : 'Add your first account'}</button>
     </div>}
     {excluded !== null && eligible.length > 0 && selected.length === 0 && <p className="empty">Select an account to view net worth.</p>}
     {excluded !== null && selected.length > 0 && <>

@@ -38,6 +38,9 @@ def refresh_manual(database, combined, *, include_all=False):
         selected = dict(db.execute('SELECT account_id,fingerprint FROM manual_selection'))
         accounts = {row['id']: row for row in account_balances(source, date.today())}
         transactions = [dict(row) for row in source.execute('SELECT * FROM transactions ORDER BY id')]
+        if include_all:
+            from .transfers import project_transfers
+            transactions = project_transfers(source, transactions, False)
         categories = {row['id']: dict(row) for row in source.execute('SELECT * FROM categories')}
         changed = False
         for mapped in db.execute('SELECT account_id,manual_id FROM connection_accounts WHERE manual_id IS NOT NULL').fetchall():
@@ -75,14 +78,15 @@ def refresh_manual(database, combined, *, include_all=False):
                 incoming = tx['destination_id'] == identifier
                 entry_id = f'm:{tx["id"]}:' + ('in' if incoming else 'out')
                 amount = tx['amount_minor'] * (-1 if incoming or tx['kind'] in {'income', 'refund'} else 1)
+                mirror_kind = 'transfer' if tx.get('transfer_pair_id') else tx['kind']
                 db.execute('''INSERT INTO transactions VALUES (?,?,?,?,?,?,?,0,0) ON CONFLICT(id)
                     DO UPDATE SET date=excluded.date,name=excluded.name,amount_minor=excluded.amount_minor,
                     currency=excluded.currency,kind=excluded.kind,removed=0''',
-                           (entry_id, key, tx['date'], tx['merchant'], amount, account['currency'], tx['kind']))
-                category_id = category(db, categories.get(tx['category_id'])) if tx['kind'] not in {'transfer', 'investment'} else None
+                           (entry_id, key, tx['date'], tx['merchant'], amount, account['currency'], mirror_kind))
+                category_id = category(db, categories.get(tx['category_id'])) if mirror_kind not in {'transfer', 'investment'} else None
                 db.execute('''INSERT INTO preview_edits VALUES (?,?,?,?,?) ON CONFLICT(transaction_id)
                     DO UPDATE SET merchant=excluded.merchant,kind=excluded.kind,category_id=excluded.category_id,notes=excluded.notes''',
-                           (entry_id, tx['merchant'], tx['kind'], category_id, tx['notes']))
+                           (entry_id, tx['merchant'], mirror_kind, category_id, tx['notes']))
                 db.execute('''INSERT INTO transaction_details VALUES (?,?,?) ON CONFLICT(transaction_id)
                     DO UPDATE SET payload=excluded.payload,retrieved_at=excluded.retrieved_at''',
                            (entry_id, json.dumps({**tx, '_finance_manual': True, 'amount': amount / (1 if account['currency'] == 'JPY' else 100)}), tx['created_at']))

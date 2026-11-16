@@ -128,3 +128,24 @@ class ProductionAppTests(TestCase):
         with patch.dict('os.environ',{'APP_ENV':'invalid'}):
             with self.assertRaises(ValueError):
                 application_config(self.root)
+
+    def test_existing_manual_transfer_pairs_keep_their_reporting_treatment(self):
+        outgoing=self.add_account('Manual checking')
+        incoming=self.add_account('Manual savings')
+        for account,kind in [(outgoing,'expense'),(incoming,'income')]:
+            result=self.client.post('/api/transactions',json={'account_id':account,'kind':kind,
+                'amount_minor':1000,'date':date.today().isoformat(),'merchant':'Transfer payment'})
+            self.assertEqual(result.status_code,201,result.text)
+        path='/api/review/transfers'
+        candidate=self.client.get(path).json()['suggestions'][0]
+        body={'outgoing_id':candidate['outgoing']['id'],'incoming_id':candidate['incoming']['id']}
+        preview=self.client.post(path+'/preview',json=body).json()
+        self.assertEqual(self.client.post(path+'/confirm',json={**body,'preview_token':preview['preview_token']}).status_code,200)
+        data=self.overview()
+        self.assertEqual(data['spending_minor'],0)
+        self.assertEqual(data['income_minor'],0)
+        self.assertTrue(all(tx['kind']=='transfer' for tx in data['transactions']))
+        link=self.client.get(path).json()['saved'][0]
+        self.assertEqual(self.client.delete(path+'/'+str(link['id'])).status_code,200)
+        self.assertEqual(self.overview()['spending_minor'],1000)
+        self.assertEqual(self.overview()['income_minor'],1000)

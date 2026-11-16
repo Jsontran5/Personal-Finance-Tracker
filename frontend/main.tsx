@@ -28,7 +28,7 @@ import './interface.css'
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
 type Category = { id: number; name: string; kind: 'expense' | 'income' }
 type Entry = { id: number; account_id: number; destination_id: number | null; category_id: number | null; amount_minor: number; kind: Kind; merchant: string; notes: string; date: string; transfer_pair_id?: number | null; transfer_kind?: string | null; transfer_other_account?: string | null; transfer_role?: 'incoming' | 'outgoing' | null }
-type Transaction = Entry & { flow?: Flow; currency: string; account_name: string; category_name: string | null; destination_name: string | null; pending?: number; needs_review?: number; source_merchant?: string; manual_source?: number }
+type Transaction = Entry & { flow?: Flow; currency: string; account_name: string; category_name: string | null; destination_name: string | null; pending?: number; needs_review?: number; source_merchant?: string; manual_source?: number; manual_transaction_id?: number | null }
 type Template = Omit<Entry, 'date' | 'destination_id'> & { name: string }
 type Budget = Category & { limit_minor: number | null; actual_minor: number; previous_actual_minor: number }
 type Point = HistoryPoint
@@ -45,6 +45,7 @@ type Theme = 'dark' | 'light'
 type Mode = 'personal' | 'sandbox' | 'live'
 type Scenario = 'banking' | 'investments' | 'combined'
 type DialogState =
+  | { type: 'manual-transfers'; focusId: number | null }
   | { type: 'transaction'; entry?: Entry | Template; template?: boolean }
   | { type: 'account'; account?: Account }
   | { type: 'balance'; account: Account }
@@ -250,6 +251,9 @@ function BalanceHistory({ account, sandbox = false, request }: { account: Accoun
 
 function App() {
   const [mode, setMode] = useState<Mode | null>(null)
+  const [unified, setUnified] = useState(false)
+  const [manualEditorData, setManualEditorData] = useState<Overview>()
+  const [manualOverview, setManualOverview] = useState<Overview>()
   const synced = mode === 'sandbox' || mode === 'live'
   const [scenario, setScenario] = useState<Scenario>('banking')
   const [scenarioPending, setScenarioPending] = useState(false)
@@ -312,9 +316,16 @@ function App() {
   }, [])
 
   useEffect(() => {
-    Promise.all([apiRequest<{ mode: Mode }>('/workspace'), apiRequest<{ scenario: Scenario }>('/sandbox-scenario')])
-      .then(([workspace, selected]) => { setScenario(selected.scenario); setMode(workspace.mode) })
-      .catch(() => { setMode('personal'); setModeError('Could not load the saved workspace.') })
+    apiRequest<{ unified: boolean }>('/app-config').then(async config => {
+      setUnified(config.unified)
+      const workspace = await apiRequest<{ mode: Mode }>('/workspace')
+      if (!config.unified) {
+        const selected = await apiRequest<{ scenario: Scenario }>('/sandbox-scenario')
+        setScenario(selected.scenario)
+      }
+      setMode(workspace.mode)
+    })
+      .catch(() => { setModeError('Could not load app configuration. Restart the app or reload the browser.') })
   }, [])
 
   useEffect(() => { setReportFilters(defaultReportFilters); setKindFilter('all'); setPostingFilter('all'); setSortOrder('newest') }, [mode, scenario])
@@ -368,34 +379,57 @@ function App() {
   useEffect(() => {
     if (!mode) return
     const controller = new AbortController()
-    request<Overview>((synced ? previewPath : '/overview') + '?month=' + month, 'GET', undefined, controller.signal).then(result => {
+    request<Overview>((synced ? previewPath : '/overview') + '?month=' + month, 'GET', undefined, controller.signal).then(async result => {
+      if (unified) setManualOverview(await request<Overview>('/overview?month=' + month, 'GET', undefined, controller.signal))
       setData(result)
       setLoadedMonth(mode + scenario + month)
       setError('')
     }).catch(failure => { if (!controller.signal.aborted) setError(failure.message) })
     return () => controller.abort()
-  }, [month, revision, mode, scenario, request])
+  }, [month, revision, mode, scenario, request, unified])
 
   function open(state: DialogState) {
+    setManualEditorData(undefined)
     setFormError('')
     setDialog(state)
   }
 
+  async function openManual(type: 'account' | 'balance' | 'transaction', item?: Account | Transaction, template = false, entry?: Template) {
+    setModeError('')
+    try {
+      const ledger = await request<Overview>('/overview?month=' + (item && 'manual_transaction_id' in item ? item.date.slice(0, 7) : month))
+      setManualEditorData(ledger); setFormError('')
+      if (type === 'transaction') {
+        const original = item && 'manual_transaction_id' in item ? ledger.transactions.find(tx => tx.id === item.manual_transaction_id) : entry
+        if (item && !original) throw new Error('Manual transaction no longer exists. Refresh the app.')
+        if (original?.transfer_pair_id) { setDialog({ type: 'manual-transfers', focusId: original.transfer_pair_id }); return }
+        if (!ledger.accounts.length) setDialog({ type: 'account' })
+        else setDialog({ type: 'transaction', entry: original, template })
+      } else {
+        const account = item && 'manual_id' in item ? ledger.accounts.find(a => a.id === item.manual_id) : undefined
+        if (item && !account) throw new Error('Manual account no longer exists. Refresh the app.')
+        if (type === 'balance' && account) setDialog({ type: 'balance', account })
+        else setDialog({ type: 'account', account })
+      }
+    } catch (failure) { setModeError((failure as Error).message) }
+  }
+
   function quickAdd() {
+    if (unified) { void openManual('transaction'); return }
     if (data && mode === 'personal') open(data.accounts.length ? { type: 'transaction' } : { type: 'account' })
   }
 
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
-      if (mode !== 'personal' || dialog || !data || !event.altKey || event.key.toLowerCase() !== 'n' ||
+      if ((!unified && mode !== 'personal') || dialog || !data || !event.altKey || event.key.toLowerCase() !== 'n' ||
           (event.target instanceof HTMLElement && (event.target.isContentEditable ||
             event.target.matches('input, select, textarea')))) return
       event.preventDefault()
-      open(data.accounts.length ? { type: 'transaction' } : { type: 'account' })
+      quickAdd()
     }
     window.addEventListener('keydown', shortcut)
     return () => window.removeEventListener('keydown', shortcut)
-  }, [data, dialog, mode])
+  }, [data, dialog, mode, unified, month])
 
   async function save(path: string, method: string, body?: () => object) {
     setBusy(true)
@@ -466,7 +500,13 @@ function App() {
   const ready = data && loadedMonth === mode + scenario + month ? data : undefined
   const budgetRows = ready?.budgets.filter(budget => budget.limit_minor !== null).slice(0, 4) ?? []
   const editTransaction = (entry: Transaction) => {
-    if (entry.manual_source) { setModeError('This manual transaction is a read-only mirror. Switch to Manual to edit it.'); return }
+    if (entry.manual_source) {
+      if (unified) {
+        if (entry.transfer_pair_id) { setTransferFocus(entry.transfer_pair_id); setPage('Transactions'); setReviewMessage('Unlink this transfer pair before editing the manual transaction.'); return }
+        void openManual('transaction', entry)
+      } else setModeError('This manual transaction is a read-only mirror. Switch to Manual to edit it.')
+      return
+    }
     if (synced) {
       setSandboxKind(entry.kind)
       setSandboxCategory(entry.category_id ?? 0)
@@ -502,9 +542,9 @@ function App() {
   return <div className="shell">
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark"><Icon name="logo" /></span><div><strong>Personal Finance</strong><small>Private workspace</small></div></div>
-      <label className="workspace-picker">Workspace<select aria-label="Workspace" value={mode ?? 'personal'} disabled={!mode || modePending || busy || !!dialog} onChange={event => void changeMode(event.target.value as Mode)}>
+      {unified ? <div className="unified-workspace"><strong>All accounts</strong><small>Connected &amp; manual accounts</small></div> : mode && <label className="workspace-picker">Workspace<select aria-label="Workspace" value={mode ?? 'personal'} disabled={!mode || modePending || busy || !!dialog} onChange={event => void changeMode(event.target.value as Mode)}>
         <option value="personal">Manual</option><option value="sandbox">Sandbox preview</option><option value="live">Live</option>
-      </select></label>
+      </select></label>}
       {mode === 'sandbox' && <label className="scenario-picker">Test scenario<select aria-label="Sandbox scenario" disabled={scenarioPending || modePending || busy || !!dialog} value={scenario} onChange={event => void changeScenario(event.target.value as Scenario)}><option value="banking">Banking</option><option value="investments">Investments</option><option value="combined">Combined</option></select></label>}
       <Navigation page={page} navigate={item => { setPage(item); setKindFilter('all'); setPostingFilter('all'); setSortOrder('newest'); setAllReviewDates(false); setReviewFilter('all'); setDrilldown(null); setCategoryFilter(0); setAccountFilter(0); setSearch('') }} />
       <div className="sidebar-footer">
@@ -516,7 +556,7 @@ function App() {
     </aside>
     <main>
       <header className="page-header">
-        <div><span className="page-context"><i data-mode={mode} />{mode === 'live' ? 'Live workspace' : mode === 'sandbox' ? 'Sandbox · ' + scenario : 'Manual workspace'}</span><h1>{page}</h1><p className="page-description">{{
+        <div><span className="page-context"><i data-mode={mode} />{unified ? 'Your finances' : mode === 'live' ? 'Live workspace' : mode === 'sandbox' ? 'Sandbox · ' + scenario : 'Manual workspace'}</span><h1>{page}</h1><p className="page-description">{{
           Overview: 'Net worth, monthly cash flow, and budget progress.',
           Spending: 'See when, where, and how your spending changes.',
           Transactions: 'Browse your ledger and recurring templates.',
@@ -529,6 +569,7 @@ function App() {
         <div className="toolbar">
           <PageHelp page={page} />
           {page !== 'Accounts' && page !== 'Backup & restore' && page !== 'Investments' && <label className="reporting-month">Reporting month<input type="month" aria-label="Reporting month" value={month} disabled={page === 'Transactions' && allReviewDates} onChange={event => { if (event.target.value) setMonth(event.target.value) }} /></label>}
+          {unified && page === 'Transactions' && <button className="secondary" onClick={quickAdd}>Add manual transaction</button>}
           {page === 'Backup & restore' || page === 'Investments' ? null : synced ? <button className="primary" onClick={() => setPage('Bank sync')}>Bank sync</button>
             : <button className="primary with-icon" disabled={!data} onClick={quickAdd}><Icon name="plus" />Add transaction</button>}
         </div>
@@ -536,15 +577,15 @@ function App() {
       <RefreshAll request={request} visible={mode === 'live' && (page === 'Accounts' || page === 'Bank sync')} onChanged={() => setRevision(value => value + 1)} />
       {themeError && <p role="alert" className="notice">{themeError}</p>}
       {modeError && <p role="alert" className="notice">{modeError}</p>}
-      {synced && page !== 'Backup & restore' && <details className="workspace-info"><summary><span className="status-dot" />{mode === 'live' ? 'Live data · Local storage' : 'Test data · Sandbox preview'}<span>About this workspace</span></summary><p>{mode === 'live' ? 'Real financial data stays separate from Sandbox. Manage connection readiness in Bank sync.' : 'Test accounts, categories, and budgets.'} Spending uses posted activity.</p></details>}
+      {synced && page !== 'Backup & restore' && <details className="workspace-info"><summary><span className="status-dot" />{unified ? 'Your data · Local storage' : mode === 'live' ? 'Live data · Local storage' : 'Test data · Sandbox preview'}<span>About this workspace</span></summary><p>{unified ? 'Connected and manual accounts share this app. Manage connections in Bank sync and manual records in Accounts.' : mode === 'live' ? 'Real financial data stays separate from Sandbox. Manage connection readiness in Bank sync.' : 'Test accounts, categories, and budgets.'} Spending uses posted activity.</p></details>}
       {synced && page !== 'Backup & restore' && page !== 'Investments' && !!ready?.review_count && <p className="notice">{ready.review_count} credit entries need classification as income, refunds, or transfers before they count toward cash flow.</p>}
       {synced && page !== 'Backup & restore' && !!ready?.missing_balance_count && <p className="notice">{ready.missing_balance_count} accounts have no reported balance and are excluded from net worth.</p>}
       {error && <p role="alert" className="notice">{error} <button className="secondary small" onClick={() => setRevision(value => value + 1)}>Retry</button></p>}
       {!ready && !error && <p className="muted" role="status">Loading your ledger…</p>}
       {ready && page === 'Overview' && <>
         <div className="overview-grid">
-        <NetWorth workspaceLabel={mode === 'live' ? 'Live' : mode === 'sandbox' ? 'Sandbox' : 'Manual'} key={mode + scenario} accounts={ready.accounts} history={ready.history} mode={synced ? 'sandbox' : 'personal'}
-          request={request} money={money} revision={revision} onUpdateSnapshots={() => setPage(synced ? 'Bank sync' : 'Accounts')} onSelectionChange={setChartAccountIds} onStart={() => synced ? setPage('Bank sync') : open({ type: 'account' })} />
+        <NetWorth unified={unified} workspaceLabel={mode === 'live' ? 'Live' : mode === 'sandbox' ? 'Sandbox' : 'Manual'} key={mode + scenario} accounts={ready.accounts} history={ready.history} mode={synced ? 'sandbox' : 'personal'}
+          request={request} money={money} revision={revision} onUpdateSnapshots={() => setPage(synced ? 'Bank sync' : 'Accounts')} onSelectionChange={setChartAccountIds} onStart={() => unified ? void openManual('account') : synced ? setPage('Bank sync') : open({ type: 'account' })} />
         <div className="overview-side"><CashFlow data={ready} month={activeMonth} drill={(ids, label) => drillSpending(ids, label, 'Overview')} />
           <section className="card"><div className="section-heading"><div><h2>Budget progress</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => setPage('Budgets')}>View budgets <Icon name="right" /></button></div>
             <BudgetRows budgets={budgetRows} edit={editBudget} filter={filterCategory} />
@@ -596,11 +637,11 @@ function App() {
               <button className="secondary small" disabled={currentPage === lastPage} onClick={() => setTransactionPage(currentPage + 1)}>Next</button></div>
           </div>}
         </section>
-        {mode === 'personal' && <section className="card stack"><div className="section-heading"><div><h2>Recurring templates</h2><small>Reuse a paycheck or regular expense.</small></div>
-          <button className="secondary small" disabled={!ready.accounts.length} onClick={() => open({ type: 'transaction', template: true })}>New template</button></div>
-          {!ready.templates.length && <p className="empty">Saved templates will appear here.</p>}
-          {ready.templates.map(template => <div className="history-row" key={template.id}><strong>{template.name}</strong><div className="inline-actions">
-            <button className="secondary small" onClick={() => open({ type: 'transaction', entry: template })}>Use template</button>
+        {(mode === 'personal' || unified) && <section className="card stack"><div className="section-heading"><div><h2>Recurring templates</h2><small>Reuse a paycheck or regular expense.</small></div>
+          <button className="secondary small" disabled={!(unified ? manualOverview : ready)?.accounts.length} onClick={() => unified ? void openManual('transaction', undefined, true) : open({ type: 'transaction', template: true })}>New template</button></div>
+          {!(unified ? manualOverview?.templates ?? [] : ready.templates).length && <p className="empty">Saved templates will appear here.</p>}
+          {(unified ? manualOverview?.templates ?? [] : ready.templates).map(template => <div className="history-row" key={template.id}><strong>{template.name}</strong><div className="inline-actions">
+            <button className="secondary small" onClick={() => unified ? void openManual('transaction', undefined, false, template) : open({ type: 'transaction', entry: template })}>Use template</button>
             <button className="danger small" onClick={async () => {
               if (!window.confirm('Delete this template?')) return
               try { await request('/templates/' + template.id, 'DELETE'); setRevision(value => value + 1) }
@@ -613,25 +654,26 @@ function App() {
         <BudgetRows budgets={ready.budgets} compare edit={editBudget} filter={filterCategory} />
         <p className="muted">Uncategorized spending: {money(ready.uncategorized_minor)}</p>
       </section>}
-      {ready && page === 'Accounts' && <AccountList live={mode === 'live'} key={mode + scenario} accounts={ready.accounts} sandbox={synced} primary={ready.primary_account_id}
-        money={money} add={() => open({ type: 'account' })} details={account => <>
+      {ready && page === 'Accounts' && <AccountList unified={unified} live={mode === 'live'} key={mode + scenario} accounts={ready.accounts} sandbox={synced} primary={ready.primary_account_id}
+        money={money} add={() => unified ? void openManual('account') : open({ type: 'account' })} details={account => <>
           <button className="secondary small" onClick={() => { setPage('Transactions'); setAllReviewDates(true); setAccountFilter(account.id); setCategoryFilter(0); setReviewFilter('all'); setSearch(''); setDrilldown(null) }}>View account transactions →</button>
           {mode === 'personal' && <div className="inline-actions"><button className="secondary small" onClick={() => open({ type: 'balance', account })}>Record balance</button>
             <button className="secondary small" onClick={() => open({ type: 'account', account })}>Edit account</button></div>}
           {synced && account.balance_source !== 'manual' && <AccountNickname account={account} request={request} onChanged={() => setRevision(value => value + 1)} />}
-          {synced && account.balance_source === 'manual' && <button className="secondary small" onClick={() => void changeMode('personal')}>Manage in Manual</button>}
-          {isDebt(account.kind) && <DebtDetails live={mode === 'live'} account={account} sandbox={synced} managed={mode === 'live' || scenario === 'combined'} request={request} money={money} parseMoney={parseMoney} revision={revision} onChanged={() => setRevision(value => value + 1)} />}
-          <BalanceHistory key={revision} account={account} sandbox={synced} request={request} />
+          {unified && account.balance_source === 'manual' && <div className="inline-actions"><button className="secondary small" onClick={() => void openManual('balance', account)}>Record balance</button><button className="secondary small" onClick={() => void openManual('account', account)}>Edit account</button></div>}
+          {!unified && synced && account.balance_source === 'manual' && <button className="secondary small" onClick={() => void changeMode('personal')}>Manage in Manual</button>}
+          {isDebt(account.kind) && <DebtDetails live={mode === 'live'} account={unified && account.manual_id ? { ...account, id: account.manual_id } : account} sandbox={synced && !(unified && account.manual_id)} managed={mode === 'live' || scenario === 'combined'} request={request} money={money} parseMoney={parseMoney} revision={revision} onChanged={() => setRevision(value => value + 1)} />}
+          <BalanceHistory key={revision} account={unified && account.manual_id ? { ...account, id: account.manual_id } : account} sandbox={synced && !(unified && account.manual_id)} request={request} />
         </>} />}
-      {page === 'Bank sync' && (mode === 'live' || scenario === 'combined' ? <Connections key={mode + scenario} revision={revision} live={mode === 'live'} request={request} onChanged={() => setRevision(value => value + 1)} /> : <BankSync key={scenario} investmentScenario={scenario === 'investments'} openInvestments={() => setPage('Investments')} request={request} money={money} onChanged={() => setRevision(value => value + 1)} />)}
+      {page === 'Bank sync' && (mode === 'live' || scenario === 'combined' ? <Connections unified={unified} key={mode + scenario} revision={revision} live={mode === 'live'} request={request} onChanged={() => setRevision(value => value + 1)} /> : <BankSync key={scenario} investmentScenario={scenario === 'investments'} openInvestments={() => setPage('Investments')} request={request} money={money} onChanged={() => setRevision(value => value + 1)} />)}
       {page === 'Investments' && <Investments live={mode === 'live'} key={mode + scenario} sandbox={synced} managed={mode === 'live' || scenario === 'combined'} request={request} money={money} openBank={() => setPage('Bank sync')} openTestScenario={mode === 'sandbox' && scenario === 'banking' ? () => void changeScenario('investments') : undefined} onChanged={() => setRevision(value => value + 1)} />}
-      {page === 'Backup & restore' && <BackupRestore key={mode + scenario} request={request} initialWorkspace={mode === 'live' ? 'live' : synced && scenario === 'combined' ? 'sandbox_combined' : synced && scenario === 'investments' ? 'sandbox_investments' : mode ?? 'personal'} onRestored={() => {
+      {page === 'Backup & restore' && <BackupRestore unified={unified} key={mode + scenario} request={request} initialWorkspace={mode === 'live' ? 'live' : synced && scenario === 'combined' ? 'sandbox_combined' : synced && scenario === 'investments' ? 'sandbox_investments' : mode ?? 'personal'} onRestored={() => {
         setData(undefined); setDialog(null); setSelectedTransactions([]); setReviewHistory([]); setReviewStatuses({}); setChartAccountIds(null)
         setAllReviewDates(false); setDrilldown(null); setAccountFilter(0); setCategoryFilter(0); setSearch(''); setTransferFocus(null); setReviewMessage(''); setRevision(value => value + 1)
       }} />}
     </main>
     {dialog && data && <Modal inspector={['transaction', 'sandbox-transaction', 'account', 'balance'].includes(dialog.type)} title={
-      dialog.type === 'account' ? dialog.account ? 'Edit account' : 'Add account'
+      dialog.type === 'manual-transfers' ? 'Manual transfer matches' : dialog.type === 'account' ? dialog.account ? 'Edit account' : 'Add account'
         : dialog.type === 'balance' ? 'Record balance'
         : dialog.type === 'budget' ? dialog.budget.name + ' limit'
         : dialog.type === 'category' ? 'New category'
@@ -641,9 +683,11 @@ function App() {
       {linkedFlow && <div className="transaction-flow-detail"><TransactionFlow flow={linkedFlow} /></div>}
       {formError && <p className="notice" role="alert">{formError}</p>}
       {!!linkedEntry?.transfer_pair_id && <p className="notice">This entry belongs to a confirmed transfer. Unlink the pair before changing its classification.<button type="button" className="secondary small" onClick={() => { setTransferFocus(linkedEntry.transfer_pair_id!); setDialog(null); setPage('Transactions') }}>Manage linked pair</button></p>}
-      {dialog.type === 'transaction' ? <EntryForm data={data} state={dialog} save={save} remove={remove} busy={busy} /> :
+      {dialog.type === 'manual-transfers' ? <TransferReview path="/review/transfers" request={request} money={money} revision={manualEditorData?.transactions} focusId={dialog.focusId} setFocusId={focusId => setDialog({ type: 'manual-transfers', focusId })}
+        complete={async message => { setReviewMessage(message); setManualEditorData(await request<Overview>('/overview?month=' + month)); setRevision(value => value + 1) }} /> : dialog.type === 'transaction' ? <EntryForm data={manualEditorData ?? data} state={dialog} save={save} remove={remove} busy={busy} /> :
         <form onSubmit={submitDialog}><fieldset disabled={busy || !!linkedEntry?.transfer_pair_id}>
           {dialog.type === 'account' && <>
+            {unified && !dialog.account && <p className="muted">For accounts you maintain yourself. Connect banks through Bank sync; avoid adding a manual duplicate of an account already connected.</p>}
             <label>Name<input data-autofocus name="name" required maxLength={120} defaultValue={dialog.account?.name} placeholder="e.g. Everyday checking" /></label>
             {!dialog.account && <>
               <div className="form-grid">
@@ -655,7 +699,7 @@ function App() {
               <p className="muted">For loans and credit cards, enter the amount owed as a positive number. For Nelnet, choose Student loan (manual); add rates and terms under the account’s Debt details.</p>
             </>}
             <label className="checkbox"><input name="include" type="checkbox" defaultChecked={dialog.account ? !!dialog.account.include_in_net_worth : true} /> Include in net worth</label>
-            <label className="checkbox"><input name="primary" type="checkbox" defaultChecked={!!dialog.account && dialog.account.id === data.primary_account_id} /> Primary spending account</label>
+            <label className="checkbox"><input name="primary" type="checkbox" defaultChecked={!!dialog.account && dialog.account.id === (manualEditorData ?? data).primary_account_id} /> Primary spending account</label>
           </>}
           {dialog.type === 'balance' && <>
             <p className="muted">Record the balance for {dialog.account.name} after any entries already logged for the selected day.</p>
