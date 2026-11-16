@@ -6,6 +6,12 @@ import { trapDialogFocus } from './dialogFocus'
 // Explanations describe effects, not just labels. Keep product behavior here in sync
 // with the controls; a data-help attribute can override context-specific wording.
 export const controlHelp: Record<string, string> = {
+  'Report category': 'Filter all report totals, trends, calendars and drilldowns by your assigned category. This is separate from choosing bank or local categories for the breakdown.',
+  'Report comparison': 'Compare against the previous month or an earlier month you choose. The same account and category filters apply to both periods.',
+  'Filter transaction type': 'Show only expenses, income, refunds, transfers or investment journal entries. Confirmed transfer pairs are treated as transfers.',
+  'Sort transactions': 'Sort the entire matching list before pagination. Largest and smallest use the unsigned amount; compare amounts within the same currency.',
+  'Filter posting status': 'Pending entries can appear in the ledger but do not count toward income or spending reports.',
+  'Income': 'Posted credits classified as income, excluding refunds, transfers, pending entries and credits awaiting classification.',
   'Transaction direction': 'From and To show the source and destination when known. Confirmed pairs use your account names; bank-reported counterparties and explicit bank descriptions are labeled. Unknown endpoints stay marked as not supplied. In/Out and amount signs describe money direction, independently of income, refund or transfer classification.',
   'Sync transactions': 'Pull newly available checking, savings and credit-card transactions and corrections. Investment trades are loaded separately with Sync activity. This reuses your connection.',
   'Sync holdings': 'Load the latest positions available from Plaid: securities, quantities, reported prices and values, including cash when supplied. This does not request live market quotes. Run this before Sync activity.',
@@ -37,7 +43,7 @@ export const controlHelp: Record<string, string> = {
   'Backup workspace': 'Select which independent data store to back up. Live, Manual and each Sandbox scenario have separate records.',
   'Workspace': 'Manual holds records you enter yourself. Sandbox contains test data. Live contains authorized real accounts and selected manual mirrors. Switching does not sync or connect banks.',
   'Sandbox scenario': 'Switch between independent Banking, Investments and Combined test data. This does not create a new connection.',
-  'Reporting month': 'Choose the month for spending, cash flow, budgets and the ledger. Net worth uses saved balance observations and its own chart range.',
+  'Reporting month': 'Choose the month for spending, income, cash flow, budgets and the ledger. Net worth and Where it sits use current saved balances, independent of this month. The balance chart has its own recorded-history range.',
   'Dark mode': 'Switch the app appearance. This does not change financial data or your workspace.',
   'Net worth': 'Assets minus debts, using selected saved account balances. Holdings are not added again. Historical transaction backfill does not supply historical balances.',
   'Assets': 'Show the selected accounts’ positive saved balances over recorded dates. Brokerage balances already include their reported cash and securities.',
@@ -81,9 +87,9 @@ export const controlHelp: Record<string, string> = {
   'Manage in Manual': 'Open the original manual workspace to edit this mirrored account. The combined view reads from that original account.',
   'New template': 'Save a reusable manual transaction form. Templates do not automatically create transactions or schedule bank payments.',
   'Use template': 'Open a manual transaction form with this template’s values. Review and save it to create an entry.',
-  'Clear spending filter': 'Remove the drilldown from the spending report while leaving your saved transactions unchanged.',
+  'Clear report filter': 'Remove the drilldown from the spending report while leaving your saved transactions unchanged.',
   'Overview': 'Open your saved net worth, cash flow, spending calendar and account summary. Opening this page does not sync banks.',
-  'Spending': 'Explore posted spending, daily activity and category comparisons for the reporting month.',
+  'Spending': 'Explore Spending, Income and Cash flow reports, with account and category filters, a calendar, comparison trends and category charts.',
   'Transactions': 'Browse, search and classify the ledger. Investment activity has its own view under Investments.',
   'Budgets': 'Set monthly limits for your categories and compare them with posted spending. Budgets do not restrict bank payments.',
   'Accounts': 'View saved account balances and history, or maintain manual accounts and debt details.',
@@ -106,8 +112,8 @@ export const controlHelp: Record<string, string> = {
 
 const guides: Record<Page, [string, string][]> = {
   Overview: ['Net worth', 'Cash flow', 'Budget progress', 'Reporting month'].map(k => [k, controlHelp[k]]),
-  Spending: ['Reporting month', 'Bank categories', 'Your categories', 'Cash flow'].map(k => [k, controlHelp[k]]),
-  Transactions: ['Transaction direction', 'Sync transactions', 'New merchant rule', 'Classify selected', 'Mark reviewed', 'Flag for review', 'Provider transaction details'].map(k => [k, controlHelp[k]]),
+  Spending: ['Reporting month', 'Income', 'Report category', 'Report comparison', 'Bank categories', 'Your categories', 'Cash flow'].map(k => [k, controlHelp[k]]),
+  Transactions: ['Transaction direction', 'Filter transaction type', 'Filter posting status', 'Sort transactions', 'Sync transactions', 'New merchant rule', 'Classify selected', 'Mark reviewed', 'Flag for review', 'Provider transaction details'].map(k => [k, controlHelp[k]]),
   Budgets: [['Category limits', 'Set a monthly target for your own spending categories. Limits do not restrict bank spending or move money.'], ['Assigned spending', 'Posted expenses minus refunds count toward the category they are assigned to. Pending items, transfers and investment activity are excluded.'], ['Reporting month', controlHelp['Reporting month']]],
   Accounts: ['Refresh all', 'Data updates', 'Net worth', 'Balance chart & history', 'Rename account', 'Use bank name', 'Add account', 'Debt details'].map(k => [k, controlHelp[k]]),
   Investments: ['Portfolio value', 'Holdings', 'Where it’s invested', 'Activity', 'Sync holdings', 'Sync activity'].map(k => [k, controlHelp[k]]),

@@ -45,7 +45,7 @@ export function Chart({ history, money, currency = 'USD', label = 'Recorded net 
   }
   if (current.length) segments.push(current)
   const missing = points.filter(point => point.value_minor === null).length
-  return <div className="balance-chart">
+  return <div className={'balance-chart' + (values.length === 1 ? ' single-observation' : '')}>
     <div className="range" aria-label={label + ' period'}>
       {[[1, '1M'], [3, '3M'], [6, '6M'], [12, '1Y'], [0, 'All']].map(([value, text]) =>
         <button key={value} aria-pressed={range === value} onClick={() => setRange(Number(value))}>{text}</button>)}
@@ -142,8 +142,9 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
       <div><h2 id="net-worth-title">{chartMode === 'net' ? 'Net worth' : chartMode === 'assets' ? 'Assets' : 'Debt'}</h2>
         <strong className="hero-value numeric">{excluded !== null && complete ? money(chartMode === 'assets' ? assets : chartMode === 'debt' ? liabilities : assets - liabilities) : '—'}</strong>
       </div>
-      <span className="chip">USD · {workspaceLabel ? workspaceLabel + ' balances' : mode === 'sandbox' ? 'Sandbox balances' : 'Manual balances'}</span>
+      <span className="chip">USD · Current saved balances</span>
     </div>
+    <p className="analytics-note">Latest saved account values, independent of the reporting month. The chart uses its own recorded-history range. See Accounts for update times.</p>
     <div className="hero-controls"><div className="segmented net-worth-modes" aria-label="Balance chart measure">{[['net', 'Net worth'], ['assets', 'Assets'], ['debt', 'Debt']].map(([value, label]) => <button key={value} aria-pressed={chartMode === value} onClick={() => setChartMode(value)}>{label}</button>)}</div>
     {error && <p className="notice" role="alert">{error}{excluded === null && <button className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button>}</p>}
     {eligible.length > 0 && excluded !== null && <details ref={picker} className="account-picker" onKeyDown={event => {
@@ -185,7 +186,7 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
     </div>}
     {excluded !== null && eligible.length > 0 && selected.length === 0 && <p className="empty">Select an account to view net worth.</p>}
     {excluded !== null && selected.length > 0 && <Chart history={points} money={money} label={'Recorded ' + (chartMode === 'net' ? 'net worth' : chartMode)} />}
-    {excluded !== null && selected.length > 0 && points.filter(point => point.value_minor !== null).length === 1 && <p className="muted chart-gap-note">One recorded date so far. Trends appear as more balances are recorded.</p>}
+    {excluded !== null && selected.length > 0 && points.filter(point => point.value_minor !== null).length === 1 && <p className="muted chart-gap-note">Balance tracking started {points.find(point => point.value_minor !== null)?.date}. One recorded date so far; {mode === 'personal' ? 'balances recorded' : 'successful balance syncs'} on later days build the trend. Imported transactions do not provide historical balances.</p>}
     {selected.length > 0 && !complete && <p className="muted">A selected account has no current balance. Totals are incomplete.</p>}
     <div className="balance-summary">
       <div><span>Total assets</span><strong className="numeric">{excluded !== null && complete ? money(assets) : '—'}</strong></div>

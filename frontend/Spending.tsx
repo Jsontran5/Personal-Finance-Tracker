@@ -1,8 +1,9 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 
-export type Bucket = { key: string; label: string; purchases_minor: number; refunds_minor: number; net_minor: number; transaction_ids: number[] }
+export type Bucket = { key: string; label: string; purchases_minor: number; refunds_minor: number; net_minor: number; transaction_ids: number[]; purchase_transaction_ids: number[] }
 type Day = { day: number; date: string; purchases_minor: number; refunds_minor: number; net_minor: number | null; cumulative_minor: number | null; transaction_ids: number[] }
 export type SpendingReport = {
+  measure?: string; kind_ids?: Record<string, number[]>; income_minor: number; spending_minor: number;
   month: string; days: number; through_day: number; comparison_month: string | null; comparison_days: number;
   purchases_minor: number; refunds_minor: number; net_minor: number; average_minor: number | null;
   previous_minor: number | null; change_minor: number | null; change_percent: number | null;
@@ -11,6 +12,10 @@ export type SpendingReport = {
 }
 type Money = (amount: number, currency?: string) => string
 type Drill = (ids: number[], label: string) => void
+type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
+export type ReportFilters = { measure: string; accounts: number[]; category: string; comparison: string }
+export const defaultReportFilters: ReportFilters = { measure: 'spending', accounts: [], category: 'all', comparison: '' }
+const reportLabel = (report: SpendingReport) => report.measure === 'income' ? 'Income' : report.measure === 'cashflow' ? 'Cash flow' : 'Spending'
 export const monthLabel = (month: string) => new Date(month + '-02T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
 function MonthNavigation({ month, change }: { month: string; change: (month: string) => void }) {
@@ -38,13 +43,13 @@ export function SpendingCalendar({ report, money, drill, changeMonth }: { report
         }).format(day.net_minor / 100)
         return <button key={day.date} disabled={day.net_minor === null} className={'calendar-day heat-' + level + (day.net_minor !== null && day.net_minor < 0 ? ' refund-day' : '')}
           title={day.date + ' · ' + (day.net_minor === null ? 'No actual total' : money(day.net_minor))}
-          aria-current={day.date === today ? 'date' : undefined} aria-label={day.date + ': ' + (day.net_minor === null ? 'Future date' : money(day.net_minor) + ' net spending, ' + day.transaction_ids.length + ' transactions')}
-          onClick={() => drill(day.transaction_ids, 'Spending on ' + day.date + ' · ' + money(day.net_minor!))}>
+          aria-current={day.date === today ? 'date' : undefined} aria-label={day.date + ': ' + (day.net_minor === null ? 'Future date' : money(day.net_minor) + ' ' + reportLabel(report).toLowerCase() + ', ' + day.transaction_ids.length + ' transactions')}
+          onClick={() => drill(day.transaction_ids, reportLabel(report) + ' on ' + day.date + ' · ' + money(day.net_minor!))}>
           <span>{day.day}</span><strong className="numeric">{amount}</strong>
         </button>
       })}
     </div>
-    <div className="calendar-key"><span>Less</span>{[0, 1, 2, 3, 4].map(level => <i key={level} className={'heat-' + level} />)}<span>More</span><span className="refund-key">Green = net refunds</span></div>
+    <div className="calendar-key"><span>Less</span>{[0, 1, 2, 3, 4].map(level => <i key={level} className={'heat-' + level} />)}<span>More</span>{report.measure !== 'income' && <span className="refund-key">{report.measure === 'cashflow' ? 'Red = net outflow' : 'Green = net refunds'}</span>}</div>
   </div>
 }
 
@@ -61,7 +66,7 @@ function SpendingTrend({ report, money }: { report: SpendingReport; money: Money
   return <div className="spending-trend">
     {report.eligible_ids.length || previous.length ? <>
       <div className="plot"><div className="chart-axis"><span>{money(high)}</span><span>{money(Math.round((high + low) / 2))}</span><span>{money(low)}</span></div>
-        <svg viewBox="0 0 600 200" className="spending-svg" preserveAspectRatio="none" role="img" aria-label="Cumulative posted net spending by day of month; dashed line is the comparison month">
+        <svg viewBox="0 0 600 200" className="spending-svg" preserveAspectRatio="none" role="img" aria-label={'Cumulative posted ' + reportLabel(report).toLowerCase() + ' by day of month; dashed line is the comparison month'}>
           <defs><linearGradient id={gradient} x2="0" y2="1"><stop stopColor="currentColor" stopOpacity=".22" /><stop offset="1" stopColor="currentColor" stopOpacity="0" /></linearGradient></defs>
           {[25, 100, 175].map(value => <line key={value} x1="14" x2="586" y1={value} y2={value} className="chart-grid" />)}
           {previous.length > 0 && <polyline points={line(previous)} className="comparison-line" />}
@@ -73,14 +78,14 @@ function SpendingTrend({ report, money }: { report: SpendingReport; money: Money
         </svg></div>
       <div className="trend-axis"><span>Day 1</span><span>Day {Math.round(last / 2)}</span><span>Day {last}</span></div>
       <div className="trend-legend"><span>● {monthLabel(report.month)}</span>{report.comparison_month && previous.length > 0 && <span>┄ {monthLabel(report.comparison_month)}</span>}</div>
-    </> : <p className="empty">No posted spending in this period. Choose another month or record an expense.</p>}
+    </> : <p className="empty">No eligible posted {reportLabel(report).toLowerCase()} in this period. Try another month or clear filters.</p>}
   </div>
 }
 
 function Breakdown({ title, rows, money, drill, children }: { title: string; rows: Bucket[]; money: Money; drill: Drill; children?: ReactNode }) {
   const maximum = Math.max(1, ...rows.map(row => Math.abs(row.net_minor)))
   return <section className="card breakdown-card"><div className="section-heading"><h2>{title}</h2>{children}</div>
-    {!rows.length ? <p className="empty">No posted spending to break down.</p> : <div className="breakdown-scroll">{rows.map(row => <button className="breakdown-row" key={row.key} onClick={() => drill(row.transaction_ids, title + ': ' + row.label)}>
+    {!rows.length ? <p className="empty">No eligible posted activity to break down.</p> : <div className="breakdown-scroll">{rows.map(row => <button className="breakdown-row" key={row.key} onClick={() => drill(row.transaction_ids, title + ': ' + row.label)}>
       <span className="breakdown-heading"><strong>{row.label}</strong><strong className={'numeric ' + (row.net_minor < 0 ? 'positive' : '')}>{money(row.net_minor)}</strong></span>
       <span className="breakdown-track"><span className={row.net_minor < 0 ? 'refund-bar' : ''} style={{ width: Math.abs(row.net_minor) / maximum * 100 + '%' }} /></span>
       <small>{row.transaction_ids.length} {row.transaction_ids.length === 1 ? 'transaction' : 'transactions'}{row.refunds_minor > 0 && ' · ' + money(row.refunds_minor) + ' refunded'}</small>
@@ -88,33 +93,130 @@ function Breakdown({ title, rows, money, drill, children }: { title: string; row
   </section>
 }
 
-export function SpendingPage({ report, money, drill, changeMonth, sandbox }: { report: SpendingReport; money: Money; drill: Drill; changeMonth: (month: string) => void; sandbox: boolean }) {
+const palette = ['#4385e8', '#28a88c', '#9771db', '#d68b30', '#d65c87', '#6594a3', '#a09539', '#a57258']
+
+function CategoryDonut({ rows, money, drill, income }: { rows: Bucket[]; money: Money; drill: Drill; income: boolean }) {
+  const positive = rows.filter(row => row.purchases_minor > 0)
+  const total = positive.reduce((sum, row) => sum + row.purchases_minor, 0)
+  let offset = 0
+  return <div className="category-donut">
+    {total > 0 ? <>
+      <div className="donut-plot">
+        <svg viewBox="0 0 160 160" role="group" aria-label={(income ? 'Income' : 'Purchases') + ' by category'}>
+          <circle cx="80" cy="80" r="60" fill="none" stroke="var(--line)" strokeWidth="19" />
+          {positive.map((row, index) => {
+            const start = offset, length = row.purchases_minor / total * 100
+            offset += length
+            return <circle key={row.key} className="donut-slice" cx="80" cy="80" r="60" fill="none" stroke={palette[index % palette.length]}
+              strokeWidth="19" pathLength="100" strokeDasharray={`${length} ${100 - length}`} strokeDashoffset={-start}
+              transform="rotate(-90 80 80)" role="button" tabIndex={0}
+              aria-label={`${row.label}: ${money(row.purchases_minor)}, ${(length).toFixed(1)} percent. View transactions`}
+              onClick={() => drill(row.purchase_transaction_ids, row.label + ' · ' + (income ? 'Income' : 'Purchases'))}
+              onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); drill(row.purchase_transaction_ids, row.label + ' · ' + (income ? 'Income' : 'Purchases')) } }}>
+              <title>{row.label}: {money(row.purchases_minor)}</title>
+            </circle>
+          })}
+        </svg>
+        <div className="donut-total"><small>{income ? 'Income' : 'Purchases'}</small><strong className="numeric">{money(total)}</strong></div>
+      </div>
+      <div className="donut-legend">{positive.map((row, index) => <button className="donut-legend-row" key={row.key}
+        onClick={() => drill(row.purchase_transaction_ids, row.label + ' · ' + (income ? 'Income' : 'Purchases'))}>
+        <i style={{ background: palette[index % palette.length] }} /><span>{row.label}</span>
+        <strong className="numeric">{money(row.purchases_minor)}<small>{(row.purchases_minor / total * 100).toFixed(1)}%</small></strong>
+      </button>)}</div>
+    </> : <p className="empty">No {income ? 'income' : 'purchases'} for this selection.</p>}
+    {!income && <p className="analytics-note">Slices show purchases before refunds. Refunds and net spending are shown separately; category totals below include both.</p>}
+  </div>
+}
+
+export function SpendingPage({ month, money, drill, changeMonth, sandbox, request, path, accounts, categories, filters, setFilters, revision }: {
+  month: string; money: Money; drill: Drill; changeMonth: (month: string) => void; sandbox: boolean; request: Request; path: string;
+  accounts: { id: number; name: string; institution_name?: string | null }[]; categories: { id: number; name: string; kind: string }[];
+  filters: ReportFilters; setFilters: (value: ReportFilters) => void; revision: number
+}) {
   const [categorySource, setCategorySource] = useState('bank')
-  const [view, setView] = useState('trend')
+  const [report, setReport] = useState<SpendingReport>()
+  const [error, setError] = useState('')
+  const [retry, setRetry] = useState(0)
+  const [accountSearch, setAccountSearch] = useState('')
+  const income = filters.measure === 'income', cashflow = filters.measure === 'cashflow'
   const source = sandbox ? categorySource : 'local'
+  const comparison = filters.comparison && filters.comparison < month ? filters.comparison : ''
+  useEffect(() => {
+    const controller = new AbortController()
+    setReport(undefined); setError('')
+    const params = new URLSearchParams({ month, measure: filters.measure, category: filters.category })
+    filters.accounts.forEach(id => params.append('account', String(id)))
+    if (comparison) params.set('comparison', comparison)
+    request<SpendingReport>(path + '/analytics?' + params, 'GET', undefined, controller.signal)
+      .then(result => { if (!controller.signal.aborted) setReport(result) })
+      .catch(failure => { if (!controller.signal.aborted) setError(failure.message) })
+    return () => controller.abort()
+  }, [month, filters, comparison, request, path, revision, retry])
+  const change = (value: Partial<ReportFilters>) => setFilters({ ...filters, ...value })
+  const selectedCategories = categories.filter(category => cashflow || category.kind === (income ? 'income' : 'expense'))
+  const rows = report ? source === 'bank' ? report.bank_categories : report.categories : []
+  const label = income ? 'Income' : cashflow ? 'Cash flow' : 'Spending'
   return <div className="spending-page">
-    <div className="spending-metrics">
-      {[['Net spending', report.net_minor], ['Purchases', report.purchases_minor], ['Refunds', report.refunds_minor], ['Daily average', report.average_minor]].map(([label, value]) =>
-        <section className="card metric-card" key={label}><h2>{label}</h2><strong className="numeric">{value === null ? '—' : money(Number(value))}</strong>
-          <small>{label === 'Daily average' ? 'Per elapsed calendar day' : label === 'Net spending' ? 'Purchases minus refunds' : 'Posted USD activity'}</small></section>)}
-    </div>
-    <section className="card spending-main">
-      <div className="section-heading"><div><h2>Spending this month</h2><small>{monthLabel(report.month)} · {report.through_day ? 'Through day ' + report.through_day : 'No elapsed days'}</small></div>
-        <div className="segmented" aria-label="Spending display">{['trend', 'calendar'].map(item => <button key={item} aria-pressed={view === item} onClick={() => setView(item)}>{item === 'trend' ? 'Trend' : 'Calendar'}</button>)}</div></div>
-      <div className="spend-comparison"><strong className={'numeric ' + (report.change_minor !== null && report.change_minor < 0 ? 'positive' : '')}>
-        {report.change_minor === null ? 'No posted comparison activity' : (report.change_minor >= 0 ? '+' : '−') + money(Math.abs(report.change_minor)) + (report.change_percent !== null ? ` (${Math.abs(report.change_percent).toFixed(1)}% ${report.change_minor >= 0 ? 'more' : 'less'})` : '')}</strong>
-        <small>{report.comparison_month && `${monthLabel(report.comparison_month)} · `}{report.comparison_days ? `days 1–${report.comparison_days}` : 'No comparable elapsed days'}{report.previous_minor !== null && ' · ' + money(report.previous_minor) + ' net'}</small></div>
-      {view === 'trend' ? <SpendingTrend report={report} money={money} /> : <SpendingCalendar report={report} money={money} drill={drill} changeMonth={changeMonth} />}
-      <p className="analytics-note">Recorded activity only. Pending entries, credits awaiting review, transfers, and investment activity are excluded. Imported history may be incomplete.</p>
+    <div className="segmented report-tabs" aria-label="Financial report">{[['spending', 'Spending'], ['income', 'Income'], ['cashflow', 'Cash flow']].map(([value, text]) =>
+      <button key={value} aria-pressed={filters.measure === value} onClick={() => change({ measure: value, category: 'all' })}>{text}</button>)}</div>
+    <section className="card report-filters" aria-label="Report filters">
+      <div className="report-filter-fields">
+        <details className="report-account-filter"><summary>Accounts · {filters.accounts.length ? filters.accounts.length + ' selected' : 'All'}</summary>
+          <div className="report-account-options">
+            <input type="search" aria-label="Search report accounts" placeholder="Find an account" value={accountSearch} onChange={event => setAccountSearch(event.target.value)} />
+            <button className="secondary small" onClick={() => change({ accounts: [] })}>Use all accounts</button>
+            <div className="report-account-scroll">{accounts.filter(account => (account.name + ' ' + (account.institution_name ?? '')).toLowerCase().includes(accountSearch.toLowerCase())).map(account =>
+              <label className="checkbox" key={account.id}><input type="checkbox" checked={filters.accounts.includes(account.id)} onChange={event => change({ accounts: event.target.checked ? [...filters.accounts, account.id] : filters.accounts.filter(id => id !== account.id) })} />
+                <span>{account.name}{account.institution_name && <small>{account.institution_name}</small>}</span></label>)}</div>
+            <p className="analytics-note">No accounts selected means all accounts.</p>
+            <button className="secondary small" onClick={event => { const details = event.currentTarget.closest('details'); if (details) { details.open = false; details.querySelector('summary')?.focus() } }}>Done</button>
+          </div>
+        </details>
+        <label>Assigned category<select aria-label="Report category" value={filters.category} onChange={event => change({ category: event.target.value })}>
+          <option value="all">All categories</option><option value="uncategorized">Uncategorized</option>{selectedCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+        </select></label>
+        <label>Compare with<select aria-label="Report comparison" value={comparison ? 'custom' : 'previous'} onChange={event => {
+          if (event.target.value === 'previous') change({ comparison: '' })
+          else { const date = new Date(month + '-01T12:00:00'); date.setMonth(date.getMonth() - 1); change({ comparison: String(date.getFullYear()).padStart(4, '0') + '-' + String(date.getMonth() + 1).padStart(2, '0') }) }
+        }}><option value="previous">Previous month</option><option value="custom" disabled={month === '0001-01'}>Choose month</option></select></label>
+        {comparison && <label>Comparison month<input type="month" aria-label="Comparison month" max={month} value={comparison} onChange={event => { if (event.target.value && event.target.value < month) change({ comparison: event.target.value }) }} /></label>}
+        <button className="secondary small" onClick={() => setFilters({ ...defaultReportFilters, measure: filters.measure })}>Reset filters</button>
+      </div>
+      <p className="analytics-note">{monthLabel(month)} · {filters.accounts.length ? filters.accounts.length + ' selected accounts' : 'All accounts'} · {filters.category === 'all' ? 'All categories' : filters.category === 'uncategorized' ? 'Uncategorized' : categories.find(category => String(category.id) === filters.category)?.name} · Posted USD only. Filters apply to every total, chart, calendar and transaction link below.</p>
     </section>
-    <div className="analytics-grid">
-      <Breakdown title="By category" rows={source === 'bank' ? report.bank_categories : report.categories} money={money} drill={drill}>
-        {sandbox && <select aria-label="Category source" value={source} onChange={event => setCategorySource(event.target.value)}><option value="bank">Bank categories</option><option value="local">Your categories</option></select>}
-      </Breakdown>
-      <Breakdown title="By merchant" rows={report.merchants} money={money} drill={drill} />
-    </div>
-    <p className="analytics-note">Bank categories describe the imported feed. Your categories and budget assignments are unchanged. Green negative amounts indicate net refunds.</p>
-    <button className="secondary" onClick={() => drill(report.eligible_ids, 'Posted spending · ' + monthLabel(report.month))}>View spending transactions →</button>
+    {error && <p className="notice" role="alert">{error} <button className="secondary small" onClick={() => setRetry(value => value + 1)}>Retry report</button></p>}
+    {!report && !error && <p className="muted" role="status">Loading report…</p>}
+    {report && <>
+      <div className={'spending-metrics' + (income ? ' income-metrics' : '')}>
+        {(income ? [['Income', report.net_minor], ['Daily average', report.average_minor]] : cashflow ? [['Cash flow', report.net_minor], ['Income', report.income_minor], ['Net spending', report.spending_minor], ['Daily average', report.average_minor]] : [['Net spending', report.net_minor], ['Purchases', report.purchases_minor], ['Refunds', report.refunds_minor], ['Daily average', report.average_minor]]).map(([title, value]) =>
+          <section className="card metric-card" key={title}><h2>{title}</h2><strong className="numeric">{value === null ? '—' : money(Number(value))}</strong>
+            <small>{title === 'Daily average' ? 'Per elapsed calendar day' : title === 'Net spending' ? 'Purchases minus refunds' : title === 'Cash flow' ? 'Income minus net spending' : 'Posted USD activity'}</small></section>)}
+      </div>
+      <section className="card spending-main">
+        <div className="section-heading"><div><h2>{label} this month</h2><small>{monthLabel(month)} · {report.through_day ? 'Through day ' + report.through_day : 'No elapsed days'}</small></div>
+          <button className="secondary small" onClick={() => drill(report.eligible_ids, label + ' · ' + monthLabel(month) + ' · ' + money(report.net_minor))}>View transactions →</button></div>
+        <div className="spend-comparison"><strong className="numeric">{report.change_minor === null ? 'No posted comparison activity' : (report.change_minor >= 0 ? '+' : '−') + money(Math.abs(report.change_minor)) + (report.change_percent !== null ? ` (${Math.abs(report.change_percent).toFixed(1)}% ${report.change_minor >= 0 ? 'more' : 'less'})` : '')}</strong>
+          <small>{report.comparison_month && monthLabel(report.comparison_month) + ' · '}{report.comparison_days ? `days 1–${report.comparison_days}` : 'No comparable elapsed days'}{report.previous_minor !== null && ' · ' + money(report.previous_minor)}</small></div>
+        <SpendingTrend report={report} money={money} />
+      </section>
+      <div className="analytics-grid report-calendar-grid">
+        <section className={'card report-calendar ' + (cashflow ? 'cashflow-calendar' : '')}><div className="section-heading"><h2>{label} calendar</h2></div>
+          <SpendingCalendar report={report} money={money} drill={drill} changeMonth={changeMonth} />
+          <p className="analytics-note">Select a day for exact transactions. Calendar amounts are rounded; future dates have no actual totals.</p>
+        </section>
+        {!cashflow ? <section className="card"><div className="section-heading"><h2>{income ? 'Income' : 'Purchases'} by category</h2>
+          {sandbox && <select aria-label="Category source" value={source} onChange={event => setCategorySource(event.target.value)}><option value="bank">Bank categories</option><option value="local">Your categories</option></select>}</div>
+          <CategoryDonut rows={rows} money={money} drill={drill} income={income} />
+        </section> : <section className="card"><h2>What makes up your cash flow</h2><p className="analytics-note">Income minus purchases, plus refunds. Transfers and investment activity are excluded.</p>
+          {['income', 'expense', 'refund'].map(kind => <button className="cashflow-drill" key={kind} onClick={() => drill(report.eligible_ids.filter(id => report.kind_ids?.[kind]?.includes(id)), kind === 'income' ? 'Cash flow · Income' : kind === 'expense' ? 'Cash flow · Purchases' : 'Cash flow · Refunds')}>
+            <span>{kind === 'income' ? 'Income' : kind === 'expense' ? 'Purchases' : 'Refunds'}</span><strong className="numeric">{money(kind === 'income' ? report.income_minor : kind === 'expense' ? report.spending_minor + report.refunds_minor : report.refunds_minor)} →</strong>
+          </button>)}
+        </section>}
+      </div>
+      {!cashflow && <Breakdown title={income ? 'Income category totals' : 'Net spending by category'} rows={rows} money={money} drill={drill} />}
+      <p className="analytics-note">Recorded activity only. Pending entries, credits awaiting classification, transfers and investment activity are excluded. Imported history may be incomplete. Bank categories do not change your assigned categories or budgets.</p>
+    </>}
   </div>
 }
 

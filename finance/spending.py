@@ -77,7 +77,8 @@ def spending_report(transactions, previous, month, today, *, measure='spending',
         for number in range(1, comparison_days + 1):
             running += sum(signed(tx) for tx in prior if int(tx['date'][8:]) == number)
             comparison.append({'day': number, 'cumulative_minor': running})
-    return {'measure': measure, 'income_minor': sum(tx['amount_minor'] for tx in current if tx['kind'] == 'income'),
+    return {'measure': measure, 'kind_ids': {kind: [tx['id'] for tx in current if tx['kind'] == kind] for kind in ('income', 'expense', 'refund')},
+            'income_minor': sum(tx['amount_minor'] for tx in current if tx['kind'] == 'income'),
             'spending_minor': sum(tx['amount_minor'] * (-1 if tx['kind'] == 'refund' else 1) for tx in current if tx['kind'] in {'expense', 'refund'}),
             'month': month, 'days': days, 'through_day': through, 'comparison_month': prior_month,
             'comparison_days': comparison_days, 'purchases_minor': purchases, 'refunds_minor': refunds,

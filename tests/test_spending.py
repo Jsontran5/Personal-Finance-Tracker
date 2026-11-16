@@ -29,6 +29,7 @@ class SpendingTests(TestCase):
         self.assertEqual(income['eligible_ids'], [1])
         self.assertEqual(income['net_minor'], 5000)
         self.assertEqual(cash['eligible_ids'], [1, 2, 3])
+        self.assertEqual(cash['kind_ids'], {'income': [1], 'expense': [2], 'refund': [3]})
         self.assertEqual(cash['net_minor'], 5800)
         self.assertEqual(cash['income_minor'] - cash['spending_minor'], cash['net_minor'])
         self.assertEqual(sum(day['net_minor'] or 0 for day in cash['daily']), cash['net_minor'])

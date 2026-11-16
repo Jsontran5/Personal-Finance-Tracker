@@ -13,7 +13,8 @@ export function AssetSummary({ accounts, loading, money, openAccounts }: {
   const groups = [...grouped].sort((a, b) => b[1] - a[1])
   const total = groups.reduce((sum, [, amount]) => sum + amount, 0)
   return <section className="card asset-summary">
-    <div className="section-heading"><div><h2>Where it sits</h2><small>Follows your net worth account selection · USD</small></div><button className="secondary small" onClick={openAccounts}>Accounts →</button></div>
+    <div className="section-heading"><div><h2>Where it sits</h2><small>Current saved balances · USD · Follows your net worth account selection</small></div><button className="secondary small" onClick={openAccounts}>Accounts →</button></div>
+    <p className="analytics-note">Independent of the reporting month. Saved observations, not live quotes; open Accounts for update times.</p>
     <div className="segmented" aria-label="Account composition">{['assets', 'debt'].map(value => <button key={value} aria-pressed={side === value} onClick={() => setSide(value)}>{value === 'assets' ? 'Assets' : 'Debt'}</button>)}</div>
     {loading ? <p className="muted">Loading selected accounts…</p> : <>
       <strong className="composition-total numeric">{money(total)}</strong>

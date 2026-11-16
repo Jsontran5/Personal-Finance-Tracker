@@ -7,7 +7,7 @@ import { TransactionDetails } from './TransactionDetails'
 import { AccountList, type Account } from './AccountList'
 import { groupedAccounts } from './accounts'
 import { Chart, NetWorth, type HistoryPoint } from './Charts'
-import { HomeSpending, SpendingPage, type SpendingReport } from './Spending'
+import { HomeSpending, SpendingPage, defaultReportFilters, type ReportFilters, type SpendingReport } from './Spending'
 import { AssetSummary } from './AssetSummary'
 import { TransactionReview } from './TransactionReview'
 import { TransferReview } from './TransferReview'
@@ -168,19 +168,20 @@ function EntryForm({ data, state, save, remove, busy }: {
   </form>
 }
 
-function CashFlow({ data, month }: { data: Overview; month: string }) {
+function CashFlow({ data, month, drill }: { data: Overview; month: string; drill: (ids: number[], label: string) => void }) {
+  const eligible = data.transactions.filter(tx => tx.currency === 'USD' && !tx.pending && !tx.needs_review && !tx.transfer_pair_id && ['income', 'expense', 'refund'].includes(tx.kind))
   const magnitude = Math.max(data.income_minor, Math.abs(data.spending_minor), 1)
   return <section className="card cashflow" aria-labelledby="cashflow-title">
     <div className="section-heading"><div><h2 id="cashflow-title">Cash flow</h2><small>{month} · USD</small></div>
       <span className="panel-icon"><Icon name="transactions" /></span>
     </div>
     <p className="cashflow-label">Income minus spending</p>
-    <strong className={'cashflow-value numeric ' + (data.cash_flow_minor < 0 ? 'negative' : data.cash_flow_minor > 0 ? 'positive' : '')}>{money(data.cash_flow_minor)}</strong>
+    <button className={'cashflow-total cashflow-value numeric ' + (data.cash_flow_minor < 0 ? 'negative' : data.cash_flow_minor > 0 ? 'positive' : '')} data-help="View the posted income, purchases and refunds included in this month’s cash flow. Transfers and pending entries are excluded." onClick={() => drill(eligible.map(tx => tx.id), 'Cash flow · ' + month)}>{money(data.cash_flow_minor)}<small>View transactions →</small></button>
     <div className="cashflow-bars">
-      <div className="flow-income"><div><span><Icon name="income" /> Income</span><strong className="numeric">{money(data.income_minor)}</strong></div>
-        <progress aria-label="Income relative to the larger monthly total" max={magnitude} value={data.income_minor} /></div>
-      <div className="flow-spending"><div><span><Icon name="expense" /> Spending</span><strong className="numeric">{money(data.spending_minor)}</strong></div>
-        <progress aria-label="Net spending magnitude relative to the larger monthly total" max={magnitude} value={Math.abs(data.spending_minor)} /></div>
+      <button className="flow-income cashflow-drill" onClick={() => drill(eligible.filter(tx => tx.kind === 'income').map(tx => tx.id), 'Income · ' + month)}><div><span><Icon name="income" /> Income</span><strong className="numeric">{money(data.income_minor)}</strong></div>
+        <progress aria-label="Income relative to the larger monthly total" max={magnitude} value={data.income_minor} /></button>
+      <button className="flow-spending cashflow-drill" onClick={() => drill(eligible.filter(tx => tx.kind !== 'income').map(tx => tx.id), 'Spending · ' + month)}><div><span><Icon name="expense" /> Spending</span><strong className="numeric">{money(data.spending_minor)}</strong></div>
+        <progress aria-label="Net spending magnitude relative to the larger monthly total" max={magnitude} value={Math.abs(data.spending_minor)} /></button>
     </div>
   </section>
 }
@@ -265,6 +266,11 @@ function App() {
   const [categoryFilter, setCategoryFilter] = useState(0)
   const [accountFilter, setAccountFilter] = useState(0)
   const [search, setSearch] = useState('')
+  const [kindFilter, setKindFilter] = useState('all')
+  const [postingFilter, setPostingFilter] = useState('all')
+  const [sortOrder, setSortOrder] = useState('newest')
+  const [reportFilters, setReportFilters] = useState<ReportFilters>(defaultReportFilters)
+  const [drillOrigin, setDrillOrigin] = useState<Page>('Spending')
   const [transactionPage, setTransactionPage] = useState(0)
   const [drilldown, setDrilldown] = useState<{ ids: number[]; label: string } | null>(null)
   const [chartAccountIds, setChartAccountIds] = useState<number[] | null>(null)
@@ -291,7 +297,7 @@ function App() {
   useEffect(() => { setTransactionPage(0) }, [search, accountFilter, categoryFilter, month, mode])
   useEffect(() => { window.scrollTo(0, 0) }, [page])
   useEffect(() => { setDrilldown(null) }, [month, mode, scenario])
-  useEffect(() => { setSelectedTransactions([]); setTransactionPage(0) }, [month, mode, search, accountFilter, categoryFilter, reviewFilter, drilldown, allReviewDates])
+  useEffect(() => { setSelectedTransactions([]); setTransactionPage(0) }, [month, mode, search, accountFilter, categoryFilter, reviewFilter, drilldown, allReviewDates, kindFilter, postingFilter, sortOrder])
   useEffect(() => { setReviewFilter('all'); setReviewStatuses({}); setReviewMessage(''); setAllReviewDates(false); setReviewHistory([]); setSelectedTransactions([]); setTransactionPage(0) }, [month, mode, scenario])
 
   useLayoutEffect(() => {
@@ -310,6 +316,8 @@ function App() {
       .then(([workspace, selected]) => { setScenario(selected.scenario); setMode(workspace.mode) })
       .catch(() => { setMode('personal'); setModeError('Could not load the saved workspace.') })
   }, [])
+
+  useEffect(() => { setReportFilters(defaultReportFilters); setKindFilter('all'); setPostingFilter('all'); setSortOrder('newest') }, [mode, scenario])
 
   async function changeMode(next: Mode) {
     if (next === mode) return
@@ -417,6 +425,7 @@ function App() {
     setAllReviewDates(false)
     setReviewFilter('all')
     setDrilldown(null)
+    setKindFilter('all'); setPostingFilter('all'); setSortOrder('newest')
     setCategoryFilter(id)
     setAccountFilter(0)
     setSearch('')
@@ -465,7 +474,8 @@ function App() {
     } else open({ type: 'transaction', entry })
   }
   const editBudget = (budget: Budget) => open({ type: 'budget', budget })
-  const drillSpending = (ids: number[], label: string) => {
+  const drillSpending = (ids: number[], label: string, origin: Page = 'Spending') => {
+    setDrillOrigin(origin); setKindFilter('all'); setPostingFilter('all'); setSortOrder('newest')
     setAllReviewDates(false)
     setReviewFilter('all')
     setDrilldown({ ids, label }); setCategoryFilter(0); setAccountFilter(0); setSearch(''); setTransactionPage(0); setPage('Transactions')
@@ -473,8 +483,10 @@ function App() {
   const entries = (allReviewDates ? reviewHistory : ready?.transactions)?.filter(tx => (!categoryFilter || tx.category_id === categoryFilter) &&
     (reviewFilter === 'all' || (reviewFilter === 'uncategorized' ? !tx.transfer_pair_id && tx.category_id === null && ['expense', 'income', 'refund'].includes(tx.kind) : reviewStatuses[tx.id] === reviewFilter)) &&
     (!drilldown || drilldown.ids.includes(tx.id)) &&
+    (kindFilter === 'all' || (tx.transfer_pair_id ? 'transfer' : tx.kind) === kindFilter) &&
+    (postingFilter === 'all' || (postingFilter === 'pending' ? !!tx.pending : !tx.pending)) &&
     (!accountFilter || tx.account_id === accountFilter) &&
-    [tx.merchant, tx.account_name, tx.category_name, tx.notes].some(value => value?.toLowerCase().includes(search.trim().toLowerCase()))) ?? []
+    [tx.merchant, tx.account_name, tx.category_name, tx.notes].some(value => value?.toLowerCase().includes(search.trim().toLowerCase())))?.sort((a, b) => sortOrder === 'largest' ? b.amount_minor - a.amount_minor || b.id - a.id : sortOrder === 'smallest' ? a.amount_minor - b.amount_minor || b.id - a.id : sortOrder === 'oldest' ? a.date.localeCompare(b.date) || a.id - b.id : b.date.localeCompare(a.date) || b.id - a.id) ?? []
   const pageSize = 25
   const lastPage = Math.max(0, Math.ceil(entries.length / pageSize) - 1)
   const currentPage = Math.min(transactionPage, lastPage)
@@ -494,7 +506,7 @@ function App() {
         <option value="personal">Manual</option><option value="sandbox">Sandbox preview</option><option value="live">Live</option>
       </select></label>
       {mode === 'sandbox' && <label className="scenario-picker">Test scenario<select aria-label="Sandbox scenario" disabled={scenarioPending || modePending || busy || !!dialog} value={scenario} onChange={event => void changeScenario(event.target.value as Scenario)}><option value="banking">Banking</option><option value="investments">Investments</option><option value="combined">Combined</option></select></label>}
-      <Navigation page={page} navigate={item => { setPage(item); setAllReviewDates(false); setReviewFilter('all'); setDrilldown(null); setCategoryFilter(0); setAccountFilter(0); setSearch('') }} />
+      <Navigation page={page} navigate={item => { setPage(item); setKindFilter('all'); setPostingFilter('all'); setSortOrder('newest'); setAllReviewDates(false); setReviewFilter('all'); setDrilldown(null); setCategoryFilter(0); setAccountFilter(0); setSearch('') }} />
       <div className="sidebar-footer">
         <button className="theme-toggle" type="button" role="switch" aria-checked={theme === 'dark'} disabled={themePending} onClick={() => void toggleTheme()}>
           <Icon name={theme === 'dark' ? 'moon' : 'sun'} /><span>Dark mode</span><i className="switch-track" aria-hidden="true" />
@@ -516,7 +528,7 @@ function App() {
         }[page]}</p>{synced && (mode === 'live' || scenario === 'banking') && page !== 'Backup & restore' && <SyncFreshness request={request} revision={revision} open={() => setPage('Bank sync')} />}</div>
         <div className="toolbar">
           <PageHelp page={page} />
-          {page !== 'Accounts' && page !== 'Backup & restore' && page !== 'Investments' && <input type="month" aria-label="Reporting month" value={month} disabled={page === 'Transactions' && allReviewDates} onChange={event => { if (event.target.value) setMonth(event.target.value) }} />}
+          {page !== 'Accounts' && page !== 'Backup & restore' && page !== 'Investments' && <label className="reporting-month">Reporting month<input type="month" aria-label="Reporting month" value={month} disabled={page === 'Transactions' && allReviewDates} onChange={event => { if (event.target.value) setMonth(event.target.value) }} /></label>}
           {page === 'Backup & restore' || page === 'Investments' ? null : synced ? <button className="primary" onClick={() => setPage('Bank sync')}>Bank sync</button>
             : <button className="primary with-icon" disabled={!data} onClick={quickAdd}><Icon name="plus" />Add transaction</button>}
         </div>
@@ -533,20 +545,20 @@ function App() {
         <div className="overview-grid">
         <NetWorth workspaceLabel={mode === 'live' ? 'Live' : mode === 'sandbox' ? 'Sandbox' : 'Manual'} key={mode + scenario} accounts={ready.accounts} history={ready.history} mode={synced ? 'sandbox' : 'personal'}
           request={request} money={money} onSelectionChange={setChartAccountIds} onStart={() => synced ? setPage('Bank sync') : open({ type: 'account' })} />
-        <div className="overview-side"><CashFlow data={ready} month={activeMonth} />
+        <div className="overview-side"><CashFlow data={ready} month={activeMonth} drill={(ids, label) => drillSpending(ids, label, 'Overview')} />
           <section className="card"><div className="section-heading"><div><h2>Budget progress</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => setPage('Budgets')}>View budgets <Icon name="right" /></button></div>
             <BudgetRows budgets={budgetRows} edit={editBudget} filter={filterCategory} />
           </section>
         </div>
         </div>
-        <HomeSpending report={ready.spending} money={money} drill={drillSpending} changeMonth={setMonth} openSpending={() => setPage('Spending')}
+        <HomeSpending report={ready.spending} money={money} drill={(ids, label) => drillSpending(ids, label, 'Overview')} changeMonth={setMonth} openSpending={() => setPage('Spending')}
           recent={<TransactionList transactions={ready.transactions.filter(tx => ready.spending.eligible_ids.includes(tx.id)).slice(0, 5)} edit={editTransaction} empty="No posted spending this month." />} />
         <div className="dashboard-grid">
           <AssetSummary accounts={ready.accounts.filter(account => chartAccountIds?.includes(account.id))} loading={chartAccountIds === null} money={money} openAccounts={() => setPage('Accounts')} />
 
         </div>
       </>}
-      {ready && page === 'Spending' && <SpendingPage key={mode + scenario} report={ready.spending} money={money} drill={drillSpending} changeMonth={setMonth} sandbox={synced} />}
+      {ready && page === 'Spending' && <SpendingPage key={mode + scenario} month={month} money={money} drill={drillSpending} changeMonth={setMonth} sandbox={synced} request={request} path={synced ? previewPath : ''} accounts={ready.accounts} categories={ready.categories} filters={reportFilters} setFilters={setReportFilters} revision={revision} />}
       {ready && page === 'Transactions' && <>
         <section className="card">
           <div className="section-heading"><div><h2>{allReviewDates ? 'All saved dates' : activeMonth}</h2><small>{entries.length} entries</small></div></div>
@@ -556,7 +568,7 @@ function App() {
           <TransactionReview<Transaction> key={mode + scenario} path={(synced ? previewPath : '') + '/review'} request={request} transactions={ready.transactions} categories={ready.categories} accounts={ready.accounts} allDates={allReviewDates} setAllDates={setAllReviewDates} onHistory={setReviewHistory}
             selected={selectedTransactions} setSelected={setSelectedTransactions} pageIds={entries.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map(tx => tx.id)} matchingIds={entries.map(tx => tx.id)} filter={reviewFilter} setFilter={setReviewFilter} onStatuses={setReviewStatuses}
             complete={message => { setReviewMessage(message); setRevision(value => value + 1) }} />
-          {drilldown && <div className="drilldown-filter"><span>{drilldown.label}</span><div className="inline-actions"><button className="secondary small" onClick={() => setDrilldown(null)}>Clear spending filter</button><button className="secondary small" onClick={() => { setDrilldown(null); setPage('Spending') }}>Back to Spending</button></div></div>}
+          {drilldown && <div className="drilldown-filter"><span>{drilldown.label}</span><div className="inline-actions"><button className="secondary small" onClick={() => setDrilldown(null)}>Clear report filter</button><button className="secondary small" onClick={() => { setDrilldown(null); setPage(drillOrigin) }}>Back to {drillOrigin}</button></div></div>}
           <div className="filters">
             <input type="search" aria-label="Search transactions" placeholder="Search transactions" value={search} onChange={event => setSearch(event.target.value)} />
             <select aria-label="Filter account" value={accountFilter} onChange={event => setAccountFilter(Number(event.target.value))}>
@@ -569,6 +581,12 @@ function App() {
               {ready.categories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}
             </select>
           </div>
+          <div className="filters transaction-type-filters">
+            <label>Transaction type<select aria-label="Filter transaction type" value={kindFilter} onChange={event => setKindFilter(event.target.value)}><option value="all">All types</option>{Object.entries(kinds).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+            <label>Status<select aria-label="Filter posting status" value={postingFilter} onChange={event => setPostingFilter(event.target.value)}><option value="all">Posted &amp; pending</option><option value="posted">Posted only</option><option value="pending">Pending only</option></select></label>
+            <label>Sort by<select aria-label="Sort transactions" value={sortOrder} onChange={event => setSortOrder(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="largest">Largest amount</option><option value="smallest">Smallest amount</option></select></label>
+          </div>
+          {postingFilter !== 'posted' && <p className="analytics-note">Pending entries can appear here but are excluded from income and spending reports. Amount sorting uses magnitude within each currency.</p>}
           <TransactionList transactions={entries.slice(currentPage * pageSize, (currentPage + 1) * pageSize)} edit={editTransaction} empty={emptyMessage} selected={selectedTransactions} statuses={reviewStatuses}
             toggle={id => setSelectedTransactions(value => value.includes(id) ? value.filter(item => item !== id) : [...value, id])} />
           {entries.length > pageSize && <div className="pagination" aria-label="Transaction pages">

@@ -27,6 +27,47 @@
   --chrome: #ededf0eb; --shadow: 0 3px 18px #1e293b05; --panel-shadow: 0 24px 90px #17283f29;
 }
 body { min-width: 0; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+.reporting-month { display: grid; gap: 4px; color: var(--muted); font-size: .7rem; }
+.reporting-month input { font-size: .85rem; }
+.cashflow-total { padding: 0; border: 0; background: transparent; text-align: left; border-radius: 6px; }
+.cashflow-total small { display: block; color: var(--muted); font-size: .72rem; letter-spacing: 0; margin-top: 6px; }
+.cashflow-drill { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 12px; margin-top: 8px; background: var(--field); border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--text); text-align: left; }
+.cashflow-bars > .cashflow-drill { display: grid; justify-content: stretch; gap: 8px; margin: 0; }
+.cashflow-bars > .cashflow-drill > div { display: flex; justify-content: space-between; gap: 8px; font-size: .8rem; }
+.single-observation .chart { height: 110px; }
+.report-tabs { justify-self: start; max-width: 100%; flex-wrap: wrap; }
+.spending-main, .report-calendar, .category-donut { scroll-margin-top: 150px; }
+.report-filter-fields { display: flex; gap: 14px; flex-wrap: wrap; align-items: end; }
+.report-filter-fields > label, .transaction-type-filters > label { flex: 1 1 150px; min-width: 0; }
+.report-filter-fields label > select, .transaction-type-filters select { width: 100%; }
+.report-account-filter { flex: 1 1 200px; min-width: 0; }
+.report-account-filter[open] { flex-basis: 100%; }
+.report-account-filter > summary { padding: 12px; border: 1px solid var(--control-line); border-radius: var(--radius-control); background: var(--field); }
+.report-account-options { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; margin-top: 12px; }
+.report-account-scroll { grid-column: 1 / -1; max-height: 230px; overflow: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; }
+.report-account-options .analytics-note { grid-column: 1 / -1; }
+.income-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.report-account-scroll label { overflow-wrap: anywhere; }
+.report-account-scroll small { display: block; }
+.report-calendar-grid > .card { min-width: 0; }
+.report-calendar-grid .section-heading { flex-wrap: wrap; }
+.category-donut { display: grid; gap: 16px; }
+.donut-plot { width: min(100%, 250px); position: relative; margin: 0 auto; }
+.donut-plot svg { width: 100%; display: block; overflow: visible; }
+.donut-total { position: absolute; inset: 25%; display: flex; justify-content: center; flex-direction: column; text-align: center; pointer-events: none; }
+.donut-total strong { font-size: clamp(.8rem, 1.3vw, 1.15rem); overflow-wrap: anywhere; }
+.donut-total small { color: var(--muted); font-size: .72rem; }
+.donut-slice { cursor: pointer; }
+.donut-slice:hover, .donut-slice:focus-visible { stroke-width: 24px; outline: none; filter: brightness(1.15); }
+.donut-legend { display: grid; max-height: 300px; overflow: auto; }
+.donut-legend-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 0; background: transparent; color: var(--text); text-align: left; font-size: .8rem; }
+.donut-legend-row > i { height: 10px; border-radius: 3px; }
+.donut-legend-row > span { overflow-wrap: anywhere; }
+.donut-legend-row strong { text-align: right; }
+.donut-legend-row small { display: block; color: var(--muted); font-size: .7rem; }
+.cashflow-calendar .refund-day { color: var(--negative); }
+@media (max-width: 850px) { .report-calendar-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 420px) { .report-filter-fields > label, .report-account-filter { flex-basis: 100%; } .cashflow-drill { flex-wrap: wrap; } .spending-main, .report-calendar, .category-donut { scroll-margin-top: 250px; } }
 button, input, select, textarea { font-family: inherit; }
 button, summary, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 button { touch-action: manipulation; transition: background-color 120ms, border-color 120ms, color 120ms; }
