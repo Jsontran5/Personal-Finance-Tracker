@@ -416,3 +416,7 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(4px); }
   .page-help { max-height: 88dvh; }
   .page-header .toolbar { flex-wrap: wrap; }
 }
+
+.account-nickname { margin: 18px 0; padding-block: 16px; border-block: 1px solid var(--line); }
+.account-nickname p { margin-block: 10px; overflow-wrap: anywhere; }
+.account-nickname .inline-actions { flex-wrap: wrap; gap: 8px; }

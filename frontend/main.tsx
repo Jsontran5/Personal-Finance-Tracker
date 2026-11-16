@@ -19,6 +19,7 @@ import { DebtDetails } from './DebtDetails'
 import { Connections } from './Connections'
 import { Navigation, type Page } from './Navigation'
 import { PageHelp } from './Help'
+import { AccountNickname } from './AccountNickname'
 import './styles.css'
 import './interface.css'
 
@@ -592,6 +593,7 @@ function App() {
           <button className="secondary small" onClick={() => { setPage('Transactions'); setAllReviewDates(true); setAccountFilter(account.id); setCategoryFilter(0); setReviewFilter('all'); setSearch(''); setDrilldown(null) }}>View account transactions →</button>
           {mode === 'personal' && <div className="inline-actions"><button className="secondary small" onClick={() => open({ type: 'balance', account })}>Record balance</button>
             <button className="secondary small" onClick={() => open({ type: 'account', account })}>Edit account</button></div>}
+          {synced && account.balance_source !== 'manual' && <AccountNickname account={account} request={request} onChanged={() => setRevision(value => value + 1)} />}
           {synced && account.balance_source === 'manual' && <button className="secondary small" onClick={() => void changeMode('personal')}>Manage in Manual</button>}
           {isDebt(account.kind) && <DebtDetails live={mode === 'live'} account={account} sandbox={synced} managed={mode === 'live' || scenario === 'combined'} request={request} money={money} parseMoney={parseMoney} revision={revision} onChanged={() => setRevision(value => value + 1)} />}
           <BalanceHistory key={revision} account={account} sandbox={synced} request={request} />

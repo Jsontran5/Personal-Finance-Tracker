@@ -83,6 +83,8 @@ def run():
         seed(live_path)
         database.with_suffix('.workspace').write_text('live')
         database.with_suffix('.sandbox-scenario').write_text('combined')
+        from finance.recovery import migrate
+        migrate(database.with_suffix('.plaid-sandbox.db'),'sandbox')
         original_banking = fingerprint(database.with_suffix('.plaid-sandbox.db'))
         server_port, chrome_port = port(), port()
         server = chrome = ws = None
@@ -261,6 +263,23 @@ def run():
                     cdp('Input.dispatchKeyEvent',{'type':'keyUp','key':'Escape','code':'Escape','windowsVirtualKeyCode':27})
                     ready("!document.querySelector('[role=tooltip]')")
                     assert js("document.querySelector('.account-inspector[open]')!==null")
+                    original_name=js("document.querySelector('.account-inspector[open] h2').textContent")
+                    button('.account-inspector[open] button','Rename account')
+                    ready("document.querySelector('input[aria-label=\"Account nickname\"]')")
+                    cdp('Input.insertText',{'text':'My savings account with a long local nickname for clarity'})
+                    screenshot(f'{width}-{theme}-nickname-editor')
+                    button('.account-inspector[open] button','Save nickname')
+                    ready("document.querySelector('.account-inspector[open] h2').textContent.includes('My savings account')")
+                    screenshot(f'{width}-{theme}-renamed-account')
+                    current=next(a for a in api('/plaid/live/preview?month=2026-11')['accounts'] if a['name'].startswith('My savings account'))
+                    assert current['provider_name']==original_name
+                    button('.account-inspector[open] button','Rename account')
+                    button('.account-inspector[open] button','Use bank name')
+                    ready("document.querySelector('.account-inspector[open] h2').textContent==="+json.dumps(original_name))
+                    button('.account-inspector[open] button','Rename account')
+                    cdp('Input.insertText',{'text':'Unsaved draft'})
+                    button('.account-inspector[open] button','Cancel')
+                    assert js("document.querySelector('.account-inspector[open] h2').textContent")==original_name
                     js("document.querySelector('.account-inspector[open] button[aria-label=\"Close account details\"]').click()")
 
                     nav('Investments');ready("document.querySelector('.investment-row')")

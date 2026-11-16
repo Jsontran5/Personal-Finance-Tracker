@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { accountLabel, accountGroups, groupedAccounts, type GroupAccount } from './accounts'
 
 export type Account = GroupAccount & {
-  id: number; name: string; kind: string; currency: string; balance_minor: number | null;
+  id: number; name: string; provider_name?: string | null; nickname?: string | null; kind: string; currency: string; balance_minor: number | null;
   balance_date: string | null; include_in_net_worth: number; balance_source?: string; transaction_count?: number; institution_name?: string | null
 }
 
