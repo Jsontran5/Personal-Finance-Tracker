@@ -67,6 +67,21 @@ def run():
         from finance.db import connect
         from finance.live_setup import initialize_live
         from finance.multi_bank import map_accounts
+        # Synthetic activity in an isolated copy: no provider calls.
+        from datetime import date
+        from finance.multi_bank import initialize_combined
+        from finance.plaid_sandbox import save_transactions
+        from finance.sandbox_preview import initialize_preview
+        with connect(database.with_suffix('.plaid-combined-sandbox.db'), write=True) as fixture:
+            initialize_combined(fixture)
+            initialize_preview(fixture)
+            account = fixture.execute("SELECT id FROM accounts WHERE currency='USD' ORDER BY rowid LIMIT 1").fetchone()[0]
+            month = date.today().isoformat()[:7]
+            save_transactions(fixture, [dict(transaction_id='report-expense-'+str(index), account_id=account,
+                name='Report purchase '+str(index), date=month+'-01', amount=index+1, iso_currency_code='USD', pending=False,
+                personal_finance_category={'primary':'GENERAL_MERCHANDISE'}) for index in range(36)] +
+                [dict(transaction_id='report-income', account_id=account, name='Report salary', date=month+'-01',
+                amount=-5000, iso_currency_code='USD', pending=False, personal_finance_category={'primary':'INCOME'})], [], [])
         live_path=database.with_suffix('.plaid-live.db')
         with connect(live_path,write=True) as fixture:
             initialize_live(fixture)
@@ -182,6 +197,48 @@ def run():
             ready("document.querySelector('select[aria-label=\"Workspace\"]')?.value==='live'")
             select('Workspace','sandbox');ready("document.querySelector('select[aria-label=\"Sandbox scenario\"]')")
             select('Sandbox scenario','combined');ready("document.querySelector('.hero-value')")
+            # Drilldowns reconcile with the report's exact eligible IDs. Sorting
+            # is global before pagination, and return navigation retains scope.
+            report_month = js("document.querySelector('[aria-label=\"Reporting month\"]').value")
+            preview = json.load(urllib.request.urlopen(url+'/api/plaid/combined-sandbox/preview?month='+report_month))
+            nav('Spending');ready("document.querySelector('.report-calendar')")
+            click('.report-account-filter > summary')
+            click('.report-account-scroll input')
+            ready("document.querySelector('.spending-main')")
+            selected_account = preview['accounts'][0]['id']
+            select('Report category','uncategorized');ready("document.querySelector('.spending-main')")
+            expected = json.load(urllib.request.urlopen(url+f'/api/plaid/combined-sandbox/preview/analytics?month={report_month}&account={selected_account}&category=uncategorized'))
+            click('.spending-main button','View transactions →');ready("document.querySelector('.drilldown-filter')")
+            records=[row for row in preview['transactions'] if row['id'] in expected['eligible_ids']]
+            select('Sort transactions','largest')
+            expected_ids=[row['id'] for row in sorted(records,key=lambda row:(-row['amount_minor'],-row['id']))[:25]]
+            ready("JSON.stringify([...document.querySelectorAll('.ledger-row')].map(e=>Number(e.dataset.transactionId)))==="+json.dumps(json.dumps(expected_ids,separators=(',',':'))))
+            select('Filter transaction type','refund')
+            ready("[...document.querySelectorAll('.ledger-row')].every(e=>e.querySelector('.transaction-meta').textContent.includes('Refund'))")
+            click('.drilldown-filter button','Back to Spending');ready("document.querySelector('.spending-main')")
+            assert js("document.querySelector('[aria-label=\"Report category\"]').value")=='uncategorized'
+            click('.report-account-filter > summary')
+            assert js("document.querySelectorAll('.report-account-scroll input:checked').length")==1
+            screenshot('report-account-filter-expanded')
+            click('.report-filter-fields button','Reset filters');ready("document.querySelector('.spending-main')")
+            # Each Overview cash-flow link uses precisely the eligible entries.
+            for control, kinds in [('.flow-income',{'income'}),('.flow-spending',{'expense','refund'}),('.cashflow-total',{'income','expense','refund'})]:
+                nav('Overview');ready("document.querySelector('.cashflow-total')")
+                click(control);ready("document.querySelector('.drilldown-filter')")
+                rows=[row for row in preview['transactions'] if row['currency']=='USD' and not row.get('pending') and not row.get('needs_review') and not row.get('transfer_pair_id') and row['kind'] in kinds]
+                expected_ids=[row['id'] for row in sorted(rows,key=lambda row:(row['date'],row['id']),reverse=True)[:25]]
+                assert js("[...document.querySelectorAll('.ledger-row')].map(e=>Number(e.dataset.transactionId))")==expected_ids
+                click('.drilldown-filter button','Back to Overview');ready("document.querySelector('.cashflow-total')")
+            ready("document.querySelector('.composition-total')")
+            saved_balances=js("[document.querySelector('.hero-value').textContent,document.querySelector('.composition-total').textContent]")
+            index=int(report_month[:4])*12+int(report_month[5:])-2
+            earlier=f'{index//12:04}-{index%12+1:02}'
+            for chosen in (earlier,report_month):
+                js("(()=>{const e=document.querySelector('[aria-label=\"Reporting month\"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+json.dumps(chosen)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()")
+                expected_month=date.fromisoformat(chosen+'-01').strftime('%B %Y')
+                ready("document.querySelector('.cashflow .section-heading small')?.textContent.startsWith("+json.dumps(expected_month)+") && document.querySelector('.composition-total')")
+                assert js("[document.querySelector('.hero-value').textContent,document.querySelector('.composition-total').textContent]")==saved_balances
+            print('Report filters retained after drilldown, global sorting before pagination and all three Overview cash-flow links reconciled.',flush=True)
             assert js("document.fonts.load('400 16px Lexend').then(()=>document.fonts.check('400 16px Lexend'))")
             pages=['Overview','Spending','Transactions','Budgets','Accounts','Investments','Bank sync','Backup & restore']
             for width in (1440,1280,768,390,320):
@@ -196,6 +253,29 @@ def run():
                     assert contrast(palette['--control-line'],palette['--field'])>=3
                     for page in pages:
                         nav(page)
+                        if page=='Spending':
+                            ready("document.querySelector('.report-calendar .calendar-day')")
+                            click('.report-account-filter > summary')
+                            screenshot(f'{width}-{theme}-report-account-filter-expanded')
+                            click('.report-account-options button','Done')
+                            assert 'By merchant' not in js("document.querySelector('.spending-page').textContent")
+                            js("document.querySelector('.report-calendar').scrollIntoView({block:'start'})")
+                            screenshot(f'{width}-{theme}-spending-calendar-donut')
+                            click('.report-tabs button','Income')
+                            ready("document.querySelector('.spending-main h2')?.textContent==='Income this month'")
+                            js("document.querySelector('.report-calendar').scrollIntoView({block:'start'})")
+                            screenshot(f'{width}-{theme}-income-calendar-donut')
+                            click('.report-tabs button','Cash flow')
+                            ready("document.querySelector('.spending-main h2')?.textContent==='Cash flow this month'")
+                            screenshot(f'{width}-{theme}-cashflow-report')
+                            click('.spending-main button','View transactions →')
+                            ready("document.querySelector('h1')?.textContent==='Transactions' && document.querySelector('.drilldown-filter')")
+                            assert 'Cash flow' in js("document.querySelector('.drilldown-filter').textContent")
+                            click('.drilldown-filter button','Back to Spending')
+                            ready("document.querySelector('.spending-main h2')?.textContent==='Cash flow this month'")
+                            click('.report-tabs button','Spending')
+                            ready("document.querySelector('.spending-main h2')?.textContent==='Spending this month'")
+                            js('window.scrollTo(0,0)')
                         if page=='Transactions':
                             ready("document.querySelector('.ledger-row .transaction-flow')")
                             assert js("[...document.querySelectorAll('.ledger-row')].every(e=>e.querySelectorAll('.flow-endpoint').length===2 && ['in','out','none'].includes(e.dataset.direction))")
