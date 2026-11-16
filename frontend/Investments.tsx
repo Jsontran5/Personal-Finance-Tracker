@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Chart } from './Charts'
+import { SnapshotGuide } from './BankingHistory'
 
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
 type Money = (value: number, currency?: string) => string
@@ -118,7 +119,8 @@ export function Investments({ sandbox, managed, live, request, money, openBank, 
       <div className="investment-overview">
         <section className="card investment-value"><h2>Portfolio value</h2><strong className="hero-value numeric">{total === null ? '—' : money(total)}</strong><p className="muted">Saved USD account balances · cash and securities counted once</p>
           {accounts.some(item => item.currency !== 'USD' || item.current_minor === null) && <p className="notice">Other currencies and missing USD balances are excluded from this total.</p>}
-          <Chart history={history} money={money} label="Recorded portfolio value" /><small>History starts with saved observations, not past trades. Deposits and withdrawals also change value; this is not a return calculation.</small>
+          <Chart history={history} money={money} label="Recorded portfolio value" /><small>History uses saved account values, including successful balance refreshes. Investment estimates need historical positions and prices; banking estimates do not apply here. Deposits and withdrawals also change value; this is not a return calculation.</small>
+          <SnapshotGuide open={openBank} />
         </section>
         <section className="card investment-allocation"><h2>Where it’s invested</h2><p className="muted">Positive USD holdings · cash included</p>
           {allocation.map(([name, value], index) => <div className="allocation-row" key={name}><div><span>{name}</span><strong className="numeric">{money(value)}</strong></div><div className="allocation-track"><span style={{ width: `${value / allocationTotal * 100}%`, background: `var(${index % 2 ? '--accent' : '--blue'})` }} /></div><small>{(value / allocationTotal * 100).toFixed(1)}%</small></div>)}

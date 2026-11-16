@@ -11,7 +11,7 @@ from .transaction_flow import project_flow
 from .ledger import monthly_activity, totals
 from .spending import previous_month, spending_report
 from .analytics import analytics_router
-from .balance_history import banking_estimates, snapshot_history
+from .balance_history import account_observations, banking_estimates, snapshot_history
 from .review import initialize_review, mark, review_router
 from .transfers import initialize_transfers, project_transfers, require_unlinked
 
@@ -300,12 +300,7 @@ def sandbox_preview_router(database, initialize_sandbox, *, path=None):
             account = db.execute("SELECT id FROM accounts WHERE rowid=?", (row_id,)).fetchone()
             if account is None:
                 raise HTTPException(404, "Account not found.")
-            return [dict(row) for row in db.execute("""
-                SELECT s.id,s.date AS effective_date,a.balance_minor,
-                  COALESCE(a.source,'Unknown source') || ' · observed ' || COALESCE(a.checked_at,'unknown') AS notes
-                FROM preview_snapshot_accounts a JOIN preview_snapshots s ON s.id=a.snapshot_id
-                WHERE a.account_id=? AND a.balance_minor IS NOT NULL ORDER BY s.id DESC
-            """, (account["id"],))]
+            return account_observations(db, account['id'])
 
     @router.post("/categories", status_code=201)
     def add_category(item: CategoryCreate):

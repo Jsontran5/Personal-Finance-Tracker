@@ -39,6 +39,30 @@ body { min-width: 0; -webkit-font-smoothing: antialiased; text-rendering: optimi
 .cashflow-bars > .cashflow-drill { display: grid; justify-content: stretch; gap: 8px; margin: 0; }
 .cashflow-bars > .cashflow-drill > div { display: flex; justify-content: space-between; gap: 8px; font-size: .8rem; }
 .single-observation .chart { height: 110px; }
+.history-switch { margin-top: 20px; width: fit-content; max-width: 100%; flex-wrap: wrap; }
+.history-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; color: var(--muted); font-size: .73rem; margin: 14px 0; }
+.snapshot-line-sample, .estimated-line-sample { width: 28px; border-top: 2px solid var(--accent); }
+.estimated-line-sample { border-top-style: dashed; }
+.estimated-chart .chart-line { stroke-dasharray: 6 5; }
+.estimated-chart .chart-point { fill: var(--surface); stroke: currentColor; stroke-width: 1.5; }
+.history-start { display: flex; align-items: flex-start; gap: 14px; padding: 22px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--field); }
+.history-start p { margin: 8px 0; font-variant-numeric: tabular-nums; }
+.history-start small { color: var(--muted); }
+.history-start-dot { flex: 0 0 12px; height: 12px; border-radius: 50%; background: var(--accent); margin-top: 5px; }
+.snapshot-guide { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); font-size: .78rem; }
+.snapshot-guide > p { color: var(--muted); margin: 12px 0; }
+.snapshot-guide strong { color: var(--text); }
+.banking-history { margin-top: 18px; padding: 18px; border: 1px dashed var(--control-line); border-radius: var(--radius-control); min-width: 0; }
+.banking-history .section-heading { align-items: start; flex-wrap: wrap; }
+.banking-history .eyebrow { color: var(--accent); }
+.banking-history .notice { margin-top: 14px; }
+.estimate-latest { display: grid; gap: 6px; margin-top: 18px; }
+.estimate-latest > span { font-size: .75rem; color: var(--muted); }
+.estimate-latest > strong { font-size: 1.35rem; overflow-wrap: anywhere; }
+.history-coverage { margin-top: 16px; font-size: .78rem; }
+.history-coverage-list { max-height: 360px; overflow: auto; margin-top: 12px; }
+.history-coverage-list > div { padding: 12px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.history-coverage-list p { color: var(--muted); margin: 6px 0; }
 .report-tabs { justify-self: start; max-width: 100%; flex-wrap: wrap; }
 .spending-main, .report-calendar, .category-donut { scroll-margin-top: 150px; }
 .report-filter-fields { display: flex; gap: 14px; flex-wrap: wrap; align-items: end; }

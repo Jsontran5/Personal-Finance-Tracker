@@ -41,6 +41,21 @@ def snapshot_history(db, *, investments=False):
     return list(points.values())
 
 
+def account_observations(db, identifier):
+    seen, rows = set(), []
+    for row in db.execute('''SELECT p.id,p.date,s.balance_minor,s.checked_at,s.source
+        FROM preview_snapshot_accounts s JOIN preview_snapshots p ON p.id=s.snapshot_id
+        WHERE s.account_id=? AND s.balance_minor IS NOT NULL ORDER BY p.id DESC''', (identifier,)):
+        observed = local_day(row['checked_at'])
+        key = (row['checked_at'], row['balance_minor'], row['source'])
+        if observed is None or observed.isoformat() != row['date'] or key in seen:
+            continue
+        seen.add(key)
+        rows.append({'id': row['id'], 'effective_date': row['date'], 'balance_minor': row['balance_minor'],
+                     'notes': (row['source'] or 'Unknown source') + ' · observed ' + row['checked_at']})
+    return rows
+
+
 def banking_estimates(db):
     tables = {row[0] for row in db.execute("SELECT name FROM sqlite_schema WHERE type='table'")}
     results = []

@@ -6,6 +6,10 @@ import { trapDialogFocus } from './dialogFocus'
 // Explanations describe effects, not just labels. Keep product behavior here in sync
 // with the controls; a data-help attribute can override context-specific wording.
 export const controlHelp: Record<string, string> = {
+  'Snapshots': 'Show saved account balance observations. Only balances observed on a recorded day contribute to that day; missing days or accounts leave gaps. Opening a chart does not fetch banks.',
+  'Banking estimates': 'Reconstruct supported banking balances from saved posted transaction amounts, including transfers. Dashed lines are approximate; investments, loans and manual accounts are excluded. Estimates never change snapshots or current balances.',
+  'Snapshots, estimates & adding history': 'Learn the difference between recorded balances and reconstructed banking history, then open the existing balance-refresh controls to collect more observations.',
+  'Banking estimate coverage': 'See included and excluded accounts, the available transaction dates, balance anchor timestamps, and any disagreement with earlier recorded balances.',
   'Report category': 'Filter all report totals, trends, calendars and drilldowns by your assigned category. This is separate from choosing bank or local categories for the breakdown.',
   'Report comparison': 'Compare against the previous month or an earlier month you choose. The same account and category filters apply to both periods.',
   'Filter transaction type': 'Show only expenses, income, refunds, transfers or investment journal entries. Confirmed transfer pairs are treated as transfers.',

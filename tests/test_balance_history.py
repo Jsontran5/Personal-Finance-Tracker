@@ -6,7 +6,7 @@ from unittest import TestCase
 from fastapi.testclient import TestClient
 
 from finance.api import create_app
-from finance.balance_history import banking_estimates, local_day, snapshot_history
+from finance.balance_history import account_observations, banking_estimates, local_day, snapshot_history
 from finance.db import connect
 from finance.investments import project_investments
 from finance.plaid_sandbox import SCHEMA, save_accounts
@@ -107,17 +107,53 @@ class BalanceHistoryTests(TestCase):
             self.assertEqual(history[-1]['accounts'][1]['balance_minor'], 25000)
             self.assertEqual(project_investments(db)['history'][-1]['accounts'][0]['value_minor'], 25000)
             self.assertEqual(history[0]['accounts'][1]['balance_minor'], 20000)
+            self.assertEqual([r['effective_date'] for r in account_observations(db,'broker')], ['2026-11-16','2026-11-15'])
+            self.assertEqual(len(account_observations(db,'bank')),2)
+            self.snapshot(db,'2026-11-16')
+            self.assertEqual(len(account_observations(db,'bank')),2, 'Copied same-day peer snapshots are not new fetches')
 
     def test_estimates_api_isolated_read_only_and_no_new_snapshot(self):
-        with TestClient(create_app(Path(self.folder.name)/'app.db'), base_url='http://127.0.0.1') as client:
+        database = Path(self.folder.name)/'app.db'
+        with TestClient(create_app(database), base_url='http://127.0.0.1') as client:
             url = '/api/plaid/sandbox/preview'
             client.get(url+'?month=2026-11')
-            result = client.get(url+'/balance-history')
-            self.assertEqual(result.status_code, 200, result.text)
-            self.assertEqual(result.json()['accounts'], [])
+            path=database.with_suffix('.plaid-sandbox.db')
+            with connect(path,write=True) as db:
+                db.execute("INSERT INTO connection(id,item_id,token,history_status) VALUES (1,'fixture',?,'HISTORICAL_UPDATE_COMPLETE')", (b'not-a-token',))
+                self.account(db,'bank',100)
+                self.tx(db,'test','2026-11-14',100)
+                self.snapshot(db,'2026-11-15')
+                before={table:db.execute('SELECT * FROM '+table).fetchall() for table in ['accounts','transactions','connection','preview_snapshot_accounts','preview_snapshots']}
+            for prefix in ['/api/plaid/sandbox/preview','/api/plaid/investments-sandbox/preview',
+                           '/api/plaid/combined-sandbox/preview','/api/plaid/live/preview']:
+                result = client.get(prefix+'/balance-history')
+                self.assertEqual(result.status_code, 200, result.text)
+                if prefix==url:
+                    self.assertTrue(result.json()['accounts'][0]['supported'])
+            with connect(path) as db:
+                self.assertEqual({table:db.execute('SELECT * FROM '+table).fetchall() for table in before},before)
+            self.assertEqual(client.get('/api/overview?month=2026-11').json()['accounts'],[])
             self.assertNotIn('token', result.text)
         with connect(self.path) as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM preview_snapshots').fetchone()[0], 0)
+
+    def test_multi_item_history_completion_and_identity_are_scoped_per_owner(self):
+        from finance.multi_bank import initialize_combined, map_accounts
+        with connect(self.path,write=True) as db:
+            initialize_combined(db)
+            for index,status in [(1,'HISTORICAL_UPDATE_COMPLETE'),(2,'INITIAL_UPDATE_COMPLETE')]:
+                db.execute('INSERT INTO multi_connections(id,institution_id,name,profile,history_status) VALUES (?,?,?,?,?)',
+                           (index,'fixture-'+str(index),'Fixture '+str(index),'banking',status))
+                map_accounts(db,index,[{'account_id':'same-id','name':'Bank '+str(index),'type':'depository',
+                             'subtype':'checking','balances':{'current':100,'iso_currency_code':'USD'}}],source='fresh')
+                self.tx(db,'transaction-'+str(index),'2026-11-14',100*index,account='p'+str(index)+':same-id')
+            db.execute("UPDATE accounts SET checked_at='2026-11-15T12:00:00'")
+            self.snapshot(db,'2026-11-15')
+            result=banking_estimates(db)['accounts']
+            self.assertTrue(result[0]['supported'])
+            self.assertFalse(result[1]['supported'])
+            self.assertNotEqual(result[0]['id'],result[1]['id'])
+            self.assertEqual(result[0]['transaction_count'],1)
 
     def test_local_day_handles_offset_midnight_and_invalid_dates(self):
         stamp = datetime(2026, 11, 16, 1, tzinfo=timezone.utc)

@@ -544,7 +544,7 @@ function App() {
       {ready && page === 'Overview' && <>
         <div className="overview-grid">
         <NetWorth workspaceLabel={mode === 'live' ? 'Live' : mode === 'sandbox' ? 'Sandbox' : 'Manual'} key={mode + scenario} accounts={ready.accounts} history={ready.history} mode={synced ? 'sandbox' : 'personal'}
-          request={request} money={money} onSelectionChange={setChartAccountIds} onStart={() => synced ? setPage('Bank sync') : open({ type: 'account' })} />
+          request={request} money={money} revision={revision} onUpdateSnapshots={() => setPage(synced ? 'Bank sync' : 'Accounts')} onSelectionChange={setChartAccountIds} onStart={() => synced ? setPage('Bank sync') : open({ type: 'account' })} />
         <div className="overview-side"><CashFlow data={ready} month={activeMonth} drill={(ids, label) => drillSpending(ids, label, 'Overview')} />
           <section className="card"><div className="section-heading"><div><h2>Budget progress</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => setPage('Budgets')}>View budgets <Icon name="right" /></button></div>
             <BudgetRows budgets={budgetRows} edit={editBudget} filter={filterCategory} />

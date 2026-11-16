@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { groupedAccounts, type GroupAccount } from './accounts'
+import { BankingHistory, SnapshotGuide } from './BankingHistory'
 
 type Money = (value: number, currency?: string) => string
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
@@ -11,8 +12,8 @@ export type HistoryPoint = {
 }
 type Account = GroupAccount & { id: number; name: string; currency: string; include_in_net_worth: number; balance_minor: number | null }
 
-export function Chart({ history, money, currency = 'USD', label = 'Recorded net worth' }: {
-  history: ChartPoint[]; money: Money; currency?: string; label?: string
+export function Chart({ history, money, currency = 'USD', label = 'Recorded net worth', estimated = false }: {
+  history: ChartPoint[]; money: Money; currency?: string; label?: string; estimated?: boolean
 }) {
   const [range, setRange] = useState(0)
   const gradient = useId().replaceAll(':', '')
@@ -23,7 +24,15 @@ export function Chart({ history, money, currency = 'USD', label = 'Recorded net 
   cutoff.setMonth(cutoff.getMonth() - range)
   const lastDay = new Date(cutoff.getFullYear(), cutoff.getMonth() + 1, 0).getDate()
   cutoff.setDate(Math.min(day, lastDay))
-  const points = history.filter(point => !range || new Date(point.date + 'T00:00:00') >= cutoff)
+  const filtered = history.filter(point => !range || new Date(point.date + 'T00:00:00') >= cutoff)
+  const points: ChartPoint[] = []
+  for (const point of filtered) {
+    const previous = points.at(-1)
+    if (!estimated && previous && Date.parse(point.date) - Date.parse(previous.date) > 86400000) {
+      points.push({ date: new Date(Date.parse(previous.date) + 86400000).toISOString().slice(0, 10), value_minor: null })
+    }
+    points.push(point)
+  }
   const values = points.flatMap(point => point.value_minor === null ? [] : [point.value_minor])
   const low = Math.min(...values)
   const high = Math.max(...values)
@@ -45,12 +54,14 @@ export function Chart({ history, money, currency = 'USD', label = 'Recorded net 
   }
   if (current.length) segments.push(current)
   const missing = points.filter(point => point.value_minor === null).length
-  return <div className={'balance-chart' + (values.length === 1 ? ' single-observation' : '')}>
+  return <div className={'balance-chart' + (estimated ? ' estimated-chart' : '') + (values.length === 1 ? ' single-observation' : '')}>
+    <div className="history-legend"><span className={estimated ? 'estimated-line-sample' : 'snapshot-line-sample'} />{estimated ? 'Dashed line · Estimated banking balances' : 'Snapshots · Recorded account balances'}</div>
     <div className="range" aria-label={label + ' period'}>
       {[[1, '1M'], [3, '3M'], [6, '6M'], [12, '1Y'], [0, 'All']].map(([value, text]) =>
         <button key={value} aria-pressed={range === value} onClick={() => setRange(Number(value))}>{text}</button>)}
     </div>
-    {values.length > 0 ? <>
+    {values.length === 1 ? <div className="history-start" data-history-start><span className="history-start-dot" aria-hidden="true" /><div><h3>{estimated ? 'One banking estimate available' : 'History tracking started'}</h3>
+      <p>{money(values[0], currency)} · {points.find(point => point.value_minor !== null)?.date}</p><small>{estimated ? 'More transaction coverage is needed for a historical line.' : 'One recorded day so far. Add a balance observation on another day to build your history.'}</small></div></div> : values.length > 0 ? <>
       <div className="plot">
         <div className="chart-axis" aria-hidden="true">
           {high === low ? <span>{money(high, currency)}</span>
@@ -63,27 +74,28 @@ export function Chart({ history, money, currency = 'USD', label = 'Recorded net 
             const line = segment.map(({ x, y }) => x + ',' + y).join(' ')
             return <g key={index} data-chart-segment>
               {segment.length > 1 && <>
-                <polygon points={line + ' ' + segment.at(-1)!.x + ',150 ' + segment[0].x + ',150'} fill={'url(#' + gradient + ')'} />
+                {!estimated && <polygon points={line + ' ' + segment.at(-1)!.x + ',150 ' + segment[0].x + ',150'} fill={'url(#' + gradient + ')'} />}
                 <polyline points={line} className="chart-line" />
               </>}
-              {segment.map(({ x, y, point }) => <circle key={point.date} cx={x} cy={y} r={3.5} className="chart-point" tabIndex={0}>
-                <title>{point.date} · {money(point.value_minor!, currency)}</title>
+              {segment.filter((_, index) => !estimated || index % Math.max(1, Math.ceil(segment.length / 24)) === 0 || index === segment.length - 1).map(({ x, y, point }) => <circle key={point.date} cx={x} cy={y} r={3.5} className="chart-point" tabIndex={0}>
+                <title>{point.date} · {estimated ? 'Estimated ' : 'Snapshot '}{money(point.value_minor!, currency)}</title>
               </circle>)}
             </g>
           })}
         </svg>
       </div>
-      <div className="chart-caption"><span>{points[0].date}</span><span>Recorded balances · {currency}</span><span>{points.length > 1 && points.at(-1)!.date}</span></div>
+      <div className="chart-caption"><span>{points[0].date}</span><span>{estimated ? 'Estimated banking balances' : 'Recorded balances'} · {currency}</span><span>{points.length > 1 && points.at(-1)!.date}</span></div>
     </> : <p className="empty">No complete recorded balances in this period.</p>}
-    {missing > 0 && <p className="muted chart-gap-note">{missing} snapshot dates have incomplete data for this selection. Lines stop at those gaps.</p>}
+    {missing > 0 && <p className="muted chart-gap-note">Missing or incomplete {estimated ? 'banking coverage' : 'balance dates'} leave gaps for this selection. No values are filled in.</p>}
   </div>
 }
 
-export function NetWorth({ accounts, history, mode, request, money, onStart, onSelectionChange, workspaceLabel }: {
+export function NetWorth({ accounts, history, mode, request, money, onStart, onSelectionChange, workspaceLabel, revision, onUpdateSnapshots }: {
   accounts: Account[]; history: HistoryPoint[]; mode: 'personal' | 'sandbox'; workspaceLabel?: string; request: Request; money: Money; onStart: () => void;
-  onSelectionChange: (ids: number[] | null) => void
+  onSelectionChange: (ids: number[] | null) => void; revision: number; onUpdateSnapshots: () => void
 }) {
   const [chartMode, setChartMode] = useState('net')
+  const [historyView, setHistoryView] = useState('snapshots')
   const [excluded, setExcluded] = useState<number[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -185,8 +197,12 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
       <button className="primary" onClick={onStart}>{mode === 'sandbox' ? 'Open Bank sync' : 'Add your first account'}</button>
     </div>}
     {excluded !== null && eligible.length > 0 && selected.length === 0 && <p className="empty">Select an account to view net worth.</p>}
-    {excluded !== null && selected.length > 0 && <Chart history={points} money={money} label={'Recorded ' + (chartMode === 'net' ? 'net worth' : chartMode)} />}
-    {excluded !== null && selected.length > 0 && points.filter(point => point.value_minor !== null).length === 1 && <p className="muted chart-gap-note">Balance tracking started {points.find(point => point.value_minor !== null)?.date}. One recorded date so far; {mode === 'personal' ? 'balances recorded' : 'successful balance syncs'} on later days build the trend. Imported transactions do not provide historical balances.</p>}
+    {excluded !== null && selected.length > 0 && <>
+      <div className="segmented history-switch" aria-label="Balance history source"><button aria-pressed={historyView === 'snapshots'} onClick={() => setHistoryView('snapshots')}>Snapshots</button>
+        <button disabled={mode === 'personal'} data-help="Estimate past banking balances from saved transactions. Investments and loans are excluded. Manual accounts use recorded balances." aria-pressed={historyView === 'estimates'} onClick={() => setHistoryView('estimates')}>Banking estimates</button></div>
+      {historyView === 'snapshots' ? <Chart history={points} money={money} label={'Recorded ' + (chartMode === 'net' ? 'net worth' : chartMode)} /> : <BankingHistory ids={selected.map(account => account.id)} measure={chartMode} request={request} money={money} revision={revision} renderChart={(points, title) => <Chart history={points} money={money} estimated label={title} />} />}
+      <SnapshotGuide manual={mode === 'personal'} open={onUpdateSnapshots} />
+    </>}
     {selected.length > 0 && !complete && <p className="muted">A selected account has no current balance. Totals are incomplete.</p>}
     <div className="balance-summary">
       <div><span>Total assets</span><strong className="numeric">{excluded !== null && complete ? money(assets) : '—'}</strong></div>
