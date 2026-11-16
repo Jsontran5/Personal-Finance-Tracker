@@ -8,9 +8,10 @@ from pydantic import BaseModel, Field, StringConstraints
 
 from .db import connect
 from .transaction_flow import project_flow
-from .ledger import attach_snapshot_accounts, monthly_activity, totals
+from .ledger import monthly_activity, totals
 from .spending import previous_month, spending_report
 from .analytics import analytics_router
+from .balance_history import banking_estimates, snapshot_history
 from .review import initialize_review, mark, review_router
 from .transfers import initialize_transfers, project_transfers, require_unlinked
 
@@ -186,17 +187,7 @@ def preview_overview(db, month):
     previous = previous_month(month)
     previous_transactions = preview_transactions(db, previous) if previous else []
     _, _, previous_actual = monthly_activity(previous_transactions)
-    history = [dict(row) for row in db.execute("""
-        SELECT id AS snapshot_id,date,assets_minor,liabilities_minor,assets_minor-liabilities_minor AS net_worth_minor
-        FROM preview_snapshots WHERE id IN (SELECT MAX(id) FROM preview_snapshots GROUP BY date)
-        ORDER BY date
-    """)]
-    attach_snapshot_accounts(history, db.execute("""
-        SELECT s.snapshot_id,a.rowid AS account_id,
-          CASE WHEN s.currency='USD' THEN s.balance_minor ELSE NULL END AS balance_minor
-        FROM preview_snapshot_accounts s JOIN accounts a ON a.id=s.account_id
-        WHERE s.snapshot_id IN (SELECT MAX(id) FROM preview_snapshots GROUP BY date)
-    """))
+    history = snapshot_history(db)
     return {
         **totals(accounts), "accounts": accounts, "transactions": transactions, "categories": categories,
         "spending": spending_report(transactions, previous_transactions, month, date.today()),
@@ -225,6 +216,12 @@ def sandbox_preview_router(database, initialize_sandbox, *, path=None):
 
     router.include_router(review_router(path, sandbox=True, initialize=initialize))
     router.include_router(analytics_router(path, preview_transactions, initialize))
+
+    @router.get('/balance-history')
+    def estimated_history():
+        initialize()
+        with connect(path) as db:
+            return banking_estimates(db)
 
     def require_category(db, category_id, kind):
         row = db.execute("SELECT kind FROM preview_categories WHERE id=?", (category_id,)).fetchone()

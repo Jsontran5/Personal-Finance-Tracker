@@ -3,6 +3,7 @@ from calendar import monthrange
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import json
+from .balance_history import snapshot_history
 
 
 def initialize_investments(db):
@@ -132,6 +133,10 @@ def project_investments(db):
             history[-1] = observation
         else:
             history.append(observation)
+    # Balance refreshes and holdings syncs both record account values. Use those
+    # observations for charts, excluding copied older values from peer Items.
+    if db.execute('SELECT 1 FROM preview_snapshots LIMIT 1').fetchone():
+        history = snapshot_history(db, investments=True)
     return {'state': dict(state) if state else None, 'accounts': accounts, 'holdings': holdings, 'history': history}
 
 
