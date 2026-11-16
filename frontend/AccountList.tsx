@@ -59,8 +59,9 @@ export function AccountList({ accounts, sandbox, live, primary, money, add, deta
             const isOpen = event.currentTarget.open
             setExpanded(value => isOpen ? value.includes(group.name) ? value : [...value, group.name] : value.filter(name => name !== group.name))
           }}>
-          <summary className="group-summary"><span><strong>{group.name}</strong><small>{group.accounts.length} {group.accounts.length === 1 ? 'account' : 'accounts'}</small></span>
-            <span className="group-totals numeric">{[...totals].map(([currency, amount]) => <span key={currency}>{amount === null ? 'Incomplete · ' + currency : money(amount, currency)}</span>)}</span>
+          <summary className="group-summary"><span className="group-heading"><strong role="heading" aria-level={2}>{group.name}</strong><small className="group-count">{group.accounts.length} {group.accounts.length === 1 ? 'account' : 'accounts'}</small></span>
+            <span className="group-totals numeric"><small>Group total</small>{[...totals].map(([currency, amount]) => <span key={currency}>{amount === null ? 'Incomplete · ' + currency : money(amount, currency)}</span>)}</span>
+            <span className="group-toggle" aria-hidden="true">›</span>
           </summary>
           <div className="group-accounts">{group.accounts.map(account => <details name="account-inspector" className="compact-account" key={account.id} open={selected === account.id} onToggle={event => { if (event.target === event.currentTarget) { const isOpen = event.currentTarget.open; setSelected(value => isOpen ? account.id : value === account.id ? null : value) } }}>
             <summary className="account-summary"><span className="account-identity"><strong>{account.name}</strong><small>{accountLabel(account)}{account.institution_name && ` / ${account.institution_name}`} · {account.currency}
