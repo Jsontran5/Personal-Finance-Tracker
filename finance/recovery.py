@@ -19,7 +19,7 @@ from .db import connect, database_lock, initialize
 from .scenarios import sandbox_path, chart_path
 
 MAX_SIZE = 256 * 1024 * 1024
-VERSIONS = {'personal': 4, 'sandbox': 7, 'sandbox_investments': 7, 'sandbox_combined': 8, 'live': 10}
+VERSIONS = {'personal': 4, 'sandbox': 11, 'sandbox_investments': 11, 'sandbox_combined': 12, 'live': 13}
 
 
 def checksum(path):

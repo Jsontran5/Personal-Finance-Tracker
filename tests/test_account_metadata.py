@@ -32,7 +32,7 @@ class AccountMetadataTests(TestCase):
                 self.assertEqual(tuple(before), tuple(after))
                 self.assertEqual(preview_accounts(db)[0]['kind'], 'depository')
                 self.assertIsNone(preview_accounts(db)[0]['subtype'])
-                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 7)
+                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 11)
 
     def test_normal_sync_updates_metadata_without_replacing_fresh_balance(self):
         calls = []
@@ -62,11 +62,15 @@ class AccountMetadataTests(TestCase):
                         }], 'fresh')
                         db.execute('INSERT INTO connection(id,item_id,token,cursor) VALUES (1,?,?,?)',
                                    ('same-item', protect(b'synthetic-access', True), 'saved-cursor'))
+                    client.put('/api/plaid/sandbox/preview/accounts/1/name',json={'nickname':'My card'}).raise_for_status()
                     response = client.post('/api/plaid/sandbox/sync')
                     self.assertEqual(response.status_code, 200)
                     data = client.get('/api/plaid/sandbox/preview?month=2026-11').json()
                     account = data['accounts'][0]
-                    self.assertEqual(account['name'], 'Updated name')
+                    self.assertEqual(account['name'], 'My card')
+                    self.assertEqual(account['provider_name'],'Updated name')
+                    client.put('/api/plaid/sandbox/preview/accounts/1/name',json={'nickname':None}).raise_for_status()
+                    self.assertEqual(client.get('/api/plaid/sandbox/preview?month=2026-11').json()['accounts'][0]['name'],'Updated name')
                     self.assertEqual(account['subtype'], 'credit card')
                     self.assertEqual(account['balance_minor'], -2000)
                     self.assertEqual(account['balance_source'], 'fresh')

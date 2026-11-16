@@ -338,6 +338,55 @@ class LiveTests(TestCase):
 
 
 
+    def test_account_nickname_survives_sync_and_restore_without_financial_changes(self):
+        identifier=self.prepare_investment(mixed=True);self.finish(identifier)
+        for product in ['transactions','holdings','activity']:
+            self.client.post(f'{self.base}/connections/{identifier}/sync?product={product}').raise_for_status()
+        month=date.today().isoformat()[:7]
+        report=self.client.get(self.base+'/preview?month='+month).json()
+        account=next(a for a in report['accounts'] if a['provider_type']=='investment')
+        with connect(self.path) as db:
+            identity=tuple(db.execute('SELECT item_id,token,cursor FROM multi_connections').fetchone())
+        endpoint=f"{self.base}/preview/accounts/{account['id']}/name"
+        self.client.put(endpoint,json={'nickname':'  My long-term portfolio  '}).raise_for_status()
+        renamed=self.client.get(self.base+'/preview?month='+month).json()
+        current=next(a for a in renamed['accounts'] if a['id']==account['id'])
+        self.assertEqual(current['name'],'My long-term portfolio');self.assertEqual(current['provider_name'],'Brokerage')
+        self.assertEqual(renamed['net_worth_minor'],report['net_worth_minor'])
+        self.assertEqual(renamed['spending_minor'],report['spending_minor'])
+        self.assertIn('My long-term portfolio',self.client.get(self.base+'/investments').json()['accounts'][0]['name'])
+        self.assertIn('My long-term portfolio',self.client.get(self.base+'/investments/activity').json()['rows'][0]['account_name'])
+        saved=self.client.post('/api/backups',json={'workspace':'live'});saved.raise_for_status()
+        self.accounts[0]['name']='Brokerage renamed by bank'
+        with connect(self.path,write=True) as db: db.execute('UPDATE multi_connections SET synced_at=NULL,holdings_at=NULL')
+        for product in ['transactions','holdings']:
+            self.client.post(f'{self.base}/connections/{identifier}/sync?product={product}').raise_for_status()
+        current=next(a for a in self.client.get(self.base+'/preview?month='+month).json()['accounts'] if a['id']==account['id'])
+        self.assertEqual(current['name'],'My long-term portfolio');self.assertEqual(current['provider_name'],'Brokerage renamed by bank')
+        self.client.put(endpoint,json={'nickname':None}).raise_for_status()
+        current=next(a for a in self.client.get(self.base+'/preview?month='+month).json()['accounts'] if a['id']==account['id'])
+        self.assertEqual(current['name'],'Brokerage renamed by bank');self.assertIsNone(current['nickname'])
+        preview=self.client.get('/api/backups/preview',params={'id':saved.json()['id']}).json()
+        restored=self.client.post('/api/backups/restore',json={k:preview[k] for k in ['id','preview_token','confirmation']});restored.raise_for_status()
+        current=next(a for a in self.client.get(self.base+'/preview?month='+month).json()['accounts'] if a['id']==account['id'])
+        self.assertEqual(current['name'],'My long-term portfolio')
+        with connect(self.path) as db:
+            self.assertEqual(tuple(db.execute('SELECT item_id,token,cursor FROM multi_connections').fetchone()),identity)
+        self.assertEqual(sum(e.endswith('/exchange') for e,p in self.calls),1)
+
+    def test_account_nickname_validation_and_manual_mirror_guard(self):
+        identifier=self.prepare_investment();self.finish(identifier)
+        self.client.post(f'{self.base}/connections/{identifier}/sync?product=holdings').raise_for_status()
+        a=self.client.get(self.base+'/preview?month='+date.today().isoformat()[:7]).json()['accounts'][0]
+        endpoint=f"{self.base}/preview/accounts/{a['id']}/name"
+        for value in ['', ' '*3, 'x'*121, 'name\nline', 'name\u0000']:
+            self.assertEqual(self.client.put(endpoint,json={'nickname':value}).status_code,422)
+        self.assertEqual(self.client.put(self.base+'/preview/accounts/99999/name',json={'nickname':'test'}).status_code,404)
+        with connect(self.path,write=True) as db: db.execute("UPDATE accounts SET source='manual'")
+        self.assertEqual(self.client.put(endpoint,json={'nickname':'test'}).status_code,409)
+
+
+
 class ProductionTransportTests(TestCase):
     def test_fixed_production_host_and_no_money_movement_or_sandbox_tokens(self):
         def response(request,**kwargs):

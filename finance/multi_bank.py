@@ -19,11 +19,11 @@ from .scenarios import sandbox_path
 
 def initialize_combined(db, *, production=False):
     version = db.execute('PRAGMA user_version').fetchone()[0]
-    if version in {9, 10} and not production:
+    if version in {9, 10, 13} and not production:
         raise ValueError('A Production database cannot be opened as Sandbox.')
     for statement in SCHEMA:
         db.execute(statement)
-    if version not in {9, 10}:
+    if version not in {9, 10, 13}:
         initialize_preview(db)
     db.execute('''CREATE TABLE IF NOT EXISTS multi_connections (
         id INTEGER PRIMARY KEY, institution_id TEXT NOT NULL UNIQUE,name TEXT NOT NULL,
@@ -39,7 +39,9 @@ def initialize_combined(db, *, production=False):
         mode TEXT NOT NULL,token BLOB NOT NULL,url BLOB NOT NULL,expiration TEXT NOT NULL,public_token BLOB)''')
     db.execute('CREATE TABLE IF NOT EXISTS manual_selection (account_id INTEGER PRIMARY KEY,fingerprint TEXT)')
     db.execute('CREATE TABLE IF NOT EXISTS manual_debt_mirror (account_id TEXT PRIMARY KEY,payload TEXT NOT NULL,updated_at TEXT)')
-    db.execute('PRAGMA user_version=' + (str(version) if version in {9, 10} else '8'))
+    from .account_names import initialize_names
+    initialize_names(db)
+    db.execute('PRAGMA user_version=' + ('13' if production else '12'))
 
 
 def scoped(identifier, value):
@@ -58,8 +60,10 @@ def map_accounts(db, identifier, accounts, source='cached', replace=False):
         existing = db.execute('SELECT source FROM accounts WHERE id=?', (account['account_id'],)).fetchone()
         if source == 'fresh' or not existing or existing['source'] != 'fresh':
             save_accounts(db, [account], source)
-        db.execute('UPDATE accounts SET name=?,mask=?,type=?,subtype=?,active=1 WHERE id=?',
-                   (account['name'], account.get('mask'), account['type'], account.get('subtype'), account['account_id']))
+        from .account_names import save_provider_name
+        save_provider_name(db, account['account_id'], account['name'])
+        db.execute('UPDATE accounts SET mask=?,type=?,subtype=?,active=1 WHERE id=?',
+                   (account.get('mask'), account['type'], account.get('subtype'), account['account_id']))
         db.execute('''INSERT INTO connection_accounts(account_id,connection_id,provider_id) VALUES (?,?,?)
             ON CONFLICT(account_id) DO UPDATE SET provider_id=excluded.provider_id''',
                    (account['account_id'], identifier, original['account_id']))
@@ -95,6 +99,12 @@ def import_feed(db, source, identifier):
         db.execute('''INSERT INTO accounts(id,name,mask,type,currency,current_minor,source,checked_at,active,subtype)
             VALUES (?,?,?,?,?,?,?,?,?,?)''', (key, row['name'], row['mask'], row['type'], row['currency'], row['current_minor'], row['source'], row['checked_at'], row['active'], row['subtype']))
         db.execute('INSERT INTO connection_accounts(account_id,connection_id,provider_id) VALUES (?,?,?)', (key, identifier, row['id']))
+        original = source.execute('SELECT provider_name,nickname FROM account_names WHERE account_id=?', (row['id'],)).fetchone() if source.execute("SELECT 1 FROM sqlite_schema WHERE name='account_names'").fetchone() else None
+        from .account_names import save_provider_name
+        save_provider_name(db, key, original['provider_name'] if original else row['name'])
+        if original and original['nickname']:
+            db.execute('UPDATE account_names SET nickname=? WHERE account_id=?', (original['nickname'],key))
+            db.execute('UPDATE accounts SET name=? WHERE id=?', (original['nickname'],key))
     for tx in source.execute('SELECT * FROM transactions'):
         db.execute('INSERT INTO transactions VALUES (?,?,?,?,?,?,?,?,?)',
                    (scoped(identifier, tx['id']), scoped(identifier, tx['account_id']), tx['date'], tx['name'], tx['amount_minor'], tx['currency'], tx['kind'], tx['pending'], tx['removed']))

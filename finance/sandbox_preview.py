@@ -16,6 +16,10 @@ Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max
 Kind = Literal["expense", "income", "refund", "transfer", "investment"]
 
 
+class AccountNickname(BaseModel):
+    nickname: Name | None = None
+
+
 class TransactionEdit(BaseModel):
     merchant: Name
     category_id: int | None = None
@@ -34,12 +38,17 @@ class BudgetEdit(BaseModel):
 
 def initialize_preview(db):
     version = db.execute("PRAGMA user_version").fetchone()[0]
-    if version in {7, 8, 9, 10}:
+    if version in {7, 8, 9, 10, 11, 12, 13}:
+        from .account_names import initialize_names
+        initialize_names(db)
+        if version == 7:
+            db.execute('PRAGMA user_version=11')
         return
     if version == 6:
         from .debt import initialize_liabilities
         initialize_liabilities(db)
         db.execute('PRAGMA user_version = 7')
+        initialize_preview(db)
         return
     if version == 5:
         from .investments import initialize_investments
@@ -117,7 +126,10 @@ def preview_accounts(db):
     inclusion = "COALESCE((SELECT included FROM connection_accounts m WHERE m.account_id=accounts.id),1)" if multi else '1'
     institution = "(SELECT COALESCE(c.name,'Manual') FROM connection_accounts m LEFT JOIN multi_connections c ON c.id=m.connection_id WHERE m.account_id=accounts.id)" if multi else 'NULL'
     return [dict(row) for row in db.execute(f"""
-        SELECT rowid AS id, name, type AS provider_type, subtype,
+        SELECT rowid AS id, name,
+          (SELECT provider_name FROM account_names n WHERE n.account_id=accounts.id) AS provider_name,
+          (SELECT nickname FROM account_names n WHERE n.account_id=accounts.id) AS nickname,
+          type AS provider_type, subtype,
           CASE type WHEN 'depository' THEN COALESCE(subtype,'depository') WHEN 'loan' THEN 'loan'
             WHEN 'credit' THEN 'credit' WHEN 'investment' THEN 'investment' ELSE 'other' END AS kind,
           currency, current_minor AS balance_minor, checked_at AS balance_date,
@@ -262,6 +274,22 @@ def sandbox_preview_router(database, initialize_sandbox, *, path=None):
                 raise HTTPException(404, "Transaction no longer available.")
             return {"provider": json.loads(row["payload"]) if row["payload"] else None,
                     "retrieved_at": row["retrieved_at"]}
+
+    @router.put('/accounts/{row_id}/name')
+    def rename_account(row_id: int, item: AccountNickname):
+        initialize()
+        import unicodedata
+        if item.nickname and any(unicodedata.category(c).startswith('C') for c in item.nickname):
+            raise HTTPException(422, 'Use a single-line account name without control characters.')
+        with connect(path, write=True) as db:
+            row = db.execute('SELECT id,source FROM accounts WHERE rowid=?', (row_id,)).fetchone()
+            if row is None:
+                raise HTTPException(404, 'Account not found.')
+            if row['source'] == 'manual':
+                raise HTTPException(409, 'Rename this account in Manual.')
+            db.execute('UPDATE account_names SET nickname=? WHERE account_id=?', (item.nickname, row['id']))
+            db.execute('UPDATE accounts SET name=(SELECT COALESCE(nickname,provider_name) FROM account_names WHERE account_id=?) WHERE id=?', (row['id'],row['id']))
+            return dict(db.execute('SELECT a.name,n.provider_name,n.nickname FROM accounts a JOIN account_names n ON n.account_id=a.id WHERE a.id=?', (row['id'],)).fetchone())
 
     @router.get("/accounts/{row_id}/balances")
     def account_history(row_id: int):

@@ -136,6 +136,8 @@ def save_accounts(db, accounts, source):
               source if current is not None else None, now().isoformat() if current is not None else None,
               a.get("subtype")))
 
+        from .account_names import save_provider_name
+        save_provider_name(db, a['account_id'], a['name'])
 
 def changes(call, token, checkpoint):
     for _ in range(3):
@@ -379,6 +381,9 @@ def sandbox_router(database: Path, *, client_factory=plaid_client, scenario='ban
                     "SELECT 1 FROM accounts WHERE id=? AND source='fresh'", (a["account_id"],)
                 ).fetchone()]
                 save_accounts(db, cached, "cached")
+                from .account_names import save_provider_name
+                for a in result["accounts"]:
+                    save_provider_name(db, a["account_id"], a["name"])
                 save_transactions(db, added, modified, removed)
                 db.execute("UPDATE connection SET cursor=?,history_status=?,synced_at=? WHERE id=1",
                            (cursor or None, history, now().isoformat()))
