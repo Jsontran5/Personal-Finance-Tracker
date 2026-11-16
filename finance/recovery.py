@@ -19,7 +19,7 @@ from .db import connect, database_lock, initialize
 from .scenarios import sandbox_path, chart_path
 
 MAX_SIZE = 256 * 1024 * 1024
-VERSIONS = {'personal': 4, 'sandbox': 7, 'sandbox_investments': 7, 'sandbox_combined': 8, 'live': 9}
+VERSIONS = {'personal': 4, 'sandbox': 7, 'sandbox_investments': 7, 'sandbox_combined': 8, 'live': 10}
 
 
 def checksum(path):
@@ -220,6 +220,8 @@ class BackupStore:
             info = check_database(copy)
             if info['workspace'] != ('sandbox' if mode == 'sandbox_investments' else mode):
                 raise ValueError('Source database workspace does not match.')
+            migrate(copy, mode)
+            info = check_database(copy)
             validate_current_schema(copy, mode, folder)
             selection = self.preference(mode)
             settings = valid_selection(json.loads(selection.read_text(encoding='utf-8'))) if selection.is_file() else {'excluded_account_ids': []}
@@ -379,6 +381,13 @@ class BackupStore:
                         with connect(copy, write=True) as db:
                             for item_id, row in current.items():
                                 db.execute('UPDATE multi_connections SET token=?,needs_reauth=?,balance_checked_at=? WHERE item_id=?', (row['token'], row['needs_reauth'], row['balance_checked_at'], item_id))
+                            if mode == 'live':
+                                with connect(target) as present:
+                                    if present.execute("SELECT 1 FROM sqlite_schema WHERE name='live_investment_connections'").fetchone():
+                                        for access in present.execute('SELECT c.item_id,i.consented FROM live_investment_connections i JOIN multi_connections c ON c.id=i.connection_id WHERE c.item_id IS NOT NULL'):
+                                            owner = db.execute('SELECT id FROM multi_connections WHERE item_id=?', (access['item_id'],)).fetchone()
+                                            if owner:
+                                                db.execute('INSERT INTO live_investment_connections VALUES (?,?) ON CONFLICT(connection_id) DO UPDATE SET consented=excluded.consented', (owner['id'],access['consented']))
                             db.execute('DELETE FROM multi_sessions')
                     elif current:
                         with connect(copy, write=True) as db:

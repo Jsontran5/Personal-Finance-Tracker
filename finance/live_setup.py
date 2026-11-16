@@ -32,14 +32,15 @@ def production_credentials(directory):
 
 def initialize_live(db):
     from .multi_bank import initialize_combined
-    if db.execute('PRAGMA user_version').fetchone()[0] not in {0, 9}:
+    if db.execute('PRAGMA user_version').fetchone()[0] not in {0, 9, 10}:
         raise ValueError('Sandbox or Manual data cannot be opened as Live.')
     initialize_combined(db, production=True)
     db.execute("CREATE TABLE IF NOT EXISTS workspace_environment (id INTEGER PRIMARY KEY CHECK(id=1),environment TEXT NOT NULL CHECK(environment='production'))")
     db.execute("INSERT OR IGNORE INTO workspace_environment VALUES (1,'production')")
     db.execute('CREATE TABLE IF NOT EXISTS live_setup (id INTEGER PRIMARY KEY CHECK(id=1),payload TEXT NOT NULL)')
     db.execute('CREATE TABLE IF NOT EXISTS live_preflight (institution_id TEXT PRIMARY KEY,payload TEXT NOT NULL,checked_at TEXT NOT NULL,credentials_digest TEXT NOT NULL)')
-    db.execute('PRAGMA user_version=9')
+    db.execute('CREATE TABLE IF NOT EXISTS live_investment_connections (connection_id INTEGER PRIMARY KEY REFERENCES multi_connections(id),consented INTEGER NOT NULL DEFAULT 0 CHECK(consented IN (0,1)))')
+    db.execute('PRAGMA user_version=10')
 
 
 class LiveSetup(BaseModel):
@@ -47,6 +48,7 @@ class LiveSetup(BaseModel):
     item_limit: int | None = Field(None, ge=1, le=1000)
     transactions_enabled: bool = False
     oauth_confirmed: bool = False
+    investments_enabled: bool = False
 
 
 def readiness(db, directory):
@@ -77,16 +79,18 @@ def readiness(db, directory):
             'preflights': [json.loads(row[0]) for row in db.execute('SELECT payload FROM live_preflight ORDER BY checked_at DESC')]}
 
 
-def require_link_ready(db, directory, institution):
+def require_link_ready(db, directory, institution, *, investments=False, transactions=True):
     state = readiness(db, directory)
     if not state['linking_enabled']:
         raise HTTPException(403, 'Real-bank linking is locked. Complete readiness and separately approve the live pilot before enabling PLAID_LIVE_ENABLED.')
     if not state['ready']:
         raise HTTPException(409, 'Complete all Live readiness checks before opening a real-bank Link session.')
+    if investments and not state['setup']['investments_enabled']:
+        raise HTTPException(409, 'Confirm Investments product access in Setup details before connecting investments.')
     checked = db.execute('SELECT payload,checked_at,credentials_digest FROM live_preflight WHERE institution_id=?', (institution,)).fetchone()
     from datetime import datetime
-    if not checked or checked['credentials_digest'] != credentials_digest(directory) or (now() - datetime.fromisoformat(checked['checked_at'])).total_seconds() > 86400 or not json.loads(checked['payload']).get('transactions'):
-        raise HTTPException(409, 'Run a successful Transactions coverage check for this institution within 24 hours.')
+    if not checked or checked['credentials_digest'] != credentials_digest(directory) or (now() - datetime.fromisoformat(checked['checked_at'])).total_seconds() > 86400 or (transactions and not json.loads(checked['payload']).get('transactions')) or (investments and 'investments' not in json.loads(checked['payload']).get('products', [])):
+        raise HTTPException(409, 'Run a successful coverage check for the selected products within 24 hours.')
 
 
 def credentials_digest(directory):

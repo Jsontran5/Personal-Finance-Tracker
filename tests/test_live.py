@@ -22,6 +22,8 @@ class LiveTests(TestCase):
         self.path = self.database.with_suffix('.plaid-live.db')
         self.calls = []
         self.fail = None
+        self.products = ['transactions', 'liabilities']
+        self.accounts = []
         self.url = 'https://secure.plaid.com/hl/synthetic'
         self.selected = 'ins_bofa'
         self.env = patch.dict(os.environ, {'PLAID_CLIENT_ID':'synthetic-client', 'PLAID_SECRET':'synthetic-sandbox-secret',
@@ -32,7 +34,7 @@ class LiveTests(TestCase):
             self.calls.append((endpoint,payload))
             if self.fail: raise PlaidError(self.fail)
             if endpoint == '/institutions/get_by_id':
-                return {'institution':{'institution_id':payload['institution_id'],'name':'Bank of America','products':['transactions','liabilities'],'oauth':True}}
+                return {'institution':{'institution_id':payload['institution_id'],'name':'Bank of America','products':self.products,'oauth':True}}
             if endpoint == '/institutions/search':
                 return {'institutions':[{'institution_id':'ins_bofa','name':'Bank of America'}]}
             if endpoint == '/link/token/create':
@@ -43,7 +45,16 @@ class LiveTests(TestCase):
                 return {'item_id':'synthetic-production-item','access_token':'access-production-synthetic'}
             if endpoint == '/transactions/sync':
                 return {'added':[],'modified':[],'removed':[],'has_more':False,'next_cursor':'live-cursor'}
-            if endpoint == '/accounts/get': return {'accounts':[]}
+            if endpoint in {'/accounts/get','/accounts/balance/get'}: return {'accounts':self.accounts}
+            if endpoint == '/investments/holdings/get':
+                return {'accounts':[a for a in self.accounts if a['type']=='investment'],
+                    'holdings':[{'account_id':'portfolio','security_id':'voo','quantity':10,'institution_price':50,'institution_value':500,'cost_basis':400,'iso_currency_code':'USD'},
+                                {'account_id':'portfolio','security_id':'cash','quantity':500,'institution_value':500,'iso_currency_code':'USD'}],
+                    'securities':[{'security_id':'voo','name':'VOO','type':'etf','ticker_symbol':'VOO'}, {'security_id':'cash','name':'Brokerage cash','type':'cash'}]}
+            if endpoint == '/investments/transactions/get':
+                return {'total_investment_transactions':1,'securities':[], 'investment_transactions':[
+                    {'investment_transaction_id':'buy1','account_id':'portfolio','date':date.today().isoformat(),'name':'Buy VOO','type':'buy','amount':500,'iso_currency_code':'USD'}]}
+
             raise AssertionError(endpoint)
         def factory(keys, *, environment):
             self.assertEqual(environment,'production')
@@ -207,6 +218,124 @@ class LiveTests(TestCase):
             db.execute("UPDATE live_preflight SET payload='{}'")
         result=self.client.post('/api/backups',json={'workspace':'live'})
         self.assertEqual(result.status_code,422,result.text)
+
+
+    def prepare_investment(self, mixed=False):
+        self.products = ['investments'] + (['transactions'] if mixed else [])
+        state={'trial_confirmed':True,'item_limit':20,'transactions_enabled':True,'oauth_confirmed':True,'investments_enabled':True}
+        self.client.put(self.base+'/readiness',json=state).raise_for_status()
+        profile='banking' if mixed else 'investments'
+        self.client.post(self.base+'/preflight',json={'institution_id':'ins_bofa','profile':profile}).raise_for_status()
+        result=self.client.post(self.base+'/connections',json={'institution_id':'ins_bofa','profile':profile,'include_investments':mixed})
+        result.raise_for_status()
+        self.accounts=[{'account_id':'portfolio','name':'Brokerage','type':'investment','subtype':'brokerage','balances':{'current':1000,'iso_currency_code':'USD'}}]
+        if mixed:
+            self.accounts.append({'account_id':'checking','name':'Checking','type':'depository','subtype':'checking','balances':{'current':100,'iso_currency_code':'USD'}})
+        os.environ['PLAID_LIVE_ENABLED']='true'
+        return result.json()['id']
+
+    def finish(self, identifier):
+        result=self.client.post(f'{self.base}/connections/{identifier}/link');result.raise_for_status()
+        self.client.post(f"{self.base}/connections/{identifier}/link/{result.json()['session']}").raise_for_status()
+
+    def test_live_investment_only_consent_holdings_activity_and_no_double_count(self):
+        identifier=self.prepare_investment()
+        self.assertEqual(self.client.post(f'{self.base}/connections/{identifier}/sync?product=holdings').status_code,409)
+        self.finish(identifier)
+        options=next(p for e,p in self.calls if e=='/link/token/create')
+        self.assertEqual(options['products'],['investments'])
+        self.assertNotIn('additional_consented_products',options)
+        for product in ['holdings','activity']:
+            r=self.client.post(f'{self.base}/connections/{identifier}/sync?product={product}')
+            self.assertEqual(r.status_code,200,r.text)
+        portfolio=self.client.get(self.base+'/investments').json()
+        self.assertEqual(len(portfolio['holdings']),2)
+        self.assertEqual(portfolio['accounts'][0]['current_minor'],100000)
+        activity=self.client.get(self.base+'/investments/activity').json()
+        self.assertEqual(activity['total'],1)
+        report=self.client.get(self.base+'/preview?month='+date.today().isoformat()[:7]).json()
+        self.assertEqual(report['net_worth_minor'],100000)
+        self.assertEqual(report['spending_minor'],0)
+        self.assertEqual(report['income_minor'],0)
+        self.assertEqual(self.client.post(f'{self.base}/connections/{identifier}/sync?product=transactions').status_code,409)
+        self.assertEqual(self.client.post(f'{self.base}/connections/{identifier}/sync?product=liabilities').status_code,409)
+        self.fail='PRODUCT_NOT_READY'
+        with connect(self.path,write=True) as db: db.execute('UPDATE multi_connections SET holdings_at=NULL')
+        self.assertEqual(self.client.post(f'{self.base}/connections/{identifier}/sync?product=holdings').status_code,409)
+        self.assertEqual(len(self.client.get(self.base+'/investments').json()['holdings']),2)
+
+    def test_mixed_connection_reuses_item_and_preserves_portfolio_and_banking(self):
+        identifier=self.prepare_investment(mixed=True)
+        self.finish(identifier)
+        options=next(p for e,p in self.calls if e=='/link/token/create')
+        self.assertEqual(options['products'],['transactions','investments'])
+        for product in ['transactions','holdings','activity']:
+            r=self.client.post(f'{self.base}/connections/{identifier}/sync?product={product}')
+            self.assertEqual(r.status_code,200,r.text)
+        report=self.client.get(self.base+'/preview?month='+date.today().isoformat()[:7]).json()
+        self.assertEqual(len(report['accounts']),2)
+        self.assertEqual(report['net_worth_minor'],110000)
+        saved=self.client.post('/api/backups',json={'workspace':'live'});saved.raise_for_status()
+        self.finish(identifier)
+        self.assertEqual(sum(e.endswith('/exchange') for e,p in self.calls),1)
+        options=[p for e,p in self.calls if e=='/link/token/create'][-1]
+        self.assertIn('access_token',options)
+        self.assertNotIn('products',options)
+        preview=self.client.get('/api/backups/preview',params={'id':saved.json()['id']}).json()
+        restored=self.client.post('/api/backups/restore',json={k:preview[k] for k in ['id','preview_token','confirmation']})
+        self.assertEqual(restored.status_code,200,restored.text)
+        self.assertEqual(len(self.client.get(self.base+'/investments').json()['holdings']),2)
+        self.assertTrue(self.client.get(self.base).json()['connections'][0]['investments_enabled'])
+
+    def test_existing_banking_investment_upgrade_requires_explicit_consent(self):
+        identifier=self.prepare();os.environ['PLAID_LIVE_ENABLED']='true'
+        self.finish(identifier)
+        self.assertEqual(self.client.post(f'{self.base}/connections/{identifier}/enable-investments').status_code,409)
+        self.products.append('investments')
+        state=self.client.get(self.base+'/readiness').json()['setup'];state['investments_enabled']=True
+        self.client.put(self.base+'/readiness',json=state).raise_for_status()
+        # Cached banking-only coverage cannot authorize the investment upgrade.
+        self.assertEqual(self.client.post(f'{self.base}/connections/{identifier}/enable-investments').status_code,409)
+        self.client.post(self.base+'/preflight',json={'institution_id':'ins_bofa'}).raise_for_status()
+        self.client.post(f'{self.base}/connections/{identifier}/enable-investments').raise_for_status()
+        self.assertEqual(self.client.post(f'{self.base}/connections/{identifier}/sync?product=holdings').status_code,409)
+        self.finish(identifier)
+        options=[p for e,p in self.calls if e=='/link/token/create'][-1]
+        self.assertEqual(options['additional_consented_products'],['investments'])
+        self.assertNotIn('products',options)
+        self.assertEqual(sum(e.endswith('/exchange') for e,p in self.calls),1)
+        self.assertFalse(self.client.get(self.base).json()['connections'][0]['investment_consent_pending'])
+
+
+
+    def test_older_live_schema_backup_migrates_copy_without_changing_source(self):
+        self.prepare()
+        with connect(self.path,write=True) as db:
+            db.execute('DROP TABLE live_investment_connections')
+            db.execute('PRAGMA user_version=9')
+        result=self.client.post('/api/backups',json={'workspace':'live'})
+        self.assertEqual(result.status_code,201,result.text)
+        with connect(self.path) as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM sqlite_schema WHERE name='live_investment_connections'").fetchone())
+        preview=self.client.get('/api/backups/preview',params={'id':result.json()['id']})
+        self.assertEqual(preview.status_code,200,preview.text)
+
+    def test_restore_older_banking_backup_keeps_current_investment_authorization(self):
+        identifier=self.prepare();os.environ['PLAID_LIVE_ENABLED']='true';self.finish(identifier)
+        saved=self.client.post('/api/backups',json={'workspace':'live'}).json()
+        self.products.append('investments')
+        state=self.client.get(self.base+'/readiness').json()['setup'];state['investments_enabled']=True
+        self.client.put(self.base+'/readiness',json=state).raise_for_status()
+        self.client.post(self.base+'/preflight',json={'institution_id':'ins_bofa'}).raise_for_status()
+        self.client.post(f'{self.base}/connections/{identifier}/enable-investments').raise_for_status()
+        self.finish(identifier)
+        preview=self.client.get('/api/backups/preview',params={'id':saved['id']}).json()
+        restored=self.client.post('/api/backups/restore',json={k:preview[k] for k in ['id','preview_token','confirmation']})
+        self.assertEqual(restored.status_code,200,restored.text)
+        with connect(self.path) as db:
+            self.assertEqual(db.execute('SELECT consented FROM live_investment_connections WHERE connection_id=?',(identifier,)).fetchone()[0],1)
+        self.assertEqual(sum(e.endswith('/exchange') for e,p in self.calls),1)
+
 
 
 class ProductionTransportTests(TestCase):

@@ -19,11 +19,11 @@ from .scenarios import sandbox_path
 
 def initialize_combined(db, *, production=False):
     version = db.execute('PRAGMA user_version').fetchone()[0]
-    if version == 9 and not production:
+    if version in {9, 10} and not production:
         raise ValueError('A Production database cannot be opened as Sandbox.')
     for statement in SCHEMA:
         db.execute(statement)
-    if version != 9:
+    if version not in {9, 10}:
         initialize_preview(db)
     db.execute('''CREATE TABLE IF NOT EXISTS multi_connections (
         id INTEGER PRIMARY KEY, institution_id TEXT NOT NULL UNIQUE,name TEXT NOT NULL,
@@ -39,7 +39,7 @@ def initialize_combined(db, *, production=False):
         mode TEXT NOT NULL,token BLOB NOT NULL,url BLOB NOT NULL,expiration TEXT NOT NULL,public_token BLOB)''')
     db.execute('CREATE TABLE IF NOT EXISTS manual_selection (account_id INTEGER PRIMARY KEY,fingerprint TEXT)')
     db.execute('CREATE TABLE IF NOT EXISTS manual_debt_mirror (account_id TEXT PRIMARY KEY,payload TEXT NOT NULL,updated_at TEXT)')
-    db.execute('PRAGMA user_version=' + ('9' if version == 9 else '8'))
+    db.execute('PRAGMA user_version=' + (str(version) if version in {9, 10} else '8'))
 
 
 def scoped(identifier, value):
@@ -194,6 +194,7 @@ def sync_connection(db, row, call, product, full=False):
 class NewConnection(BaseModel):
     institution_id: str = Field(pattern=r'^ins_[A-Za-z0-9_]+$', max_length=100)
     profile: Literal['banking', 'investments'] = 'banking'
+    include_investments: bool = False
 
 
 class ManualSelection(BaseModel):
@@ -282,6 +283,8 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
                 (SELECT COUNT(*) FROM connection_accounts m JOIN accounts a ON a.id=m.account_id WHERE m.connection_id=c.id AND a.active=1) AS account_count
                 FROM multi_connections c LEFT JOIN multi_sessions s ON s.connection_id=c.id ORDER BY c.name,c.id''')]
             for row in rows:
+                row['investments_enabled'] = bool(db.execute('SELECT 1 FROM live_investment_connections WHERE connection_id=?', (row['id'],)).fetchone()) if production else row['profile'] == 'investments'
+                row['investment_consent_pending'] = bool(db.execute('SELECT 1 FROM live_investment_connections WHERE connection_id=? AND consented=0', (row['id'],)).fetchone()) if production else False
                 pending = db.execute('SELECT url FROM multi_sessions WHERE connection_id=?', (row['id'],)).fetchone()
                 row['url'] = protect(pending['url'], False).decode() if pending else None
             manual = [dict(row) for row in db.execute('SELECT a.rowid AS id,a.name,m.manual_id FROM accounts a JOIN connection_accounts m ON m.account_id=a.id WHERE m.manual_id IS NOT NULL AND a.active=1')]
@@ -291,9 +294,10 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
                 'linking_enabled': (settings(database.parent.parent).get('PLAID_LIVE_ENABLED', '').lower() == 'true') if production else True}
 
     @router.get('/institutions')
-    def search(query: str = Query(min_length=2, max_length=100), profile: Literal['banking', 'investments'] = 'banking'):
+    def search(query: str = Query(min_length=2, max_length=100), profile: Literal['banking', 'investments'] = 'banking', include_investments: bool = False):
         try:
-            result = client()('/institutions/search', query=query, country_codes=['US'], products=['investments' if profile == 'investments' else 'transactions'])
+            products = ['investments'] if profile == 'investments' else ['transactions'] + (['investments'] if include_investments else [])
+            result = client()('/institutions/search', query=query, country_codes=['US'], products=products)
             return {'institutions': [{'id': item['institution_id'], 'name': item['name']} for item in result['institutions']]}
         except PlaidError as error:
             raise upstream(error) from None
@@ -301,8 +305,6 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
     @router.post('/connections', status_code=201)
     def add(item: NewConnection):
         initialize()
-        if production and item.profile != 'banking':
-            raise HTTPException(409, 'The first Live pilot supports banking transactions and balances only.')
         with database_lock(path):
             with connect(path) as db:
                 if db.execute('SELECT 1 FROM multi_connections WHERE institution_id=?', (item.institution_id,)).fetchone():
@@ -310,13 +312,31 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
             try:
                 info = client()('/institutions/get_by_id', institution_id=item.institution_id, country_codes=['US'], options={'include_optional_metadata': True})['institution']
                 required = 'investments' if item.profile == 'investments' else 'transactions'
-                if required not in info.get('products', []):
+                if required not in info.get('products', []) or (item.include_investments and 'investments' not in info.get('products', [])):
                     raise HTTPException(409, 'This institution does not support the selected connection type.')
                 with connect(path, write=True) as db:
+                    if production and (item.profile == 'investments' or item.include_investments):
+                        if not readiness(db, database.parent.parent)['setup']['investments_enabled']:
+                            raise HTTPException(409, 'Confirm Investments product access in Setup details first.')
                     identifier = db.execute('INSERT INTO multi_connections(institution_id,name,profile) VALUES (?,?,?)', (item.institution_id, info['name'], item.profile)).lastrowid
+                    if production and (item.profile == 'investments' or item.include_investments):
+                        db.execute('INSERT INTO live_investment_connections(connection_id) VALUES (?)', (identifier,))
                 return {'id': identifier}
             except PlaidError as error:
                 raise upstream(error) from None
+
+    if production:
+        @router.post('/connections/{identifier}/enable-investments')
+        def enable_investments(identifier: int):
+            initialize()
+            with connect(path, write=True) as db:
+                row = connection(db, identifier)
+                if db.execute('SELECT 1 FROM multi_sessions WHERE connection_id=?', (identifier,)).fetchone():
+                    raise HTTPException(409, 'Finish or cancel the pending Link session first.')
+                from .live_setup import require_link_ready
+                require_link_ready(db, database.parent.parent, row['institution_id'], investments=True, transactions=row['profile']=='banking')
+                db.execute('INSERT OR IGNORE INTO live_investment_connections(connection_id) VALUES (?)', (identifier,))
+            return {'status': 'Reconnect this institution to grant investment consent. Existing banking data is retained.'}
 
     @router.post('/import-scenarios')
     def import_scenarios():
@@ -370,7 +390,8 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
                 row = connection(db, identifier)
                 if production:
                     from .live_setup import require_link_ready
-                    require_link_ready(db, database.parent.parent, row['institution_id'])
+                    investment = db.execute('SELECT consented FROM live_investment_connections WHERE connection_id=?', (identifier,)).fetchone()
+                    require_link_ready(db, database.parent.parent, row['institution_id'], investments=bool(investment), transactions=row['profile']=='banking')
                     if not row['item_id']:
                         setup = readiness(db, database.parent.parent)
                         pending = db.execute('SELECT COUNT(*) FROM multi_sessions s JOIN multi_connections c ON c.id=s.connection_id WHERE c.item_id IS NULL').fetchone()[0]
@@ -382,8 +403,16 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
                 options = {'access_token': protect(row['token'], False).decode(), 'update': {'account_selection_enabled': True}} if row['item_id'] else \
                     {'products': ['investments']} if row['profile'] == 'investments' else \
                     {'products': ['transactions'], 'additional_consented_products': ['investments', 'liabilities'], 'transactions': {'days_requested': 730}}
-                if production and not row['item_id']:
-                    options = {'products': ['transactions'], 'transactions': {'days_requested': 730}}
+                if production:
+                    if not row['item_id']:
+                        products = ['transactions'] if row['profile'] == 'banking' else []
+                        if investment:
+                            products.append('investments')
+                        options = {'products': products}
+                        if 'transactions' in products:
+                            options['transactions'] = {'days_requested': 730}
+                    elif investment and not investment['consented']:
+                        options['additional_consented_products'] = ['investments']
                 if production:
                     from .live_setup import settings
                     redirect = settings(database.parent.parent).get('PLAID_PRODUCTION_REDIRECT_URI')
@@ -418,7 +447,9 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
         if production:
             from .live_setup import require_link_ready
             with connect(path) as db:
-                require_link_ready(db, database.parent.parent, connection(db, identifier)['institution_id'])
+                owner = connection(db, identifier)
+                investment = db.execute('SELECT 1 FROM live_investment_connections WHERE connection_id=?', (identifier,)).fetchone()
+                require_link_ready(db, database.parent.parent, owner['institution_id'], investments=bool(investment), transactions=owner['profile']=='banking')
         call = client()
         try:
             with database_lock(path):
@@ -444,6 +475,8 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
                                 return {'status': 'closed'}
                             with connect(path, write=True) as db:
                                 db.execute('UPDATE multi_connections SET needs_reauth=0,last_error=NULL WHERE id=?', (identifier,))
+                                if production:
+                                    db.execute('UPDATE live_investment_connections SET consented=1 WHERE connection_id=?', (identifier,))
                                 db.execute('DELETE FROM multi_sessions WHERE connection_id=?', (identifier,))
                             return {'status': 'connected'}
                         if len(items) > 1:
@@ -473,6 +506,8 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
                             raise HTTPException(409, 'This Item already belongs to another saved connection; no saved authorization was replaced.')
                         db.execute('UPDATE multi_connections SET item_id=?,token=?,last_error=NULL,needs_reauth=0 WHERE id=?',
                                    (exchanged['item_id'], protect(exchanged['access_token'].encode(), True), identifier))
+                        if production:
+                            db.execute('UPDATE live_investment_connections SET consented=1 WHERE connection_id=?', (identifier,))
                         db.execute('DELETE FROM multi_sessions WHERE connection_id=?', (identifier,))
                     return {'status': 'connected'}
                 if datetime.fromisoformat(row['expiration']) <= now():
@@ -486,10 +521,14 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
     @router.post('/connections/{identifier}/sync')
     def sync(identifier: int, product: Literal['transactions', 'balances', 'holdings', 'activity', 'liabilities'], full: bool = False):
         initialize()
-        if production and product not in {'transactions', 'balances'}:
-            raise HTTPException(409, 'Only transactions and balances are enabled for the first Live pilot.')
+        if production and product == 'liabilities':
+            raise HTTPException(409, 'Live debt-provider sync is not enabled yet.')
         try:
             with connect(path, write=True) as db:
+                if production and product in {'holdings', 'activity'}:
+                    consent = db.execute('SELECT consented FROM live_investment_connections WHERE connection_id=?', (identifier,)).fetchone()
+                    if not consent or not consent['consented']:
+                        raise HTTPException(409, 'Enable investment access and complete the saved Link session first.')
                 return sync_connection(db, connection(db, identifier), client(), product, full)
         except PlaidError as error:
             raise upstream(error, identifier) from None
