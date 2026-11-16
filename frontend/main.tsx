@@ -558,7 +558,8 @@ function App() {
 
         </div>
       </>}
-      {ready && page === 'Spending' && <SpendingPage key={mode + scenario} month={month} money={money} drill={drillSpending} changeMonth={setMonth} sandbox={synced} request={request} path={synced ? previewPath : ''} accounts={ready.accounts} categories={ready.categories} filters={reportFilters} setFilters={setReportFilters} revision={revision} />}
+      {ready && page === 'Spending' && <SpendingPage key={mode + scenario} month={month} money={money} drill={drillSpending} changeMonth={setMonth} sandbox={synced} request={request} path={synced ? previewPath : ''} accounts={ready.accounts} categories={ready.categories} filters={reportFilters} setFilters={setReportFilters} revision={revision}
+        transactions={ready.transactions} renderTransactions={ids => <TransactionList transactions={ids.flatMap(id => ready.transactions.find(tx => tx.id === id) ?? [])} edit={editTransaction} />} />}
       {ready && page === 'Transactions' && <>
         <section className="card">
           <div className="section-heading"><div><h2>{allReviewDates ? 'All saved dates' : activeMonth}</h2><small>{entries.length} entries</small></div></div>

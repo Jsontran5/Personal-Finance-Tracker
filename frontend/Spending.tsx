@@ -129,16 +129,20 @@ function CategoryDonut({ rows, money, drill, income }: { rows: Bucket[]; money: 
   </div>
 }
 
-export function SpendingPage({ month, money, drill, changeMonth, sandbox, request, path, accounts, categories, filters, setFilters, revision }: {
+export function SpendingPage({ month, money, drill, changeMonth, sandbox, request, path, accounts, categories, filters, setFilters, revision, transactions, renderTransactions }: {
   month: string; money: Money; drill: Drill; changeMonth: (month: string) => void; sandbox: boolean; request: Request; path: string;
   accounts: { id: number; name: string; institution_name?: string | null }[]; categories: { id: number; name: string; kind: string }[];
-  filters: ReportFilters; setFilters: (value: ReportFilters) => void; revision: number
+  filters: ReportFilters; setFilters: (value: ReportFilters) => void; revision: number;
+  transactions: { id: number; date: string; amount_minor: number }[]; renderTransactions: (ids: number[]) => ReactNode
 }) {
   const [categorySource, setCategorySource] = useState('bank')
   const [report, setReport] = useState<SpendingReport>()
   const [error, setError] = useState('')
   const [retry, setRetry] = useState(0)
   const [accountSearch, setAccountSearch] = useState('')
+  const [transactionPage, setTransactionPage] = useState(0)
+  const [transactionSort, setTransactionSort] = useState('newest')
+  useEffect(() => { setTransactionPage(0) }, [report, transactionSort])
   const income = filters.measure === 'income', cashflow = filters.measure === 'cashflow'
   const source = sandbox ? categorySource : 'local'
   const comparison = filters.comparison && filters.comparison < month ? filters.comparison : ''
@@ -157,6 +161,14 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
   const selectedCategories = categories.filter(category => cashflow || category.kind === (income ? 'income' : 'expense'))
   const rows = report ? source === 'bank' ? report.bank_categories : report.categories : []
   const label = income ? 'Income' : cashflow ? 'Cash flow' : 'Spending'
+  const eligible = new Set(report?.eligible_ids ?? [])
+  const contributing = transactions.filter(tx => eligible.has(tx.id)).sort((a, b) =>
+    transactionSort === 'largest' ? b.amount_minor - a.amount_minor || b.id - a.id :
+      transactionSort === 'smallest' ? a.amount_minor - b.amount_minor || a.id - b.id :
+        transactionSort === 'oldest' ? a.date.localeCompare(b.date) || a.id - b.id : b.date.localeCompare(a.date) || b.id - a.id)
+  const pageSize = 10
+  const lastPage = Math.max(0, Math.ceil(contributing.length / pageSize) - 1)
+  const currentPage = Math.min(transactionPage, lastPage)
   return <div className="spending-page">
     <div className="segmented report-tabs" aria-label="Financial report">{[['spending', 'Spending'], ['income', 'Income'], ['cashflow', 'Cash flow']].map(([value, text]) =>
       <button key={value} aria-pressed={filters.measure === value} onClick={() => change({ measure: value, category: 'all' })}>{text}</button>)}</div>
@@ -216,6 +228,19 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
       </div>
       {!cashflow && <Breakdown title={income ? 'Income category totals' : 'Net spending by category'} rows={rows} money={money} drill={drill} />}
       <p className="analytics-note">Recorded activity only. Pending entries, credits awaiting classification, transfers and investment activity are excluded. Imported history may be incomplete. Bank categories do not change your assigned categories or budgets.</p>
+      <section className="card report-transactions" aria-label="Transactions in this report">
+        <div className="section-heading"><div><h2>Transactions in this report</h2><small>{monthLabel(report.month)} · {contributing.length} contributing {contributing.length === 1 ? 'transaction' : 'transactions'}</small></div>
+          <label className="report-transaction-sort">Sort by<select aria-label="Sort report transactions" value={transactionSort} onChange={event => setTransactionSort(event.target.value)}>
+            <option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="largest">Largest amount</option><option value="smallest">Smallest amount</option>
+          </select></label>
+        </div>
+        <p className="analytics-note">These are the posted entries included in the charts and totals above, using the same reporting month, accounts and category filters. Select a transaction for details.</p>
+        {contributing.length ? renderTransactions(contributing.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map(tx => tx.id)) : <p className="empty">No transactions contribute to this report. Try another month or clear the report filters.</p>}
+        {contributing.length > pageSize && <div className="pagination" aria-label="Report transaction pages"><span className="muted" role="status">{currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, contributing.length)} of {contributing.length}</span>
+          <div className="inline-actions"><button className="secondary small" disabled={currentPage === 0} onClick={() => setTransactionPage(currentPage - 1)}>Previous</button>
+            <button className="secondary small" disabled={currentPage === lastPage} onClick={() => setTransactionPage(currentPage + 1)}>Next</button></div>
+        </div>}
+      </section>
     </>}
   </div>
 }

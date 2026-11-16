@@ -208,6 +208,15 @@ def run():
             selected_account = preview['accounts'][0]['id']
             select('Report category','uncategorized');ready("document.querySelector('.spending-main')")
             expected = json.load(urllib.request.urlopen(url+f'/api/plaid/combined-sandbox/preview/analytics?month={report_month}&account={selected_account}&category=uncategorized'))
+            matching=[row for row in preview['transactions'] if row['id'] in expected['eligible_ids']]
+            ordered=sorted(matching,key=lambda row:(row['date'],row['id']),reverse=True)
+            ready("JSON.stringify([...document.querySelectorAll('.report-transactions .ledger-row')].map(e=>Number(e.dataset.transactionId)))==="+json.dumps(json.dumps([row['id'] for row in ordered[:10]],separators=(',',':'))))
+            select('Sort report transactions','largest')
+            ordered=sorted(matching,key=lambda row:(-row['amount_minor'],-row['id']))
+            ready("JSON.stringify([...document.querySelectorAll('.report-transactions .ledger-row')].map(e=>Number(e.dataset.transactionId)))==="+json.dumps(json.dumps([row['id'] for row in ordered[:10]],separators=(',',':'))))
+            if len(ordered)>10:
+                click('.report-transactions button','Next')
+                ready("JSON.stringify([...document.querySelectorAll('.report-transactions .ledger-row')].map(e=>Number(e.dataset.transactionId)))==="+json.dumps(json.dumps([row['id'] for row in ordered[10:20]],separators=(',',':'))))
             click('.spending-main button','View transactions →');ready("document.querySelector('.drilldown-filter')")
             records=[row for row in preview['transactions'] if row['id'] in expected['eligible_ids']]
             select('Sort transactions','largest')
@@ -255,6 +264,8 @@ def run():
                         nav(page)
                         if page=='Spending':
                             ready("document.querySelector('.report-calendar .calendar-day')")
+                            if width>850:
+                                assert js("(()=>{const bottom=document.querySelector('[aria-label=\"Reporting month\"]').getBoundingClientRect().bottom;return [...document.querySelectorAll('.page-header .toolbar > button')].every(e=>Math.abs(e.getBoundingClientRect().bottom-bottom)<3)})()"), 'Header controls are not aligned'
                             click('.report-account-filter > summary')
                             screenshot(f'{width}-{theme}-report-account-filter-expanded')
                             click('.report-account-options button','Done')
@@ -263,10 +274,15 @@ def run():
                             screenshot(f'{width}-{theme}-spending-calendar-donut')
                             click('.report-tabs button','Income')
                             ready("document.querySelector('.spending-main h2')?.textContent==='Income this month'")
+                            assert 'Report salary' in js("document.querySelector('.report-transactions').textContent")
+                            js("document.querySelector('.report-transactions').scrollIntoView({block:'center'})")
+                            screenshot(f'{width}-{theme}-income-contributing-transactions')
                             js("document.querySelector('.report-calendar').scrollIntoView({block:'start'})")
                             screenshot(f'{width}-{theme}-income-calendar-donut')
                             click('.report-tabs button','Cash flow')
                             ready("document.querySelector('.spending-main h2')?.textContent==='Cash flow this month'")
+                            js("document.querySelector('.report-transactions').scrollIntoView({block:'center'})")
+                            screenshot(f'{width}-{theme}-cashflow-contributing-transactions')
                             screenshot(f'{width}-{theme}-cashflow-report')
                             click('.spending-main button','View transactions →')
                             ready("document.querySelector('h1')?.textContent==='Transactions' && document.querySelector('.drilldown-filter')")
@@ -275,6 +291,9 @@ def run():
                             ready("document.querySelector('.spending-main h2')?.textContent==='Cash flow this month'")
                             click('.report-tabs button','Spending')
                             ready("document.querySelector('.spending-main h2')?.textContent==='Spending this month'")
+                            assert js("document.querySelectorAll('.report-transactions .ledger-row').length")<=10
+                            js("document.querySelector('.report-transactions').scrollIntoView({block:'start'})")
+                            screenshot(f'{width}-{theme}-spending-contributing-transactions')
                             js('window.scrollTo(0,0)')
                         if page=='Transactions':
                             ready("document.querySelector('.ledger-row .transaction-flow')")
