@@ -10,6 +10,7 @@ from .db import connect
 from .transaction_flow import project_flow
 from .ledger import attach_snapshot_accounts, monthly_activity, totals
 from .spending import previous_month, spending_report
+from .analytics import analytics_router
 from .review import initialize_review, mark, review_router
 from .transfers import initialize_transfers, project_transfers, require_unlinked
 
@@ -223,6 +224,7 @@ def sandbox_preview_router(database, initialize_sandbox, *, path=None):
                 record_preview_snapshot(db)
 
     router.include_router(review_router(path, sandbox=True, initialize=initialize))
+    router.include_router(analytics_router(path, preview_transactions, initialize))
 
     def require_category(db, category_id, kind):
         row = db.execute("SELECT kind FROM preview_categories WHERE id=?", (category_id,)).fetchone()

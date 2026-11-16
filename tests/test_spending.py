@@ -18,6 +18,52 @@ def entry(identifier, day, amount, kind='expense', **fields):
 
 
 class SpendingTests(TestCase):
+    def test_income_and_cashflow_exclude_transfers_and_reconcile_drilldowns(self):
+        rows = [entry(1, '2026-11-02', 5000, 'income'), entry(2, '2026-11-02', 1200),
+                entry(3, '2026-11-03', 2000, 'refund'), entry(4, '2026-11-02', 9000, 'income', pending=1),
+                entry(5, '2026-11-02', 9000, 'income', needs_review=1),
+                entry(6, '2026-11-02', 9000, 'income', transfer_pair_id=3),
+                entry(7, '2026-11-02', 9000, 'transfer'), entry(8, '2026-11-02', 9000, 'investment')]
+        income = spending_report(rows, [], '2026-11', date(2026, 11, 15), measure='income')
+        cash = spending_report(rows, [], '2026-11', date(2026, 11, 15), measure='cashflow')
+        self.assertEqual(income['eligible_ids'], [1])
+        self.assertEqual(income['net_minor'], 5000)
+        self.assertEqual(cash['eligible_ids'], [1, 2, 3])
+        self.assertEqual(cash['net_minor'], 5800)
+        self.assertEqual(cash['income_minor'] - cash['spending_minor'], cash['net_minor'])
+        self.assertEqual(sum(day['net_minor'] or 0 for day in cash['daily']), cash['net_minor'])
+        self.assertEqual(sum(row['net_minor'] for row in cash['categories']), cash['net_minor'])
+        spend = spending_report(rows, [], '2026-11', date(2026, 11, 15))
+        self.assertEqual(spend['categories'][0]['purchase_transaction_ids'], [2])
+        self.assertEqual(spend['categories'][0]['purchases_minor'], 1200)
+        self.assertEqual(spend['net_minor'], -800)
+
+    def test_filtered_report_api_comparison_and_store_isolation(self):
+        with TemporaryDirectory() as temporary:
+            database = Path(temporary) / 'finance.db'
+            with TestClient(create_app(database), base_url='http://127.0.0.1', headers={'x-finance-request': '1'}) as client:
+                client.get('/api/plaid/sandbox/preview?month=2026-11')
+                with connect(database.with_suffix('.plaid-sandbox.db'), write=True) as db:
+                    save_accounts(db, [{'account_id': key, 'name': key, 'type': 'depository', 'subtype': 'checking',
+                                        'balances': {'iso_currency_code': 'USD', 'current': 100}} for key in ['one', 'two']], 'cached')
+                    save_transactions(db, [{'transaction_id': key, 'account_id': account, 'name': 'Shop', 'date': day,
+                                            'amount': amount, 'iso_currency_code': 'USD', 'pending': False}
+                                           for key, account, day, amount in [('a', 'one', '2026-11-01', 12),
+                                               ('b', 'two', '2026-11-01', 20), ('c', 'one', '2026-09-01', 8)]], [], [])
+                overview = client.get('/api/plaid/sandbox/preview?month=2026-11').json()
+                identifier = next(a['id'] for a in overview['accounts'] if a['name'] == 'one')
+                url = f'/api/plaid/sandbox/preview/analytics?month=2026-11&comparison=2026-09&account={identifier}&category=uncategorized'
+                result = client.get(url)
+                self.assertEqual(result.status_code, 200, result.text)
+                self.assertEqual(result.json()['net_minor'], 1200)
+                self.assertEqual(result.json()['previous_minor'], 800)
+                self.assertEqual(client.get(url + '&measure=income').json()['eligible_ids'], [])
+                self.assertEqual(client.get('/api/analytics?month=2026-11').json()['eligible_ids'], [])
+                for query in ['month=0000-01', 'month=2026-13', 'month=2026-11&comparison=2026-12',
+                              'month=2026-11&comparison=bad', 'month=2026-11&category=no', 'month=2026-11&measure=no']:
+                    self.assertEqual(client.get('/api/analytics?' + query).status_code, 422, query)
+                self.assertEqual(client.get('/api/plaid/sandbox/preview?month=2026-11').json()['transactions'], overview['transactions'])
+
     def test_api_reports_reconcile_and_category_views_preserve_overrides(self):
         with TemporaryDirectory() as temporary:
             database = Path(temporary) / 'data/finance.db'

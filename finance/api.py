@@ -13,7 +13,8 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.staticfiles import StaticFiles
 
 from .db import DATABASE, ROOT, connect, initialize, database_lock
-from .ledger import LIABILITIES, overview, record_net_worth
+from .ledger import LIABILITIES, overview, record_net_worth, month_transactions
+from .analytics import analytics_router
 from .plaid_sandbox import sandbox_router, investment_sandbox_router
 from .review import apply_rules, mark, review_router
 from .transfers import require_unlinked
@@ -198,6 +199,8 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
         if getattr(error, "sqlite_errorcode", None) in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}:
             return JSONResponse({"detail": "The database is busy. Try again shortly."}, status_code=503)
         raise error
+
+    app.include_router(analytics_router(database, month_transactions), prefix='/api')
 
     @app.get("/api/overview")
     def get_overview(month: Annotated[str, Query(pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$")]):
