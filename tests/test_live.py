@@ -387,6 +387,54 @@ class LiveTests(TestCase):
 
 
 
+    def test_product_failure_persists_after_other_sync_and_clears_only_on_success(self):
+        identifier=self.prepare_investment(mixed=True);self.finish(identifier)
+        self.client.post(f'{self.base}/connections/{identifier}/sync?product=balances').raise_for_status()
+        month=date.today().isoformat()[:7]
+        before=self.client.get(self.base+'/preview?month='+month).json()
+        with connect(self.path,write=True) as db: db.execute('UPDATE multi_connections SET balance_checked_at=NULL')
+        self.fail='INTERNAL_SERVER_ERROR'
+        failed=self.client.post(f'{self.base}/connections/{identifier}/sync?product=balances')
+        self.assertEqual(failed.status_code,409)
+        self.fail=None
+        self.client.post(f'{self.base}/connections/{identifier}/sync?product=transactions').raise_for_status()
+        after=self.client.get(self.base+'/preview?month='+month).json()
+        self.assertEqual([a['balance_minor'] for a in before['accounts']],[a['balance_minor'] for a in after['accounts']])
+        for account in after['accounts']:
+            self.assertEqual(account['sync']['errors']['balances']['code'],'INTERNAL_SERVER_ERROR')
+            self.assertIn('attempted_at',account['sync']['errors']['balances'])
+            if account['provider_type']=='investment':
+                self.assertNotIn('transactions',account['sync']['timestamps'])
+                self.assertIn('holdings',account['sync']['timestamps'])
+            else:
+                self.assertTrue(account['sync']['timestamps']['transactions'])
+                self.assertNotIn('holdings',account['sync']['timestamps'])
+        with connect(self.path) as db:
+            self.assertIsNone(db.execute('SELECT last_error FROM multi_connections').fetchone()[0])
+        self.client.post(f'{self.base}/connections/{identifier}/sync?product=balances').raise_for_status()
+        after=self.client.get(self.base+'/preview?month='+month).json()
+        self.assertTrue(all(not a['sync']['errors'] for a in after['accounts']))
+        with connect(self.path) as db:
+            attempt=db.execute("SELECT attempted_at FROM live_sync_results WHERE product='balances'").fetchone()[0]
+        self.assertEqual(self.client.post(f'{self.base}/connections/{identifier}/sync?product=balances').status_code,429)
+        with connect(self.path) as db:
+            self.assertEqual(db.execute("SELECT attempted_at FROM live_sync_results WHERE product='balances'").fetchone()[0],attempt)
+
+    def test_sync_freshness_errors_survive_backup_and_restore(self):
+        identifier=self.prepare_investment(mixed=True);self.finish(identifier)
+        self.client.post(f'{self.base}/connections/{identifier}/sync?product=balances').raise_for_status()
+        self.fail='PRODUCT_NOT_READY'
+        self.assertEqual(self.client.post(f'{self.base}/connections/{identifier}/sync?product=holdings').status_code,409)
+        self.fail=None
+        saved=self.client.post('/api/backups',json={'workspace':'live'});saved.raise_for_status()
+        preview=self.client.get('/api/backups/preview',params={'id':saved.json()['id']}).json()
+        self.client.post('/api/backups/restore',json={k:preview[k] for k in ['id','preview_token','confirmation']}).raise_for_status()
+        accounts=self.client.get(self.base+'/preview?month='+date.today().isoformat()[:7]).json()['accounts']
+        self.assertEqual(next(a for a in accounts if a['provider_type']=='investment')['sync']['errors']['holdings']['code'],'PRODUCT_NOT_READY')
+        self.assertNotIn('holdings',next(a for a in accounts if a['provider_type']=='depository')['sync']['errors'])
+
+
+
 class ProductionTransportTests(TestCase):
     def test_fixed_production_host_and_no_money_movement_or_sandbox_tokens(self):
         def response(request,**kwargs):

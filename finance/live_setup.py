@@ -32,7 +32,7 @@ def production_credentials(directory):
 
 def initialize_live(db):
     from .multi_bank import initialize_combined
-    if db.execute('PRAGMA user_version').fetchone()[0] not in {0, 9, 10, 13}:
+    if db.execute('PRAGMA user_version').fetchone()[0] not in {0, 9, 10, 13, 14}:
         raise ValueError('Sandbox or Manual data cannot be opened as Live.')
     initialize_combined(db, production=True)
     db.execute("CREATE TABLE IF NOT EXISTS workspace_environment (id INTEGER PRIMARY KEY CHECK(id=1),environment TEXT NOT NULL CHECK(environment='production'))")
@@ -40,7 +40,8 @@ def initialize_live(db):
     db.execute('CREATE TABLE IF NOT EXISTS live_setup (id INTEGER PRIMARY KEY CHECK(id=1),payload TEXT NOT NULL)')
     db.execute('CREATE TABLE IF NOT EXISTS live_preflight (institution_id TEXT PRIMARY KEY,payload TEXT NOT NULL,checked_at TEXT NOT NULL,credentials_digest TEXT NOT NULL)')
     db.execute('CREATE TABLE IF NOT EXISTS live_investment_connections (connection_id INTEGER PRIMARY KEY REFERENCES multi_connections(id),consented INTEGER NOT NULL DEFAULT 0 CHECK(consented IN (0,1)))')
-    db.execute('PRAGMA user_version=13')
+    db.execute("CREATE TABLE IF NOT EXISTS live_sync_results (connection_id INTEGER NOT NULL REFERENCES multi_connections(id),product TEXT NOT NULL CHECK(product IN ('transactions','balances','holdings','activity')),attempted_at TEXT NOT NULL,error TEXT,PRIMARY KEY(connection_id,product))")
+    db.execute('PRAGMA user_version=14')
 
 
 class LiveSetup(BaseModel):

@@ -38,7 +38,7 @@ class BudgetEdit(BaseModel):
 
 def initialize_preview(db):
     version = db.execute("PRAGMA user_version").fetchone()[0]
-    if version in {7, 8, 9, 10, 11, 12, 13}:
+    if version in {7, 8, 9, 10, 11, 12, 13, 14}:
         from .account_names import initialize_names
         initialize_names(db)
         if version == 7:
@@ -125,7 +125,7 @@ def preview_accounts(db):
     multi = db.execute("SELECT 1 FROM sqlite_schema WHERE name='connection_accounts'").fetchone()
     inclusion = "COALESCE((SELECT included FROM connection_accounts m WHERE m.account_id=accounts.id),1)" if multi else '1'
     institution = "(SELECT COALESCE(c.name,'Manual') FROM connection_accounts m LEFT JOIN multi_connections c ON c.id=m.connection_id WHERE m.account_id=accounts.id)" if multi else 'NULL'
-    return [dict(row) for row in db.execute(f"""
+    accounts = [dict(row) for row in db.execute(f"""
         SELECT rowid AS id, name,
           (SELECT provider_name FROM account_names n WHERE n.account_id=accounts.id) AS provider_name,
           (SELECT nickname FROM account_names n WHERE n.account_id=accounts.id) AS nickname,
@@ -137,6 +137,8 @@ def preview_accounts(db):
           (SELECT COUNT(*) FROM transactions t WHERE t.account_id=accounts.id AND t.removed=0) AS transaction_count
         FROM accounts WHERE active=1 ORDER BY rowid
     """)]
+    from .freshness import account_freshness
+    return account_freshness(db, accounts)
 
 
 def record_preview_snapshot(db):

@@ -19,11 +19,11 @@ from .scenarios import sandbox_path
 
 def initialize_combined(db, *, production=False):
     version = db.execute('PRAGMA user_version').fetchone()[0]
-    if version in {9, 10, 13} and not production:
+    if version in {9, 10, 13, 14} and not production:
         raise ValueError('A Production database cannot be opened as Sandbox.')
     for statement in SCHEMA:
         db.execute(statement)
-    if version not in {9, 10, 13}:
+    if version not in {9, 10, 13, 14}:
         initialize_preview(db)
     db.execute('''CREATE TABLE IF NOT EXISTS multi_connections (
         id INTEGER PRIMARY KEY, institution_id TEXT NOT NULL UNIQUE,name TEXT NOT NULL,
@@ -41,7 +41,7 @@ def initialize_combined(db, *, production=False):
     db.execute('CREATE TABLE IF NOT EXISTS manual_debt_mirror (account_id TEXT PRIMARY KEY,payload TEXT NOT NULL,updated_at TEXT)')
     from .account_names import initialize_names
     initialize_names(db)
-    db.execute('PRAGMA user_version=' + ('13' if production else '12'))
+    db.execute('PRAGMA user_version=' + (str(max(version,13)) if production else '12'))
 
 
 def scoped(identifier, value):
@@ -533,16 +533,27 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
         initialize()
         if production and product == 'liabilities':
             raise HTTPException(409, 'Live debt-provider sync is not enabled yet.')
+        attempted_at = now().isoformat()
+        from .freshness import record_sync_result
         try:
             with connect(path, write=True) as db:
                 if production and product in {'holdings', 'activity'}:
                     consent = db.execute('SELECT consented FROM live_investment_connections WHERE connection_id=?', (identifier,)).fetchone()
                     if not consent or not consent['consented']:
                         raise HTTPException(409, 'Enable investment access and complete the saved Link session first.')
-                return sync_connection(db, connection(db, identifier), client(), product, full)
+                result = sync_connection(db, connection(db, identifier), client(), product, full)
+                if production:
+                    record_sync_result(db, identifier, product, attempted_at)
+                return result
         except PlaidError as error:
+            if production:
+                with connect(path, write=True) as db:
+                    record_sync_result(db, identifier, product, attempted_at, error.code)
             raise upstream(error, identifier) from None
         except ValueError as error:
+            if production:
+                with connect(path, write=True) as db:
+                    record_sync_result(db, identifier, product, attempted_at, 'INVALID_DATA')
             raise HTTPException(409, str(error)) from None
 
     @router.get('/investments')
