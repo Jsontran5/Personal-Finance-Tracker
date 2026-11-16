@@ -1,10 +1,14 @@
+@font-face {
+  font-family: 'Lexend'; src: url('./fonts/Lexend-Variable.ttf') format('truetype');
+  font-weight: 100 900; font-style: normal; font-display: swap;
+}
 /* Application design system. Feature layouts and financial formatting remain in styles.css. */
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: 'Lexend', system-ui, sans-serif; color-scheme: dark;
   font-size: 16px; line-height: 1.5; font-synthesis: none;
   --canvas: #111318; --rail: #17191f; --surface: #1b1e25; --raised: #252932;
   --field: #15181e; --line: #30343e; --control-line: #667080;
-  --text: #f2f3f7; --muted: #abb1be; --accent: #83b4ff; --accent-hover: #a6caff;
+  --text: #f5f7fa; --muted: #c4cad5; --accent: #83b4ff; --accent-hover: #a6caff;
   --accent-ink: #101c30; --active: #273750; --positive: #68dfb0; --negative: #ff9eaa;
   --danger-bg: #3d242d; --blue: #83b4ff; --blue-tint: #202e44;
   --notice: #f0cd8c; --notice-bg: #332c21; --hero-top: #242b38; --backdrop: #05070c9c;
@@ -13,9 +17,10 @@
   scrollbar-color: var(--control-line) transparent; accent-color: var(--accent);
 }
 :root[data-theme="light"] {
+  color-scheme: light;
   --canvas: #f5f5f7; --rail: #ededf0; --surface: #fff; --raised: #f0f1f4;
   --field: #f7f8fa; --line: #dfe1e7; --control-line: #858d9b;
-  --text: #20232b; --muted: #626977; --accent: #0866ce; --accent-hover: #0654ad;
+  --text: #17212f; --muted: #424c5a; --accent: #0866ce; --accent-hover: #0654ad;
   --accent-ink: #fff; --active: #e3edfb; --positive: #08744f; --negative: #b32b46;
   --danger-bg: #fae9ed; --blue: #0866ce; --blue-tint: #edf3fc;
   --notice: #79551a; --notice-bg: #fff5e2; --hero-top: #f3f6fc; --backdrop: #171c2966;
@@ -33,7 +38,7 @@ h1 { font-size: clamp(1.7rem, 2.5vw, 2.2rem); line-height: 1.15; letter-spacing:
 h2 { font-size: 1.03rem; line-height: 1.35; font-weight: 630; letter-spacing: -.015em; }
 h3 { font-size: .95rem; font-weight: 620; }
 strong { font-weight: 620; }
-small, .muted { font-size: .79rem; line-height: 1.5; }
+small, .muted { font-size: .82rem; line-height: 1.5; }
 .eyebrow, .nav-caption, .page-context { font-size: .66rem; font-weight: 600; letter-spacing: .065em; }
 .numeric { font-variant-numeric: tabular-nums; letter-spacing: -.015em; }
 .shell { grid-template-columns: 232px minmax(0, 1fr); }
@@ -400,7 +405,7 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(4px); }
   max-width: min(340px, calc(100vw - 24px)); padding: 13px 16px;
   border: 1px solid var(--line); border-radius: 12px;
   background: var(--surface); color: var(--text); box-shadow: 0 12px 36px #0003;
-  font: 400 .8rem/1.55 system-ui, sans-serif; overflow-wrap: anywhere;
+  font: 400 .82rem/1.6 'Lexend', system-ui, sans-serif; overflow-wrap: anywhere;
 }
 .context-tooltip::backdrop { background: transparent; pointer-events: none; }
 .page-help { width: min(620px, calc(100vw - 32px)); max-height: min(82dvh, 850px); }
@@ -433,3 +438,40 @@ dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(4px); }
 .account-sync-details { margin-block: 20px; padding-block: 18px; border-block: 1px solid var(--line); }
 .account-sync-details dd { margin: 0; overflow-wrap: anywhere; }
 .account-sync-details dd small { display: block; margin-top: 4px; color: var(--muted); }
+
+/* Money direction stays readable independently of color or transaction classification. */
+.ledger-row .row-main strong { font-size: .89rem; font-weight: 570; }
+.ledger-row .transaction-meta { color: var(--muted); font-size: .76rem; white-space: normal; }
+.transaction-flow { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; min-width: 0; color: var(--text); font-size: .8rem; line-height: 1.6; }
+.flow-endpoint { display: inline-flex; align-items: baseline; gap: 7px; min-width: 0; max-width: 100%; }
+.flow-endpoint > b { font-size: .69rem; color: var(--muted); text-transform: uppercase; letter-spacing: .035em; flex-shrink: 0; font-weight: 650; }
+.flow-endpoint > span { overflow-wrap: anywhere; }
+.flow-arrow { color: var(--muted); }
+.flow-source { flex-basis: 100%; color: var(--muted); font-size: .7rem; }
+.row-money { display: grid; gap: 3px; justify-items: end; white-space: nowrap; }
+.ledger-row .row-money .numeric { font-size: .91rem; font-weight: 570; color: var(--text); }
+.ledger-row[data-direction=in] .row-money .numeric { color: var(--positive); }
+.row-money > small { font-size: .74rem; color: var(--muted); font-weight: 500; }
+.row-icon.flow-in { color: var(--positive); }
+.row-icon.flow-out { color: var(--text); }
+.chip { color: var(--text); font-size: .73rem; font-weight: 500; }
+button:disabled { opacity: 1; color: var(--muted); background: var(--raised); cursor: not-allowed; }
+.calendar-day:disabled { opacity: 1; color: var(--muted); background: var(--field); }
+.transaction-flow-detail { margin-bottom: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+@media (max-width: 610px) {
+  .ledger-row { align-items: start; grid-template-columns: minmax(0,1fr) auto; gap: 7px 12px; }
+  .ledger-row .row-icon { display: none; }
+  .ledger-row .row-main { display: contents; }
+  .ledger-row .row-main > strong { grid-column: 1; grid-row: 1; align-self: start; }
+  .ledger-row .transaction-flow { grid-column: 1 / -1; grid-row: 2; }
+  .ledger-row .transaction-meta { grid-column: 1 / -1; grid-row: 3; }
+  .ledger-row .transaction-meta time { white-space: nowrap; }
+  .ledger-row .row-money { grid-column: 2; grid-row: 1; }
+  .selectable-ledger-row > input { align-self: start; margin-top: 17px; }
+  .transaction-flow { display: grid; gap: 3px; font-size: .77rem; }
+  .flow-arrow { display: none; }
+  .flow-endpoint { display: grid; grid-template-columns: 34px minmax(0,1fr); gap: 5px; }
+  .flow-source { font-size: .7rem; }
+  .ledger-row .row-money .numeric { font-size: .85rem; }
+  .ledger-row .row-main strong { font-size: .85rem; }
+}

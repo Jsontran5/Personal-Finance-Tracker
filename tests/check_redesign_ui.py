@@ -169,7 +169,9 @@ def run():
                 cdp('Input.dispatchKeyEvent',{'type':'keyUp','key':value,'code':value})
             def nav(name):
                 if js("Boolean(document.querySelector('dialog[open]'))"):
-                    key('Escape');ready("!document.querySelector('dialog[open]')")
+                    key('Escape')
+                    if js("Boolean(document.querySelector('dialog[open]'))"): key('Escape')
+                    ready("!document.querySelector('dialog[open]')")
                 visible=js("[...document.querySelectorAll('nav button')].some(e=>e.textContent.trim()==="+json.dumps(name)+" && e.getClientRects().length)")
                 if not visible:
                     click('button[aria-label="More sections"]');ready("document.querySelector('.navigation-sheet[open]')")
@@ -180,6 +182,7 @@ def run():
             ready("document.querySelector('select[aria-label=\"Workspace\"]')?.value==='live'")
             select('Workspace','sandbox');ready("document.querySelector('select[aria-label=\"Sandbox scenario\"]')")
             select('Sandbox scenario','combined');ready("document.querySelector('.hero-value')")
+            assert js("document.fonts.load('400 16px Lexend').then(()=>document.fonts.check('400 16px Lexend'))")
             pages=['Overview','Spending','Transactions','Budgets','Accounts','Investments','Bank sync','Backup & restore']
             for width in (1440,1280,768,390,320):
                 cdp('Emulation.setDeviceMetricsOverride',{'width':width,'height':1000 if width>850 else 844,'deviceScaleFactor':1,'mobile':False})
@@ -193,6 +196,13 @@ def run():
                     assert contrast(palette['--control-line'],palette['--field'])>=3
                     for page in pages:
                         nav(page)
+                        if page=='Transactions':
+                            ready("document.querySelector('.ledger-row .transaction-flow')")
+                            assert js("[...document.querySelectorAll('.ledger-row')].every(e=>e.querySelectorAll('.flow-endpoint').length===2 && ['in','out','none'].includes(e.dataset.direction))")
+                            assert js("[...document.querySelectorAll('.ledger-row')].every(e=>e.dataset.direction==='out' ? e.querySelector('.row-money .numeric').textContent.trim().startsWith(String.fromCharCode(0x2212)) : e.dataset.direction==='in' ? e.querySelector('.row-money .numeric').textContent.trim().startsWith('+') : true)")
+                            js("document.querySelector('.ledger-row').scrollIntoView({block:'center'})")
+                            screenshot(f'{width}-{theme}-transaction-flow-rows')
+
                         ready("!document.querySelector('main > [role=status]')")
                         if page=='Investments':ready("document.querySelector('.investment-holdings')")
                         screenshot(f'{width}-{theme}-redesign-'+page.lower().replace(' ','-').replace('&','and'))
@@ -201,7 +211,9 @@ def run():
                         assert rect['top']>650 and rect['bottom']<=845,rect
                         click('button[aria-label="More sections"]');ready("document.querySelector('.navigation-sheet[open]')")
                         screenshot(f'{width}-{theme}-redesign-more')
-                        key('Escape');ready("!document.querySelector('dialog[open]')")
+                        key('Escape')
+                        if js("Boolean(document.querySelector('dialog[open]'))"): key('Escape')
+                        ready("!document.querySelector('dialog[open]')")
                     nav('Overview');ready("document.querySelector('.account-picker')")
                     click('.account-picker > summary')
                     if width<=850:
@@ -215,7 +227,9 @@ def run():
                     for _ in range(3):key('Tab')
                     assert js("document.querySelector('.account-inspector[open]').contains(document.activeElement)")
                     screenshot(f'{width}-{theme}-redesign-account-inspector')
-                    key('Escape');ready("!document.querySelector('dialog[open]')")
+                    key('Escape')
+                    if js("Boolean(document.querySelector('dialog[open]'))"): key('Escape')
+                    ready("!document.querySelector('dialog[open]')")
                     assert js("document.activeElement.classList.contains('account-summary')")
                     # Open the transaction editor and optional raw provider details without changing data.
                     nav('Transactions');ready("document.querySelector('.ledger-row')")

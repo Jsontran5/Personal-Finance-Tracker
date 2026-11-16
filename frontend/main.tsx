@@ -21,13 +21,14 @@ import { Navigation, type Page } from './Navigation'
 import { PageHelp } from './Help'
 import { AccountNickname } from './AccountNickname'
 import { RefreshAll } from './RefreshAll'
+import { TransactionFlow, type Flow } from './TransactionFlow'
 import './styles.css'
 import './interface.css'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
 type Category = { id: number; name: string; kind: 'expense' | 'income' }
-type Entry = { id: number; account_id: number; destination_id: number | null; category_id: number | null; amount_minor: number; kind: Kind; merchant: string; notes: string; date: string; transfer_pair_id?: number | null; transfer_kind?: string | null; transfer_other_account?: string | null }
-type Transaction = Entry & { currency: string; account_name: string; category_name: string | null; destination_name: string | null; pending?: number; needs_review?: number; source_merchant?: string; manual_source?: number }
+type Entry = { id: number; account_id: number; destination_id: number | null; category_id: number | null; amount_minor: number; kind: Kind; merchant: string; notes: string; date: string; transfer_pair_id?: number | null; transfer_kind?: string | null; transfer_other_account?: string | null; transfer_role?: 'incoming' | 'outgoing' | null }
+type Transaction = Entry & { flow?: Flow; currency: string; account_name: string; category_name: string | null; destination_name: string | null; pending?: number; needs_review?: number; source_merchant?: string; manual_source?: number }
 type Template = Omit<Entry, 'date' | 'destination_id'> & { name: string }
 type Budget = Category & { limit_minor: number | null; actual_minor: number; previous_actual_minor: number }
 type Point = HistoryPoint
@@ -188,13 +189,15 @@ function TransactionList({ transactions, edit, empty = 'No transactions match th
   if (!transactions.length) return <p className="empty">{empty}</p>
   return <div className="ledger">
     {transactions.map(tx => {
-      const row = <button className="ledger-row" data-transaction-id={tx.id} key={tx.id} onClick={() => edit(tx)}>
-      <span className={'row-icon row-' + tx.kind}><Icon name={tx.transfer_pair_id || tx.kind === 'transfer' ? 'transactions' : tx.kind === 'income' || tx.kind === 'refund' ? 'income' : 'expense'} /></span>
-      <span className="row-main"><strong>{tx.merchant}</strong><small>{tx.account_name}{tx.destination_name && ' → ' + tx.destination_name} · {tx.date}{tx.transfer_pair_id && ' · Linked to ' + tx.transfer_other_account}{tx.pending ? ' · Pending' : ''}{tx.needs_review ? ' · Review credit type' : statuses[tx.id] === 'needs_review' ? ' · Flagged' : statuses[tx.id] === 'reviewed' ? ' · Reviewed' : ''}</small></span>
+      const fallbackDirection = tx.transfer_role === 'incoming' || tx.kind === 'income' || tx.kind === 'refund' ? 'in' : tx.transfer_role === 'outgoing' || tx.kind === 'expense' || tx.destination_name ? 'out' : 'unknown'
+      const flow: Flow = tx.flow ?? { direction: fallbackDirection, from: fallbackDirection === 'in' ? tx.transfer_other_account ?? 'Source not supplied' : fallbackDirection === 'out' ? tx.account_name : 'Direction unavailable', to: fallbackDirection === 'in' ? tx.account_name : tx.destination_name ?? tx.transfer_other_account ?? 'Destination not supplied', basis: tx.destination_name ? 'manual' : 'unavailable' }
+      const row = <button className="ledger-row" data-transaction-id={tx.id} data-direction={flow.direction} key={tx.id} onClick={() => edit(tx)}>
+      <span className={'row-icon row-' + tx.kind + ' flow-' + flow.direction}><Icon name={flow.direction === 'in' ? 'income' : flow.direction === 'out' ? 'expense' : 'transactions'} /></span>
+      <span className="row-main"><strong>{tx.merchant}</strong><TransactionFlow flow={flow} /><small className="transaction-meta">{tx.transfer_pair_id ? tx.transfer_kind === 'card_payment' ? 'Card payment' : 'Transfer' : tx.needs_review ? 'Review credit' : kinds[tx.kind]} · <time dateTime={tx.date}>{tx.date}</time>{tx.pending ? ' · Pending' : ' · Posted'}{tx.transfer_pair_id ? ' · Confirmed pair' : ''}{tx.needs_review ? ' · Review credit type' : statuses[tx.id] === 'needs_review' ? ' · Flagged' : statuses[tx.id] === 'reviewed' ? ' · Reviewed' : ''}</small></span>
       <span className="chip row-category">{tx.transfer_pair_id ? tx.transfer_kind === 'card_payment' ? 'Card payment' : 'Linked transfer' : tx.needs_review ? 'Review credit' : tx.category_name ?? kinds[tx.kind]}</span>
-      <span className={'numeric ' + (tx.kind === 'income' || tx.kind === 'refund' ? 'positive' : '')}>
-        {tx.kind === 'expense' ? '−' : tx.kind === 'income' || tx.kind === 'refund' ? '+' : ''}{money(tx.amount_minor, tx.currency)}
-      </span>
+      <span className="row-money"><span className={'numeric ' + (flow.direction === 'in' ? 'positive' : '')}>
+        {flow.direction === 'out' ? '\u2212' : flow.direction === 'in' ? '+' : ''}{money(tx.amount_minor, tx.currency)}
+      </span><small>{flow.direction === 'in' ? 'In' : flow.direction === 'out' ? 'Out' : flow.direction === 'none' ? 'No movement' : 'Direction unavailable'}</small></span>
     </button>
       return toggle ? <div className="selectable-ledger-row" key={tx.id}><input type="checkbox" aria-label={'Select ' + tx.merchant + ' ' + tx.date} checked={selected.includes(tx.id)} onChange={() => toggle(tx.id)} />{row}</div> : row
     })}
@@ -477,6 +480,7 @@ function App() {
   const currentPage = Math.min(transactionPage, lastPage)
   const filteredAccount = ready?.accounts.find(account => account.id === accountFilter)
   const linkedEntry = dialog?.type === 'sandbox-transaction' ? dialog.entry : dialog?.type === 'transaction' ? dialog.entry : undefined
+  const linkedFlow = (linkedEntry as Transaction | undefined)?.flow
   const emptyMessage = synced && filteredAccount?.transaction_count === 0
     ? 'No spending transactions have been saved for this account. Its balance is tracked separately.' +
       (filteredAccount.provider_type === 'investment' ? ' See Investments for holdings and investment activity.' :
@@ -615,6 +619,7 @@ function App() {
         : dialog.type === 'sandbox-transaction' ? mode === 'live' ? 'Classify bank transaction' : 'Classify test transaction'
         : dialog.template ? 'New template' : dialog.entry && 'date' in dialog.entry ? 'Edit transaction' : 'Add transaction'
     } close={() => { if (!busy) setDialog(null) }}>
+      {linkedFlow && <div className="transaction-flow-detail"><TransactionFlow flow={linkedFlow} /></div>}
       {formError && <p className="notice" role="alert">{formError}</p>}
       {!!linkedEntry?.transfer_pair_id && <p className="notice">This entry belongs to a confirmed transfer. Unlink the pair before changing its classification.<button type="button" className="secondary small" onClick={() => { setTransferFocus(linkedEntry.transfer_pair_id!); setDialog(null); setPage('Transactions') }}>Manage linked pair</button></p>}
       {dialog.type === 'transaction' ? <EntryForm data={data} state={dialog} save={save} remove={remove} busy={busy} /> :

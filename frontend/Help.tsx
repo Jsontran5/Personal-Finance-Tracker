@@ -6,6 +6,7 @@ import { trapDialogFocus } from './dialogFocus'
 // Explanations describe effects, not just labels. Keep product behavior here in sync
 // with the controls; a data-help attribute can override context-specific wording.
 export const controlHelp: Record<string, string> = {
+  'Transaction direction': 'From and To show the source and destination when known. Confirmed pairs use your account names; bank-reported counterparties and explicit bank descriptions are labeled. Unknown endpoints stay marked as not supplied. In/Out and amount signs describe money direction, independently of income, refund or transfer classification.',
   'Sync transactions': 'Pull newly available checking, savings and credit-card transactions and corrections. Investment trades are loaded separately with Sync activity. This reuses your connection.',
   'Sync holdings': 'Load the latest positions available from Plaid: securities, quantities, reported prices and values, including cash when supplied. This does not request live market quotes. Run this before Sync activity.',
   'Sync activity': 'Load broker-reported trades, dividends, fees and investment transfers. These records stay separate from everyday spending. Run Sync holdings first.',
@@ -106,7 +107,7 @@ export const controlHelp: Record<string, string> = {
 const guides: Record<Page, [string, string][]> = {
   Overview: ['Net worth', 'Cash flow', 'Budget progress', 'Reporting month'].map(k => [k, controlHelp[k]]),
   Spending: ['Reporting month', 'Bank categories', 'Your categories', 'Cash flow'].map(k => [k, controlHelp[k]]),
-  Transactions: ['Sync transactions', 'New merchant rule', 'Classify selected', 'Mark reviewed', 'Flag for review', 'Provider transaction details'].map(k => [k, controlHelp[k]]),
+  Transactions: ['Transaction direction', 'Sync transactions', 'New merchant rule', 'Classify selected', 'Mark reviewed', 'Flag for review', 'Provider transaction details'].map(k => [k, controlHelp[k]]),
   Budgets: [['Category limits', 'Set a monthly target for your own spending categories. Limits do not restrict bank spending or move money.'], ['Assigned spending', 'Posted expenses minus refunds count toward the category they are assigned to. Pending items, transfers and investment activity are excluded.'], ['Reporting month', controlHelp['Reporting month']]],
   Accounts: ['Refresh all', 'Data updates', 'Net worth', 'Balance chart & history', 'Rename account', 'Use bank name', 'Add account', 'Debt details'].map(k => [k, controlHelp[k]]),
   Investments: ['Portfolio value', 'Holdings', 'Where it’s invested', 'Activity', 'Sync holdings', 'Sync activity'].map(k => [k, controlHelp[k]]),
