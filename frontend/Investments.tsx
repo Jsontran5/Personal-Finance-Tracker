@@ -12,7 +12,7 @@ type Portfolio = { accounts: Account[]; holdings: Holding[]; state: { holdings_a
 type Activity = { id: string; account_name: string; date: string; name: string; type: string | null; subtype: string | null; quantity: number | string | null;
   security_name: string | null; ticker: string | null; amount_minor: number | null; price: number | string | null; fees_minor: number | null; currency: string | null; provider: object; security: object }
 type ActivityPage = { rows: Activity[]; total: number; page_size: number }
-const path = '/plaid/sandbox/investments'
+const sandboxPath = '/plaid/sandbox/investments'
 const stamp = (value: string | null | undefined) => value ? new Date(value).toLocaleString() : 'Not synced'
 const quantity = (value: number | string | null) => value != null && Number.isFinite(Number(value)) ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 8 }).format(Number(value)) : '—'
 const nameOf = (kind: string | null) => kind === 'etf' ? 'ETF' : kind ? kind.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase()) : 'Other'
@@ -24,6 +24,7 @@ function ProviderDetails({ provider, security }: { provider: object; security: o
 export function Investments({ sandbox, managed, live, request, money, openBank, onChanged, openTestScenario }: {
   sandbox: boolean; managed?: boolean; live?: boolean; request: Request; money: Money; openBank: () => void; onChanged: () => void; openTestScenario?: () => void
 }) {
+  const path = live ? '/plaid/live/investments' : sandboxPath
   const [data, setData] = useState<Portfolio>()
   const [activity, setActivity] = useState<ActivityPage>()
   const [tab, setTab] = useState('holdings')
@@ -42,7 +43,7 @@ export function Investments({ sandbox, managed, live, request, money, openBank, 
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    if (!sandbox || live) return
+    if (!sandbox) return
     const controller = new AbortController()
     request<Portfolio>(path, 'GET', undefined, controller.signal).then(setData)
       .catch(failure => { if (!controller.signal.aborted) setError(failure.message) })
@@ -51,7 +52,7 @@ export function Investments({ sandbox, managed, live, request, money, openBank, 
 
   useEffect(() => { setPage(1); setHoldingPage(1) }, [account, search, kind, start, end, revision])
   useEffect(() => {
-    if (!sandbox || live || tab !== 'activity') return
+    if (!sandbox || tab !== 'activity') return
     const controller = new AbortController()
     const params = new URLSearchParams({ search, page: String(page) })
     if (account) params.set('account', account)
@@ -75,7 +76,6 @@ export function Investments({ sandbox, managed, live, request, money, openBank, 
     finally { setBusy(false) }
   }
 
-  if (live) return <section className="card"><h2>Investments are available in Sandbox</h2><p className="muted">The first Live pilot supports checking and credit-card transactions and balances. Live investment products will be enabled in a later step.</p></section>
   if (!sandbox) return <section className="card"><h2>Investment sync starts in Sandbox</h2><p className="muted">Choose Sandbox preview in the workspace selector to view and test holdings and investment activity. Your manual accounts remain on Accounts.</p></section>
   if (!data) return <section className="card">{error ? <p className="notice" role="alert">{error}<button className="secondary small" onClick={() => { setError(''); setRevision(value => value + 1) }}>Retry</button></p> : <p role="status">Loading investments…</p>}</section>
   const accounts = data.accounts.filter(item => !account || item.id === account)

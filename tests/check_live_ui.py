@@ -74,8 +74,13 @@ def run():
                 fixture.execute('INSERT INTO multi_connections(institution_id,name,profile) VALUES (?,?,?)',('ins_fixture'+str(index),'Test institution '+str(index)+' with a very long institution name for phone layouts','banking'))
             accounts=[]
             for index in range(15):
-                accounts.append({'account_id':str(index),'name':'Test account '+str(index)+' with a long display name','type':['depository','credit','loan'][index%3], 'subtype':['checking','credit card','student'][index%3], 'balances':{'current':index*100+20,'iso_currency_code':'USD'}})
+                accounts.append({'account_id':str(index),'name':'Test account '+str(index)+' with a long display name','type':'investment' if index==0 else ['depository','credit','loan'][index%3], 'subtype':'brokerage' if index==0 else ['checking','credit card','student'][index%3], 'balances':{'current':index*100+20,'iso_currency_code':'USD'}})
             map_accounts(fixture,1,accounts)
+            from finance.plaid_vault import protect
+            fixture.execute("UPDATE multi_connections SET item_id='synthetic-ui-item',token=? WHERE id=1", (protect(b'synthetic-ui-access',True),))
+            fixture.execute('INSERT INTO live_investment_connections VALUES (1,1)')
+        from seed_investment_ui import seed
+        seed(live_path)
         database.with_suffix('.workspace').write_text('live')
         database.with_suffix('.sandbox-scenario').write_text('combined')
         original_banking = fingerprint(database.with_suffix('.plaid-sandbox.db'))
@@ -157,7 +162,7 @@ def run():
             nav('Bank sync');ready("document.querySelector('.live-readiness form')")
             js("document.querySelector('.readiness-settings').open=true")
             assert not js("document.querySelector('input[name=hosted_link_confirmed]')")
-            for name in ['trial_confirmed','transactions_enabled','oauth_confirmed']:
+            for name in ['trial_confirmed','transactions_enabled','oauth_confirmed','investments_enabled']:
                 js("document.querySelector('input[name="+name+"]').click()")
             js("document.querySelector('input[name=item_limit]').focus()")
             cdp('Input.insertText',{'text':'20'})
@@ -169,6 +174,8 @@ def run():
             assert not js("document.querySelector('.readiness-configuration').open")
             button('.live-readiness button','Find your bank')
             ready("document.querySelector('.connection-add').open && document.activeElement.getAttribute('aria-label')==='Find institution'")
+            assert js("document.querySelector('select[aria-label=\"Connection type\"] option[value=investments]')!==null")
+            assert js("[...document.querySelectorAll('.connection-add label')].some(e=>e.textContent.includes('Also connect investments'))")
             cdp('Input.insertText',{'text':'Bank of America'})
             button('.connection-add button','Search institutions');ready("document.querySelector('.connection-result button')")
             button('.connection-result button','Add institution')
@@ -194,12 +201,27 @@ def run():
                     screenshot(f'{width}-{theme}-live-search-and-locked-institutions')
                     js("document.querySelector('.connection-details').open=true;document.querySelector('.connection-card').scrollIntoView({block:'start'})")
                     screenshot(f'{width}-{theme}-live-connection-expanded')
+                    js("document.querySelector('input[aria-label=\"Filter connections\"]').focus()")
+                    cdp('Input.insertText',{'text':'Test institution 0'})
+                    ready("document.querySelectorAll('.connection-card').length===1")
+                    js("document.querySelector('.connection-details').open=true;document.querySelector('.connection-card').scrollIntoView({block:'start'})")
+                    assert js("[...document.querySelectorAll('.connection-card button')].some(b=>b.textContent==='Reload investment history')")
+                    screenshot(f'{width}-{theme}-live-mixed-connection-expanded')
                     nav('Accounts');ready("document.querySelector('.account-group')")
                     js("document.querySelectorAll('.account-group').forEach(e=>e.open=true)")
                     ready("document.querySelectorAll('.compact-account').length===15")
                     screenshot(f'{width}-{theme}-live-long-accounts')
                     js("document.querySelector('.compact-account').open=true;document.querySelector('.compact-account').scrollIntoView({block:'start'})")
                     screenshot(f'{width}-{theme}-live-account-expanded')
+                    nav('Investments');ready("document.querySelector('.investment-row')")
+                    assert js("document.querySelector('.investment-sync .chip').textContent")=='LIVE DATA'
+                    assert len(api('/plaid/live/investments')['holdings'])==18
+                    js('window.scrollTo(0,0)')
+                    screenshot(f'{width}-{theme}-live-investments')
+                    js("document.querySelector('.investment-row').open=true;document.querySelector('.investment-provider').open=true;document.querySelector('.investment-row').scrollIntoView({block:'start'})")
+                    screenshot(f'{width}-{theme}-live-investment-expanded')
+                    button('.investment-records button','Activity');ready("document.querySelector('.investment-row summary')?.textContent.includes('Synthetic investment')")
+                    screenshot(f'{width}-{theme}-live-investment-activity')
                     nav('Backup & restore');ready("document.querySelector('.backup-create')")
                     assert js("document.querySelector('select[aria-label=\"Backup workspace\"]').value")=='live'
                     button('.backup-create button','Create backup');ready("document.querySelector('.backup-message')")
@@ -217,6 +239,9 @@ def run():
             cdp('Input.insertText',{'text':'RESTORE LIVE'})
             button('dialog button','Restore workspace');ready("document.querySelector('.restore-result')")
             assert not api('/plaid/live/readiness')['linking_enabled']
+            assert len(api('/plaid/live/investments')['holdings'])==18
+            assert api('/plaid/live/investments/activity')['total']==32
+            assert next(c for c in api('/plaid/live')['connections'] if c['id']==1)['investments_enabled']
             select('Workspace','sandbox');ready("document.querySelector('select[aria-label=\"Sandbox scenario\"]')")
             nav('Accounts');ready("document.querySelector('.account-group')")
             assert fingerprint(database.with_suffix('.plaid-sandbox.db'))==original_banking

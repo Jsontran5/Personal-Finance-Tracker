@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
-type Setup = { trial_confirmed: boolean; item_limit: number | null; transactions_enabled: boolean; oauth_confirmed: boolean }
+type Setup = { trial_confirmed: boolean; item_limit: number | null; transactions_enabled: boolean; oauth_confirmed: boolean; investments_enabled: boolean }
 type State = { configured: boolean; linking_enabled: boolean; ready: boolean; connected_items: number; setup: Setup;
   checks: { label: string; ok: boolean }[]; limit_note: string;
-  preflights: { institution_id: string; name: string; transactions: boolean; oauth: boolean | null; checked_at: string; note: string }[] }
+  preflights: { institution_id: string; name: string; transactions: boolean; products: string[]; oauth: boolean | null; checked_at: string; note: string }[] }
 
 export function LiveReadiness({ request, revision, onFindInstitution }: { request: Request; revision?: number; onFindInstitution: () => void }) {
   const [data, setData] = useState<State>()
@@ -24,7 +24,7 @@ export function LiveReadiness({ request, revision, onFindInstitution }: { reques
     const form = new FormData(event.currentTarget)
     try {
       const setup: Setup = { trial_confirmed: form.has('trial_confirmed'), transactions_enabled: form.has('transactions_enabled'),
-        oauth_confirmed: form.has('oauth_confirmed'),
+        oauth_confirmed: form.has('oauth_confirmed'), investments_enabled: form.has('investments_enabled'),
         item_limit: form.get('item_limit') ? Number(form.get('item_limit')) : null }
       const saved = await request<State>('/plaid/live/readiness', 'PUT', setup)
       setData(saved)
@@ -47,6 +47,8 @@ export function LiveReadiness({ request, revision, onFindInstitution }: { reques
         <p className="muted">Dashboard confirmations are your saved settings, not automatic verification of product access. Update them here if your plan changes. {data.limit_note}</p>
         <form key={JSON.stringify(data.setup)} onSubmit={event => void save(event)}><fieldset disabled={busy}>
           {([['trial_confirmed', 'Free Trial is active'], ['transactions_enabled', 'Transactions is enabled'], ['oauth_confirmed', 'OAuth bank access is available']] as const).map(([name, label]) => <label className="checkbox" key={name}><input type="checkbox" name={name} defaultChecked={data.setup[name]} />{label}</label>)}
+          <label className="checkbox"><input type="checkbox" name="investments_enabled" defaultChecked={data.setup.investments_enabled} />Investments product access confirmed (optional)</label>
+          <p className="muted">Enable after checking your Dashboard product access. Investment consent is requested only for institutions you choose.</p>
           <label>Connection allowance shown in Dashboard<input type="number" name="item_limit" min="1" max="1000" defaultValue={data.setup.item_limit ?? ''} /></label>
           <button className="secondary small" type="submit">Save confirmations</button>
         </fieldset></form>
@@ -57,7 +59,7 @@ export function LiveReadiness({ request, revision, onFindInstitution }: { reques
         <a href="https://dashboard.plaid.com/activity/status/oauth-institutions" target="_blank" rel="noopener noreferrer">View OAuth access in Plaid Dashboard ↗</a>
       </details>
       {data.preflights.length > 0 && <details className="readiness-settings"><summary>Institution coverage ({data.preflights.length})</summary>
-        {data.preflights.map(item => <article className="preflight-result" key={item.institution_id}><strong>{item.name}</strong><p>Transactions: {item.transactions ? 'Supported' : 'Unavailable'} · OAuth: {item.oauth == null ? 'Not reported' : item.oauth ? 'Supported' : 'Not reported as supported'}</p><small>{new Date(item.checked_at).toLocaleString()} · {item.note}</small></article>)}
+        {data.preflights.map(item => <article className="preflight-result" key={item.institution_id}><strong>{item.name}</strong><p>Transactions: {item.transactions ? 'Supported' : 'Unavailable'} · Investments: {item.products?.includes('investments') ? 'Supported' : 'Unavailable'} / OAuth: {item.oauth == null ? 'Not reported' : item.oauth ? 'Supported' : 'Not reported as supported'}</p><small>{new Date(item.checked_at).toLocaleString()} · {item.note}</small></article>)}
       </details>}
       <button className="secondary small" disabled={busy} onClick={() => { setError(''); setAttempt(value => value + 1) }}>Refresh checks</button>
     </>}
