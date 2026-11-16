@@ -18,6 +18,7 @@ import { Investments } from './Investments'
 import { DebtDetails } from './DebtDetails'
 import { Connections } from './Connections'
 import { Navigation, type Page } from './Navigation'
+import { PageHelp } from './Help'
 import './styles.css'
 import './interface.css'
 
@@ -508,6 +509,7 @@ function App() {
           'Backup & restore': 'Save local checkpoints and recover a workspace.',
         }[page]}</p>{synced && (mode === 'live' || scenario === 'banking') && page !== 'Backup & restore' && <SyncFreshness request={request} revision={revision} open={() => setPage('Bank sync')} />}</div>
         <div className="toolbar">
+          <PageHelp page={page} />
           {page !== 'Accounts' && page !== 'Backup & restore' && page !== 'Investments' && <input type="month" aria-label="Reporting month" value={month} disabled={page === 'Transactions' && allReviewDates} onChange={event => { if (event.target.value) setMonth(event.target.value) }} />}
           {page === 'Backup & restore' || page === 'Investments' ? null : synced ? <button className="primary" onClick={() => setPage('Bank sync')}>Bank sync</button>
             : <button className="primary with-icon" disabled={!data} onClick={quickAdd}><Icon name="plus" />Add transaction</button>}

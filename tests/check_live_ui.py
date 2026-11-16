@@ -207,12 +207,62 @@ def run():
                     js("document.querySelector('.connection-details').open=true;document.querySelector('.connection-card').scrollIntoView({block:'start'})")
                     assert js("[...document.querySelectorAll('.connection-card button')].some(b=>b.textContent==='Reload investment history')")
                     screenshot(f'{width}-{theme}-live-mixed-connection-expanded')
+                    js("[...document.querySelectorAll('.connection-card button')].find(b=>b.textContent==='Sync transactions').setAttribute('aria-describedby','existing-description');[...document.querySelectorAll('.connection-card button')].find(b=>b.textContent==='Sync transactions').focus()")
+                    ready("document.querySelector('[role=tooltip]')?.matches(':popover-open')")
+                    assert js("document.querySelector('[role=tooltip]').textContent.includes('credit-card')")
+                    assert js("document.querySelector('[role=tooltip]').getBoundingClientRect().right <= document.documentElement.clientWidth")
+                    screenshot(f'{width}-{theme}-control-help')
+                    cdp('Input.dispatchKeyEvent',{'type':'keyDown','key':'Escape','code':'Escape','windowsVirtualKeyCode':27})
+                    cdp('Input.dispatchKeyEvent',{'type':'keyUp','key':'Escape','code':'Escape','windowsVirtualKeyCode':27})
+                    ready("!document.querySelector('[role=tooltip]')")
+                    assert js("document.activeElement.getAttribute('aria-describedby')")=='existing-description'
+                    js('document.activeElement.blur()')
+                    hover_box=js("(()=>{const e=[...document.querySelectorAll('.connection-card button')].find(b=>b.textContent==='Refresh balances');const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
+                    cdp('Input.dispatchMouseEvent',{'type':'mouseMoved',**hover_box})
+                    ready("document.querySelector('[role=tooltip]')?.textContent.includes('account balances')")
+                    tooltip_box=js("(()=>{const r=document.querySelector('[role=tooltip]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
+                    cdp('Input.dispatchMouseEvent',{'type':'mouseMoved',**tooltip_box})
+                    time.sleep(.7)
+                    assert js("document.querySelector('[role=tooltip]')?.matches(':popover-open')")
+                    cdp('Input.dispatchKeyEvent',{'type':'keyDown','key':'Escape','code':'Escape','windowsVirtualKeyCode':27})
+                    cdp('Input.dispatchKeyEvent',{'type':'keyUp','key':'Escape','code':'Escape','windowsVirtualKeyCode':27})
+                    ready("!document.querySelector('[role=tooltip]')")
+
+                    for help_page in ['Overview','Spending','Transactions','Budgets','Accounts','Investments','Bank sync','Backup & restore']:
+                        nav(help_page)
+                        js("document.querySelector('.page-help-trigger').click()")
+                        ready("document.querySelector('.page-help[open]')")
+                        assert js("document.querySelector('.page-help h2').textContent")=='Help with '+help_page
+                        assert js("document.querySelector('.page-help').scrollWidth <= document.querySelector('.page-help').clientWidth")
+                        assert js("document.querySelectorAll('.help-topics dt').length")>=3
+                        if help_page in ['Bank sync','Investments']:
+                            screenshot(f'{width}-{theme}-{help_page.replace(" ","-").lower()}-help')
+                        js("[...document.querySelectorAll('.page-help button')].find(b=>b.textContent==='Done').focus()")
+                        cdp('Input.dispatchKeyEvent',{'type':'keyDown','key':'Tab','code':'Tab','windowsVirtualKeyCode':9})
+                        cdp('Input.dispatchKeyEvent',{'type':'keyUp','key':'Tab','code':'Tab','windowsVirtualKeyCode':9})
+                        assert js("document.activeElement.getAttribute('aria-label')")=='Close help'
+                        cdp('Input.dispatchKeyEvent',{'type':'keyDown','key':'Escape','code':'Escape','windowsVirtualKeyCode':27})
+                        cdp('Input.dispatchKeyEvent',{'type':'keyUp','key':'Escape','code':'Escape','windowsVirtualKeyCode':27})
+                        ready("!document.querySelector('.page-help')")
+                        assert js("document.activeElement.classList.contains('page-help-trigger')")
+
                     nav('Accounts');ready("document.querySelector('.account-group')")
                     js("document.querySelectorAll('.account-group').forEach(e=>e.open=true)")
                     ready("document.querySelectorAll('.compact-account').length===15")
                     screenshot(f'{width}-{theme}-live-long-accounts')
                     js("document.querySelector('.compact-account').open=true;document.querySelector('.compact-account').scrollIntoView({block:'start'})")
                     screenshot(f'{width}-{theme}-live-account-expanded')
+                    ready("document.querySelector('.account-inspector[open]')")
+                    js("[...document.querySelectorAll('.account-inspector[open] summary')].find(e=>e.textContent.includes('Balance chart')).focus()")
+                    ready("document.querySelector('[role=tooltip]')?.matches(':popover-open')")
+                    assert js("document.querySelector('[role=tooltip]').closest('dialog')?.classList.contains('account-inspector')")
+                    screenshot(f'{width}-{theme}-inspector-help')
+                    cdp('Input.dispatchKeyEvent',{'type':'keyDown','key':'Escape','code':'Escape','windowsVirtualKeyCode':27})
+                    cdp('Input.dispatchKeyEvent',{'type':'keyUp','key':'Escape','code':'Escape','windowsVirtualKeyCode':27})
+                    ready("!document.querySelector('[role=tooltip]')")
+                    assert js("document.querySelector('.account-inspector[open]')!==null")
+                    js("document.querySelector('.account-inspector[open] button[aria-label=\"Close account details\"]').click()")
+
                     nav('Investments');ready("document.querySelector('.investment-row')")
                     assert js("document.querySelector('.investment-sync .chip').textContent")=='LIVE DATA'
                     assert len(api('/plaid/live/investments')['holdings'])==18
