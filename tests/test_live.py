@@ -85,6 +85,22 @@ class LiveTests(TestCase):
         self.assertEqual(self.client.post(f'{self.base}/connections/{identifier}/link/{uuid4()}').status_code,403)
         self.assertFalse(any('/link/' in name or name.endswith('/exchange') for name,_ in self.calls))
 
+    def test_legacy_hosted_link_checkbox_is_no_longer_a_requirement(self):
+        self.client.get(self.base+'/readiness')
+        with connect(self.path,write=True) as db:
+            db.execute('INSERT INTO live_setup VALUES (1,?)', (json.dumps({'trial_confirmed':True,'item_limit':20,
+                'transactions_enabled':True,'oauth_confirmed':True,'hosted_link_confirmed':False}),))
+        state=self.client.get(self.base+'/readiness').json()
+        self.assertTrue(state['ready'])
+        self.assertNotIn('hosted_link_confirmed',state['setup'])
+        self.assertFalse(any('Hosted Link' in check['label'] or 'redirect' in check['label'] for check in state['checks']))
+        identifier=self.client.post(self.base+'/connections',json={'institution_id':'ins_bofa'}).json()['id']
+        self.client.post(self.base+'/preflight',json={'institution_id':'ins_bofa'}).raise_for_status()
+        self.assertEqual(self.client.post(f'{self.base}/connections/{identifier}/link').status_code,403)
+        os.environ['PLAID_LIVE_ENABLED']='true'
+        self.assertEqual(self.client.post(f'{self.base}/connections/{identifier}/link').status_code,200)
+        self.assertFalse(any(name.endswith('/exchange') for name,_ in self.calls))
+
     def test_enabled_pilot_uses_minimum_products_and_reconnects_same_item(self):
         identifier=self.prepare();os.environ['PLAID_LIVE_ENABLED']='true'
         started=self.client.post(f'{self.base}/connections/{identifier}/link')

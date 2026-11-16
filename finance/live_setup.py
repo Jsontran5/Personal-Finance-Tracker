@@ -47,7 +47,6 @@ class LiveSetup(BaseModel):
     item_limit: int | None = Field(None, ge=1, le=1000)
     transactions_enabled: bool = False
     oauth_confirmed: bool = False
-    hosted_link_confirmed: bool = False
 
 
 def readiness(db, directory):
@@ -68,9 +67,9 @@ def readiness(db, directory):
         {'label': 'Free Trial and connection allowance confirmed in Dashboard', 'ok': confirmed.trial_confirmed and confirmed.item_limit is not None},
         {'label': 'Transactions enabled in Dashboard', 'ok': confirmed.transactions_enabled},
         {'label': 'OAuth access confirmed in Dashboard', 'ok': confirmed.oauth_confirmed},
-        {'label': 'Hosted Link enabled in Dashboard', 'ok': confirmed.hosted_link_confirmed},
-        {'label': 'Optional OAuth redirect is HTTPS without query or fragment', 'ok': redirect_valid},
     ]
+    if redirect:
+        checks.append({'label': 'Custom OAuth redirect is valid HTTPS', 'ok': redirect_valid})
     return {'environment': 'production', 'configured': configured, 'linking_enabled': enabled,
             'setup': confirmed.model_dump(), 'checks': checks, 'ready': all(check['ok'] for check in checks),
             'connected_items': connected, 'allowance_is_dashboard_confirmed': confirmed.trial_confirmed and confirmed.item_limit is not None,
