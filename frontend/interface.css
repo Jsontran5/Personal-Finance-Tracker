@@ -566,3 +566,15 @@ button:disabled { opacity: 1; color: var(--muted); background: var(--raised); cu
 }
 .startup-status { margin: 0 0 1.25rem; padding: 1rem 1.2rem; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); overflow-wrap: anywhere; }
 .startup-status p { margin: .4rem 0 0; }
+.startup-toast { position: fixed; right: 24px; bottom: 24px; z-index: 31; width: min(420px, calc(100vw - 32px)); display: flex; gap: 12px; align-items: flex-start; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 8px 32px #0003; }
+.startup-toast-copy { flex: 1; min-width: 0; display: grid; gap: 5px; overflow-wrap: anywhere; }
+.startup-toast-copy strong { font-size: .85rem; }
+.startup-toast-copy small { color: var(--muted); font-size: .76rem; }
+.startup-toast-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.startup-dismiss { flex: 0 0 32px; min-height: 32px; padding: 0; border: 0; border-radius: 8px; font-size: 1.25rem; background: transparent; color: var(--muted); }
+.startup-dismiss:hover { background: var(--raised); color: var(--text); }
+.startup-indicator { flex: 0 0 20px; height: 20px; display: grid; place-items: center; color: var(--accent); font-weight: 700; }
+.startup-indicator.is-loading { border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; }
+@media (prefers-reduced-motion: no-preference) { .startup-indicator.is-loading { animation: startup-spin 1s linear infinite; } }
+@keyframes startup-spin { to { transform: rotate(360deg); } }
+@media (max-width: 850px) { .startup-toast { right: 16px; bottom: calc(82px + env(safe-area-inset-bottom)); } }

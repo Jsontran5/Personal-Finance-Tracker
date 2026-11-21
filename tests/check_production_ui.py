@@ -1,6 +1,6 @@
 """Production All accounts browser QA on a new synthetic database; no bank calls."""
 import base64
-from datetime import date
+from datetime import date, datetime, timezone
 import json
 from pathlib import Path
 import socket
@@ -20,7 +20,12 @@ def serve(database,port):
     import uvicorn
     from finance.api import create_app
     with patch.dict(os.environ,{'APP_ENV':'production','PLAID_LIVE_ENABLED':'false'}):
-        uvicorn.run(create_app(Path(database)),host='127.0.0.1',port=int(port),access_log=False)
+        app=create_app(Path(database))
+        maintenance=app.state.startup_maintenance
+        original=maintenance.status
+        fixture=Path(database).parent/'ui-startup.json'
+        maintenance.status=lambda: json.loads(fixture.read_text()) if fixture.is_file() else original()
+        uvicorn.run(app,host='127.0.0.1',port=int(port),access_log=False)
 
 def port():
     with socket.socket() as listener:
@@ -130,11 +135,36 @@ def run():
                         if page=='Bank sync':ready("document.querySelector('.live-readiness')");assert not js("Boolean(document.querySelector('.manual-selection'))")
                         if page=='Backup & restore':assert js("[...document.querySelectorAll('[aria-label=\"Backup workspace\"] option')].every(o=>!o.textContent.includes('Sandbox'))")
                         shot(f'{width}-{theme}-production-'+page.lower().replace(' ','-').replace('&','and'))
-                    nav('Overview');ready("document.querySelector('.startup-status')?.textContent.includes('Startup finished')")
-                    js("document.querySelector('.startup-status details').open=true")
+                    nav('Bank sync');ready("document.querySelector('.startup-status')?.textContent.includes('Startup finished')")
+                    js("document.querySelector('.startup-status summary').click()")
                     shot(f'{width}-{theme}-production-startup-expanded')
                     assert 'snapshot' in js("document.querySelector('.startup-status').textContent")
-                    js("document.querySelector('.startup-status details').open=false")
+                    js("document.querySelector('.startup-status summary').click()")
+                    fixture=database.parent/'ui-startup.json'
+                    status={'enabled':True,'running':True,'phase':'A very long institution name · balances','version':10,'finished_at':None,'results':[]}
+                    fixture.write_text(json.dumps(status));js('location.reload()')
+                    ready("document.querySelector('.startup-toast')?.textContent.includes('Updating your accounts')")
+                    shot(f'{width}-{theme}-production-startup-loading')
+                    assert not js("Boolean(document.querySelector('.startup-status'))")
+                    nav('Accounts') # Loading notification does not block navigation.
+                    status.update(running=False,version=11,finished_at=datetime.now(timezone.utc).isoformat(),results=[{'institution':'Fixture bank','product':'balances','status':'Updated','message':'Saved balances.'}])
+                    fixture.write_text(json.dumps(status))
+                    ready("document.querySelector('.startup-toast')?.textContent.includes('Startup complete')")
+                    click('.startup-toast button','View details');ready("document.querySelector('h1')?.textContent==='Bank sync' && document.querySelector('.startup-status details')?.open")
+                    nav('Overview');ready("!document.querySelector('.startup-toast')")
+                    assert not js("Boolean(document.querySelector('.startup-status'))")
+                    shot(f'{width}-{theme}-production-overview-clean')
+                    status.update(version=12,results=[{'institution':'Fixture bank','product':'balances','status':'Failed','message':'Reconnect this institution in Bank sync. Saved balances retained.'}])
+                    fixture.write_text(json.dumps(status));js('location.reload()')
+                    ready("document.querySelector('.startup-toast')?.textContent.includes('Startup needs attention')")
+                    if width==1440 and theme=='dark':
+                        time.sleep(6.5)
+                        assert js("Boolean(document.querySelector('.startup-toast'))"),'Failure must not auto-dismiss'
+                    shot(f'{width}-{theme}-production-startup-failure')
+                    click('[aria-label="Dismiss startup notification"]');ready("!document.querySelector('.startup-toast')")
+                    nav('Bank sync');ready("document.querySelector('.startup-status')?.textContent.includes('finished with issues')")
+                    fixture.unlink()
+                    js('location.reload()');ready("document.querySelector('.unified-workspace') && document.querySelector('.hero-value')")
                     nav('Accounts');js("[...document.querySelectorAll('.account-summary')].find(e=>e.textContent.includes('UI manual cash')).click()")
                     ready("document.querySelector('.account-inspector[open]')");shot(f'{width}-{theme}-production-manual-inspector')
                     assert 'Record balance' in js("document.querySelector('.account-inspector[open]').textContent")

@@ -576,7 +576,7 @@ function App() {
             : <button className="primary with-icon" disabled={!data} onClick={quickAdd}><Icon name="plus" />Add transaction</button>}
         </div>
       </header>
-      <StartupStatus request={request} enabled={unified} onRunning={setStartupRunning} onChanged={() => setRevision(value => value + 1)} />
+      <StartupStatus request={request} enabled={unified} showDetails={page === 'Bank sync'} onDetails={() => setPage('Bank sync')} onRunning={setStartupRunning} onChanged={() => setRevision(value => value + 1)} />
       <RefreshAll request={request} blocked={startupRunning} visible={mode === 'live' && (page === 'Accounts' || page === 'Bank sync')} onChanged={() => setRevision(value => value + 1)} />
       {themeError && <p role="alert" className="notice">{themeError}</p>}
       {modeError && <p role="alert" className="notice">{modeError}</p>}
