@@ -106,4 +106,6 @@ def initialize(path: Path):
             db.execute('PRAGMA user_version = 4')
         elif version != 4:
             raise RuntimeError(f"Unsupported database version: {version}")
+        from .budgeting import initialize_budget
+        initialize_budget(db)
 

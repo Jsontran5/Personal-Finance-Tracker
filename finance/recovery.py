@@ -61,6 +61,14 @@ def check_database(path):
         if version > VERSIONS[mode] or version < (0 if mode == 'sandbox' else 1):
             raise ValueError('Unsupported schema version. Open this backup with a compatible app version.')
         counts = {name: db.execute(f'SELECT COUNT(*) FROM {name}').fetchone()[0] for name in ['accounts', 'transactions']}
+        if 'budget_schema' in tables:
+            if db.execute('SELECT version FROM budget_schema WHERE id=1').fetchone()[0] != 1:
+                raise ValueError('Unsupported budget feature schema version.')
+            counts['budget_allocations'] = db.execute('SELECT COUNT(*) FROM budget_events').fetchone()[0]
+            for row in db.execute('SELECT payload FROM budget_settings'):
+                payload=json.loads(row[0])
+                if not isinstance(payload,dict) or payload.get('method') not in {'categories','zero','ratio','custom'}:
+                    raise ValueError('Invalid budget configuration.')
         if 'manual_debt_details' in tables:
             counts['debt_details'] = db.execute('SELECT COUNT(*) FROM manual_debt_details').fetchone()[0]
         if mode != 'personal':

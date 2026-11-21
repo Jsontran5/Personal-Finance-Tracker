@@ -189,6 +189,8 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
     app.include_router(manual_debt_router(database))
     app.include_router(review_router(database, after_write=lambda db: record_net_worth(db, date.today())), prefix='/api')
     app.include_router(backup_router(database))
+    from .budgeting import budget_router
+    app.include_router(budget_router(database), prefix='/api')
 
     @app.middleware("http")
     async def protect_local_writes(request: Request, call_next):

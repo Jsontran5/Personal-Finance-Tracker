@@ -40,6 +40,8 @@ class BudgetEdit(BaseModel):
 
 
 def initialize_preview(db):
+    from .budgeting import initialize_budget
+    initialize_budget(db)
     version = db.execute("PRAGMA user_version").fetchone()[0]
     if version in {7, 8, 9, 10, 11, 12, 13, 14}:
         from .account_names import initialize_names
@@ -219,6 +221,8 @@ def sandbox_preview_router(database, initialize_sandbox, *, path=None):
 
     router.include_router(review_router(path, sandbox=True, initialize=initialize))
     router.include_router(analytics_router(path, preview_transactions, initialize))
+    from .budgeting import budget_router
+    router.include_router(budget_router(path, sandbox=True, initialize=initialize, source_database=database))
 
     @router.get('/balance-history')
     def estimated_history():
