@@ -2,6 +2,8 @@
 
 This is a single-user app served only on loopback. Production here means Plaid's real-data API, not public hosting of this app. It has no internet-facing login service. Keep the existing loopback binding and host/write protections.
 
+With `APP_ENV=production`, each backend launch backs up if overdue, syncs existing authorized institutions and saves a snapshot. Progress appears in the dashboard. Set `APP_STARTUP_ENABLED=false` to disable this during setup or troubleshooting. This does not authorize new institutions or change the separate linking switch. Development mode remains on-demand. See the README startup section for retention, shutdown and freshness behavior.
+
 ## What is prepared
 
 - With `APP_ENV=production`, **All accounts** combines connected and manually maintained accounts. Add/edit manual accounts and transactions directly from Accounts and Transactions. Sandbox controls and the workspace switch are hidden. `APP_ENV=development` restores the separate developer workspaces.

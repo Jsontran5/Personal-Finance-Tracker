@@ -7,13 +7,13 @@ type Result = { institution: string; product: string; status: 'Updated' | 'Faile
 const columns = { transactions: 'synced_at', holdings: 'holdings_at', activity: 'activity_at', balances: 'balance_checked_at' } as const
 type Product = keyof typeof columns
 
-export function RefreshAll({ request, visible, onChanged }: { request: Request; visible: boolean; onChanged: () => void }) {
+export function RefreshAll({ request, visible, onChanged, blocked = false }: { request: Request; visible: boolean; onChanged: () => void; blocked?: boolean }) {
   const running = useRef(false)
   const [busy, setBusy] = useState('')
   const [results, setResults] = useState<Result[] | null>(null)
   const [error, setError] = useState('')
   async function refresh() {
-    if (running.current) return
+    if (running.current || blocked) return
     running.current = true; setBusy('Preparing refresh…'); setResults([]); setError('')
     const rows: Result[] = []
     try {
@@ -47,7 +47,7 @@ export function RefreshAll({ request, visible, onChanged }: { request: Request; 
   }
   const failed = results?.filter(row => row.status === 'Failed').length ?? 0
   return <div className="refresh-all" hidden={!visible && !busy}>
-    <button type="button" className="secondary" disabled={!!busy} onClick={() => void refresh()}>{busy ? 'Refreshing…' : 'Refresh all'}</button>
+    <button type="button" className="secondary" disabled={!!busy || blocked} onClick={() => void refresh()}>{blocked ? 'Startup sync running…' : busy ? 'Refreshing…' : 'Refresh all'}</button>
     {busy && <p className="muted" role="status">Fetching {busy}. You can keep browsing; leave the app open until it finishes.</p>}
     {error && <p className="notice" role="alert">{error}</p>}
     {!busy && !!results?.length && <p className="muted" role="status">Live refresh finished{failed ? ` with ${failed} failed ${failed === 1 ? "action" : "actions"}. Saved data is retained for those products.` : ". See results for updated and skipped products."}</p>}

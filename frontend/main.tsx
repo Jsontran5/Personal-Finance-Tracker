@@ -21,6 +21,7 @@ import { Navigation, type Page } from './Navigation'
 import { PageHelp } from './Help'
 import { AccountNickname } from './AccountNickname'
 import { RefreshAll } from './RefreshAll'
+import { StartupStatus } from './StartupStatus'
 import { TransactionFlow, type Flow } from './TransactionFlow'
 import './styles.css'
 import './interface.css'
@@ -252,6 +253,7 @@ function BalanceHistory({ account, sandbox = false, request }: { account: Accoun
 function App() {
   const [mode, setMode] = useState<Mode | null>(null)
   const [unified, setUnified] = useState(false)
+  const [startupRunning, setStartupRunning] = useState(false)
   const [manualEditorData, setManualEditorData] = useState<Overview>()
   const [manualOverview, setManualOverview] = useState<Overview>()
   const synced = mode === 'sandbox' || mode === 'live'
@@ -574,7 +576,8 @@ function App() {
             : <button className="primary with-icon" disabled={!data} onClick={quickAdd}><Icon name="plus" />Add transaction</button>}
         </div>
       </header>
-      <RefreshAll request={request} visible={mode === 'live' && (page === 'Accounts' || page === 'Bank sync')} onChanged={() => setRevision(value => value + 1)} />
+      <StartupStatus request={request} enabled={unified} onRunning={setStartupRunning} onChanged={() => setRevision(value => value + 1)} />
+      <RefreshAll request={request} blocked={startupRunning} visible={mode === 'live' && (page === 'Accounts' || page === 'Bank sync')} onChanged={() => setRevision(value => value + 1)} />
       {themeError && <p role="alert" className="notice">{themeError}</p>}
       {modeError && <p role="alert" className="notice">{modeError}</p>}
       {synced && page !== 'Backup & restore' && <details className="workspace-info"><summary><span className="status-dot" />{unified ? 'Your data · Local storage' : mode === 'live' ? 'Live data · Local storage' : 'Test data · Sandbox preview'}<span>About this workspace</span></summary><p>{unified ? 'Connected and manual accounts share this app. Manage connections in Bank sync and manual records in Accounts.' : mode === 'live' ? 'Real financial data stays separate from Sandbox. Manage connection readiness in Bank sync.' : 'Test accounts, categories, and budgets.'} Spending uses posted activity.</p></details>}

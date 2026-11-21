@@ -564,3 +564,5 @@ button:disabled { opacity: 1; color: var(--muted); background: var(--raised); cu
   .ledger-row .row-money .numeric { font-size: .85rem; }
   .ledger-row .row-main strong { font-size: .85rem; }
 }
+.startup-status { margin: 0 0 1.25rem; padding: 1rem 1.2rem; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); overflow-wrap: anywhere; }
+.startup-status p { margin: .4rem 0 0; }

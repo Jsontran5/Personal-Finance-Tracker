@@ -231,7 +231,7 @@ export function PageHelp({ page }: { page: Page }) {
       <div className="dialog-heading"><h2 id={title}>Help with {page}</h2><button type="button" className="icon" aria-label="Close help" onClick={() => setOpen(false)}>×</button></div>
       <p className="muted">Hover over a control or focus it with Tab for a quick explanation. On a phone, use this guide. Help never runs an action or contacts your bank.</p>
       <dl className="help-topics">{guides[page].map(([label, text]) => <div key={label}><dt>{label}</dt><dd>{text}</dd></div>)}</dl>
-      <details><summary>Workspaces and saved data</summary><p>{controlHelp.Workspace}</p><p>The app loads saved local data on launch. Use Bank sync to retrieve updates. A browser refresh does not sync banks.</p></details>
+      <details><summary>Workspaces and saved data</summary><p>{controlHelp.Workspace}</p><p>Production mode backs up if overdue, syncs existing banks and saves a snapshot once per backend launch, unless APP_STARTUP_ENABLED is false. Startup results show progress and failures. A browser refresh does not sync banks. Development workspaces sync on demand.</p></details>
       <button type="button" className="secondary" onClick={() => setOpen(false)}>Done</button>
     </dialog>}
   </>
