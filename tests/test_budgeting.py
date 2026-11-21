@@ -62,6 +62,7 @@ class BudgetTests(TestCase):
         self.assertEqual(self.row()['actual_minor'],15000)
         self.action([{'category':f'card:{self.card}','amount_minor':10000}])
         self.assertEqual(self.get()['reserves'][0]['reserved_minor'],10000)
+        self.assertEqual(self.get()['reserves'][0]['assigned_minor'],10000)
     def test_unfunded_card_spending_then_cover_and_refund(self):
         self.setup();self.tx('expense',15000,self.card)
         self.assertEqual(self.row()['available_minor'],-15000)

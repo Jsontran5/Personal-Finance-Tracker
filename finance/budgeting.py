@@ -241,6 +241,7 @@ def projection(db, sandbox, month):
     return {'month':month,'settings':settings,'token':token,'accounts':accounts,'categories':result,'ready_minor':ready,
         'reconciliation':{'saved_cash_minor':saved_cash,'modeled_cash_minor':modeled_cash,'difference_minor':difference},
         'receipts':receipts,'transfers':transfers,'reserves':[{'account_id':a['id'],'name':a['name'],'reserved_minor':reserves[a['id']],
+            'assigned_minor':assigned['card:'+str(a['id'])],
             'balance_minor':a['balance_minor'],'unfunded_minor':sum(v for (_,card),v in unpaid.items() if card==a['id'])} for a in accounts if a['id'] in cards],
         'warnings':list(dict.fromkeys(warnings)), 'uncategorized_minor':actual[None], 'unbudgeted_minor':sum(c['actual_minor'] for c in result if c['limit_minor'] is None),
         'transactions':transactions,'previous_transactions':[{k:tx.get(k) for k in ['id','account_id','category_id','kind','amount_minor','pending','needs_review','transfer_pair_id']} for tx in rows if tx['currency']=='USD' and tx['date'][:7]==previous_month(month)],
