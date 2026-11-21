@@ -22,6 +22,7 @@ import { PageHelp } from './Help'
 import { AccountNickname } from './AccountNickname'
 import { RefreshAll } from './RefreshAll'
 import { StartupStatus } from './StartupStatus'
+import { BudgetWorkspace } from './BudgetWorkspace'
 import { TransactionFlow, type Flow } from './TransactionFlow'
 import './styles.css'
 import './interface.css'
@@ -35,6 +36,7 @@ type Budget = Category & { limit_minor: number | null; actual_minor: number; pre
 type Point = HistoryPoint
 type Overview = {
   accounts: Account[]; categories: Category[]; budgets: Budget[]; templates: Template[];
+  budget_method?:string;
   transactions: Transaction[]; history: Point[]; primary_account_id: number | null;
   recent_entries: Pick<Entry, 'merchant' | 'category_id'>[];
   assets_minor: number; liabilities_minor: number; net_worth_minor: number;
@@ -515,7 +517,7 @@ function App() {
       open({ type: 'sandbox-transaction', entry })
     } else open({ type: 'transaction', entry })
   }
-  const editBudget = (budget: Budget) => open({ type: 'budget', budget })
+  const editBudget = (budget: Budget) => ready?.budget_method && ready.budget_method!=='categories' ? setPage('Budgets') : open({ type: 'budget', budget })
   const drillSpending = (ids: number[], label: string, origin: Page = 'Spending') => {
     setDrillOrigin(origin); setKindFilter('all'); setPostingFilter('all'); setSortOrder('newest')
     setAllReviewDates(false)
@@ -652,11 +654,7 @@ function App() {
             }}>Delete</button></div></div>)}
         </section>}
       </>}
-      {ready && page === 'Budgets' && <section className="card">
-        <div className="section-heading"><div><h2>Category limits</h2><small>{activeMonth} · USD</small></div><button className="secondary small" onClick={() => open({ type: 'category' })}>New category</button></div>
-        <BudgetRows budgets={ready.budgets} compare edit={editBudget} filter={filterCategory} />
-        <p className="muted">Uncategorized spending: {money(ready.uncategorized_minor)}</p>
-      </section>}
+      {ready && page === 'Budgets' && <BudgetWorkspace key={mode+scenario} request={request} path={(synced?previewPath:'')+'/plan'} month={month} revision={revision} onChanged={()=>setRevision(value=>value+1)} onNewCategory={()=>open({type:'category'})} />}
       {ready && page === 'Accounts' && <AccountList unified={unified} live={mode === 'live'} key={mode + scenario} accounts={ready.accounts} sandbox={synced} primary={ready.primary_account_id}
         money={money} add={() => unified ? void openManual('account') : open({ type: 'account' })} details={account => <>
           <button className="secondary small" onClick={() => { setPage('Transactions'); setAllReviewDates(true); setAccountFilter(account.id); setCategoryFilter(0); setReviewFilter('all'); setSearch(''); setDrilldown(null) }}>View account transactions →</button>

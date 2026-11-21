@@ -123,6 +123,53 @@ def run():
             change('.editor-inspector input[name=amount]','35');click('.editor-inspector button','Save transaction');ready("!document.querySelector('.editor-inspector[open]')")
             saved=json.load(urllib.request.urlopen(url+'/api/overview?month='+date.today().isoformat()[:7]))
             assert saved['transactions'][0]['amount_minor']==3500
+            nav('Budgets');ready("document.querySelector('.budget-table')")
+            budget_category=js("document.querySelector('.budget-table .text-button').textContent")
+            change('input[aria-label="'+budget_category+' limit"]','150')
+            click('.budget-save-bar button','Save changes');ready("!document.querySelector('.budget-save-bar')")
+            click('button','Set up funded budgeting');ready("document.querySelector('.budget-inspector[open]')")
+            js("[...document.querySelectorAll('.budget-inspector .checkbox')].filter(l=>l.textContent.includes('Balance dated')).forEach(l=>{const i=l.querySelector('input');if(i.checked!==l.textContent.includes('UI manual cash'))i.click()})")
+            js("document.querySelector('.budget-inspector input[required][type=checkbox]').click()")
+            click('.budget-inspector button','Confirm opening funds');ready("!document.querySelector('.budget-inspector[open]') && document.querySelector('.budget-ready')?.textContent.includes('Ready to assign')")
+            js("document.querySelector('.budget-table .text-button').click()")
+            ready("document.querySelector('.budget-inspector input[name=target]')")
+            change('.budget-inspector input[name=target]','100')
+            change('.budget-inspector input[name=group]','Monthly essentials and everyday spending with a long group name')
+            click('.budget-inspector button','Save budget');ready("!document.querySelector('.budget-inspector[open]')")
+            change('input[aria-label="'+budget_category+' assigned"]','50')
+            click('.budget-save-bar button','Save changes');ready("!document.querySelector('.budget-save-bar')")
+            cash=next(a['id'] for a in saved['accounts'] if a['name']=='UI manual cash')
+            def post_api(path,body,method='POST'):
+                req=urllib.request.Request(url+'/api'+path,data=json.dumps(body).encode(),headers={'content-type':'application/json','x-finance-request':'1'},method=method)
+                return json.load(urllib.request.urlopen(req))
+            post_api('/transactions',{'account_id':cash,'kind':'income','amount_minor':20000,'date':date.today().isoformat(),'merchant':'Synthetic budget paycheck'})
+            js('location.reload()');ready("document.querySelector('.unified-workspace') && document.querySelector('.hero-value')")
+            nav('Budgets');ready("document.querySelector('.budget-table')")
+            click('.budget-toolbar .segmented button:nth-child(3)');ready("document.querySelector('.budget-card-row')?.textContent.includes('Synthetic budget paycheck')")
+            click('button','Suggest split');ready("document.querySelector('.budget-inspector[open]')")
+            assert js("document.querySelector('input[aria-label=\"Split to "+budget_category+"\"]').value")=='50.00'
+            click('.budget-inspector button','Apply split');ready("!document.querySelector('.budget-inspector[open]')")
+            ready("document.querySelector('.budget-workspace')?.textContent.includes('$150.00 unallocated')")
+            js("document.querySelector('.budget-history summary').click()")
+            click('.budget-history button','Undo allocation');ready("document.querySelector('.budget-workspace')?.textContent.includes('$200.00 unallocated')")
+            planpath='/plaid/live/preview/plan'
+            budget=json.load(urllib.request.urlopen(url+'/api'+planpath+'?month='+date.today().isoformat()[:7]))
+            for i,cat in enumerate(budget['categories'][:3]):
+                post_api(planpath+'/categories/'+str(cat['id']),{'group':cat['group'] if i==0 else ['','Lifestyle','Savings goals'][i],'bucket':['needs','wants','savings'][i],'target_minor':20000,'target_type':'monthly'},'PUT')
+            js('location.reload()');ready("document.querySelector('.unified-workspace') && document.querySelector('.hero-value')")
+            nav('Budgets');ready("document.querySelector('.budget-toolbar>button')")
+            js("document.querySelector('.budget-toolbar>button').click()")
+            ready("document.querySelector('.budget-inspector select')")
+            change('.budget-inspector select','ratio');click('.budget-inspector button','Save budget')
+            ready("!document.querySelector('.budget-inspector[open]') && document.querySelector('.budget-toolbar>button')?.textContent.includes('50 / 30 / 20')")
+            click('.budget-toolbar .segmented button:nth-child(3)');click('button','Suggest split')
+            ready("document.querySelector('.budget-inspector[open]')")
+            for cat,value in zip(budget['categories'][:3],['100.00','60.00','40.00']):
+                assert js("document.querySelector('input[aria-label=\"Split to "+cat['name']+"\"]').value")==value
+            click('.budget-inspector button','Apply split');ready("!document.querySelector('.budget-inspector[open]')")
+            ready("document.querySelector('.budget-workspace')?.textContent.includes('No new income waiting')")
+            click('.budget-toolbar button','Plan')
+            print('Budget limits, opening anchor, target, assignment, partial income/undo and exact 50/30/20 split passed.',flush=True)
             for width in (1440,390):
                 cdp('Emulation.setDeviceMetricsOverride',{'width':width,'height':1000 if width>850 else 844,'deviceScaleFactor':1,'mobile':False})
                 for theme in ('dark','light'):
@@ -134,6 +181,16 @@ def run():
                         assert not js("Boolean(document.querySelector('[aria-label=\"Workspace\"],[aria-label=\"Sandbox scenario\"]'))")
                         if page=='Bank sync':ready("document.querySelector('.live-readiness')");assert not js("Boolean(document.querySelector('.manual-selection'))")
                         if page=='Backup & restore':assert js("[...document.querySelectorAll('[aria-label=\"Backup workspace\"] option')].every(o=>!o.textContent.includes('Sandbox'))")
+                        if page=='Budgets':
+                            ready("document.querySelector('.budget-table')")
+                            shot(f'{width}-{theme}-budget-plan')
+                            js("document.querySelector('.budget-group summary').click()")
+                            shot(f'{width}-{theme}-budget-collapsed')
+                            js("document.querySelector('.budget-group summary').click()")
+                            click('.budget-toolbar button','Spending breakdown');shot(f'{width}-{theme}-budget-spending')
+                            click('.budget-toolbar .segmented button:nth-child(3)');shot(f'{width}-{theme}-budget-income')
+                            click('.budget-toolbar button','Plan');js("document.querySelector('.budget-table .text-button').click()")
+                            ready("document.querySelector('.budget-inspector[open]')");shot(f'{width}-{theme}-budget-category-inspector');close()
                         shot(f'{width}-{theme}-production-'+page.lower().replace(' ','-').replace('&','and'))
                     nav('Bank sync');ready("document.querySelector('.startup-status')?.textContent.includes('Startup finished')")
                     js("document.querySelector('.startup-status summary').click()")
@@ -141,7 +198,7 @@ def run():
                     assert 'snapshot' in js("document.querySelector('.startup-status').textContent")
                     js("document.querySelector('.startup-status summary').click()")
                     fixture=database.parent/'ui-startup.json'
-                    status={'enabled':True,'running':True,'phase':'A very long institution name · balances','version':10,'finished_at':None,'results':[]}
+                    status={'enabled':True,'running':True,'phase':'A very long institution name Â· balances','version':10,'finished_at':None,'results':[]}
                     fixture.write_text(json.dumps(status));js('location.reload()')
                     ready("document.querySelector('.startup-toast')?.textContent.includes('Updating your accounts')")
                     shot(f'{width}-{theme}-production-startup-loading')
@@ -169,8 +226,9 @@ def run():
                     ready("document.querySelector('.account-inspector[open]')");shot(f'{width}-{theme}-production-manual-inspector')
                     assert 'Record balance' in js("document.querySelector('.account-inspector[open]').textContent")
                     print(f'{width}-{theme}: unified production pages, manual editor and no Sandbox controls passed.',flush=True)
+            count_before=len(list((folder/'backups').glob('*.finance-backup.zip')))
             nav('Backup & restore');click('button','Back up all accounts');ready("document.querySelector('.backup-message')?.textContent.includes('All accounts backed up')")
-            assert len(list((folder/'backups').glob('*.finance-backup.zip')))==2
+            assert len(list((folder/'backups').glob('*.finance-backup.zip')))==count_before+2
             with connect(database.with_suffix('.plaid-live.db')) as db:
                 assert db.execute("SELECT COUNT(*) FROM accounts WHERE source<>'manual' AND active=1").fetchone()[0]==10
                 assert db.execute('SELECT COUNT(*) FROM multi_connections WHERE item_id IS NOT NULL').fetchone()[0]==0

@@ -397,7 +397,7 @@ def budget_router(path, *, sandbox=False, initialize=lambda:None, source_databas
                 for tx in rows:
                     if not tx['pending'] and tx['account_id'] in cash and tx['direction']>0 and tx['kind'] not in {'income','refund'} and tx['other_account_id'] not in cash:
                         saved['baseline'][tx['source_id']]=tx['signature']
-            saved['acknowledged']={ev['source']:lookup.get(ev['source']) for ev in data['history'] if ev['source']}
+            saved['acknowledged']={row['source']:lookup.get(row['source']) for row in db.execute('SELECT DISTINCT source FROM budget_events WHERE source IS NOT NULL')}
             db.execute('UPDATE budget_settings SET payload=? WHERE id=1',(json.dumps(saved),))
             db.execute('INSERT INTO budget_events(batch,date,category,amount_minor,kind,note,created_at) VALUES (?,?,?,?,?,?,?)',
                 (uuid4().hex,date.today().isoformat(),'c:0',adjustment,'reconcile','Reviewed funding reconciliation',datetime.now(timezone.utc).isoformat()))
