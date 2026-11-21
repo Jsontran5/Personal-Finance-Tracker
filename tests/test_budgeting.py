@@ -154,3 +154,23 @@ class BudgetTests(TestCase):
         investing=self.account('Investment','investment',1000000)
         r=self.client.post('/api/plan/setup',json={'token':self.get()['opening_token'],'cash_accounts':[investing],'method':'zero'})
         self.assertEqual(r.status_code,422,r.text)
+    def test_uncategorized_overspending_can_be_funded_without_changing_transaction(self):
+        self.setup();tx=self.tx('expense',10000,category_id=None)
+        unknown=next(c for c in self.get()['categories'] if c['id']==0)
+        self.assertEqual(unknown['available_minor'],-10000)
+        self.action([{'category':'c:0','amount_minor':10000}])
+        self.assertEqual(next(c for c in self.get()['categories'] if c['id']==0)['available_minor'],0)
+        self.assertEqual(self.get()['ready_minor'],90000)
+        with connect(self.db) as db:
+            self.assertIsNone(db.execute('SELECT category_id FROM transactions WHERE id=?',(tx,)).fetchone()[0])
+    def test_partial_unassignment_can_repair_negative_ready_balance(self):
+        self.setup();start=(date.today().replace(day=1)-timedelta(days=70)).replace(day=1)
+        month=(start.replace(day=28)+timedelta(days=4)).replace(day=1).isoformat()[:7]
+        with connect(self.db,write=True) as db:
+            saved=json.loads(db.execute('SELECT payload FROM budget_settings').fetchone()[0]);saved['start_date']=start.isoformat();saved['baseline']={}
+            db.execute('UPDATE budget_settings SET payload=?',(json.dumps(saved),))
+            db.execute('INSERT INTO budget_events(batch,date,category,amount_minor,kind,note,created_at) VALUES (?,?,?,?,?,?,?)',('seed',start.isoformat(),f'c:{self.category}',80000,'assign','fixture',start.isoformat()))
+            db.execute('INSERT INTO transactions(account_id,kind,amount_minor,date,merchant,notes) VALUES (?,?,?,?,?,?)',(self.cash,'expense',50000,start.isoformat(),'Overspending',''))
+        self.assertEqual(self.get(month)['ready_minor'],-30000)
+        self.action([{'category':f'c:{self.category}','amount_minor':-10000}],month=month)
+        self.assertEqual(self.get(month)['ready_minor'],-20000)

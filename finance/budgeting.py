@@ -218,7 +218,9 @@ def projection(db, sandbox, month):
         if limit is None and meta.get('repeat_monthly'):
             prior=db.execute(f'SELECT limit_minor FROM {table} WHERE category_id=? AND month<? ORDER BY month DESC LIMIT 1',(cat['id'],month)).fetchone()
             limit=prior[0] if prior else None
-        need=max(0,target-assigned[key]) if meta.get('target_type','monthly') in {'monthly','contribution'} else max(0,target-max(available,0))
+        target_type=meta.get('target_type','monthly')
+        basis=assigned[key] if target_type=='contribution' else max(0,available+funding_actual[key]) if target_type=='monthly' else max(available,0)
+        need=max(0,target-basis)
         if meta.get('target_type')=='dated' and meta.get('target_date'):
             end=date.fromisoformat(meta['target_date']); nowmonth=date.fromisoformat(month+'-01')
             months=max(1,(end.year-nowmonth.year)*12+end.month-nowmonth.month+1)
@@ -228,6 +230,12 @@ def projection(db, sandbox, month):
             'repeat_monthly':bool(meta.get('repeat_monthly')),'limit_minor':limit,'assigned_minor':assigned[key],
             'activity_minor':-funding_actual[key],'available_minor':available,'cash_available_minor':balances[key],
             'actual_minor':actual[cat['id']],'previous_minor':previous[cat['id']],'need_minor':need,'transaction_ids':txids[cat['id']]})
+    unknown_debt=sum(v for (category,_),v in unpaid.items() if category=='c:0')
+    if actual[None] or balances['c:0'] or assigned['c:0'] or unknown_debt:
+        result.append({'id':0,'name':'Uncategorized','kind':'expense','group':'Needs attention','bucket':'needs','target_minor':0,
+            'target_type':'monthly','target_date':None,'repeat_monthly':False,'limit_minor':None,'assigned_minor':assigned['c:0'],
+            'activity_minor':-funding_actual['c:0'],'available_minor':balances['c:0']-unknown_debt,'cash_available_minor':balances['c:0'],
+            'actual_minor':actual[None],'previous_minor':previous[None],'need_minor':max(0,unknown_debt-balances['c:0']),'transaction_ids':txids[None]})
     transactions=[{k:tx.get(k) for k in ['id','source_id','account_id','account_name','date','merchant','amount_minor','kind','category_id','pending','needs_review','transfer_pair_id']} for tx in current]
     transfers=[{**tx,'linked':tx['source_id'] in used_sources} for tx in eligible if tx['account_id'] in cash and tx['direction']<0 and (tx['kind'] in {'transfer','investment'} or tx.get('transfer_pair_id')) and tx['other_account_id'] not in cash|cards]
     return {'month':month,'settings':settings,'token':token,'accounts':accounts,'categories':result,'ready_minor':ready,
@@ -441,14 +449,14 @@ def budget_router(path, *, sandbox=False, initialize=lambda:None, source_databas
                     raise HTTPException(422,'Cannot move more than the funded cash available.')
                 if item.kind=='use' and (line.category.startswith('card:') or line.amount_minor>max(available,0)):
                     raise HTTPException(422,'Choose a savings/debt goal with enough assigned cash for this transfer.')
-            if item.kind!='use' and total>data['ready_minor']:
+            if item.kind!='use' and total>0 and total>data['ready_minor']:
                 raise HTTPException(422,'Not enough money ready to assign. Move existing funds or reduce the amount.')
             batch=uuid4().hex;stamp=datetime.now(timezone.utc).isoformat()
             effective=max(data['settings']['start_date'],min(date.today().isoformat(),month+'-28')) if month<date.today().isoformat()[:7] else date.today().isoformat()
             for line in item.lines:
                 db.execute('INSERT INTO budget_events(batch,date,category,amount_minor,kind,source,signature,note,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
                     (batch,effective,line.category,line.amount_minor,item.kind,item.source,source['signature'] if source else None,item.note,stamp))
-            if item.kind!='use' and month<date.today().isoformat()[:7] and projection(db,sandbox,date.today().isoformat()[:7])['ready_minor']<0:
+            if item.kind!='use' and total>0 and month<date.today().isoformat()[:7] and projection(db,sandbox,date.today().isoformat()[:7])['ready_minor']<0:
                 raise HTTPException(422,'This historical assignment would over-allocate current cash. Reduce it or move existing funds.')
         return {'batch':batch}
     @router.post('/undo/{batch}')
@@ -474,7 +482,14 @@ def budget_router(path, *, sandbox=False, initialize=lambda:None, source_databas
 def overview_budgets(db,sandbox,month,budgets):
     """Keep Overview's small budget preview consistent with the funded Plan."""
     settings=config(db)
-    if settings['method']=='categories':return budgets,settings['method']
+    if settings['method']=='categories':
+        table='preview_budgets' if sandbox else 'monthly_budgets'
+        repeated={row[0] for row in db.execute('SELECT category_id FROM budget_categories WHERE repeat_monthly=1')}
+        for row in budgets:
+            if row['limit_minor'] is None and row['id'] in repeated:
+                prior=db.execute(f'SELECT limit_minor FROM {table} WHERE category_id=? AND month<? ORDER BY month DESC LIMIT 1',(row['id'],month)).fetchone()
+                if prior:row['limit_minor']=prior[0]
+        return budgets,settings['method']
     data=projection(db,sandbox,month);lookup={c['id']:c for c in data['categories']}
     result=[]
     for row in budgets:
