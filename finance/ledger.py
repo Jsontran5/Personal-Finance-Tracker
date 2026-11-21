@@ -121,7 +121,9 @@ def overview(db: sqlite3.Connection, day: date, month: str):
         SELECT snapshot_id,account_id,balance_minor FROM net_worth_snapshot_accounts
         WHERE snapshot_id IN (SELECT MAX(id) FROM net_worth_snapshots GROUP BY effective_date)
     """))
-    return {**totals(accounts), "accounts": accounts, "categories": categories, "budgets": budgets,
+    from .budgeting import overview_budgets
+    budgets,method=overview_budgets(db,False,month,budgets)
+    return {**totals(accounts), "accounts": accounts, "categories": categories, "budgets": budgets,"budget_method":method,
             "spending": spending_report(transactions, previous_transactions, month, day),
             "transactions": transactions, "history": history, "income_minor": income,
             "spending_minor": spending, "cash_flow_minor": income - spending,

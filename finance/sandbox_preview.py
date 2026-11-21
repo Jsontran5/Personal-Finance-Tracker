@@ -193,12 +193,12 @@ def preview_overview(db, month):
     previous_transactions = preview_transactions(db, previous) if previous else []
     _, _, previous_actual = monthly_activity(previous_transactions)
     history = snapshot_history(db)
+    from .budgeting import overview_budgets
+    budgets,method=overview_budgets(db,True,month,[{**c,'limit_minor':limits.get(c['id']),'actual_minor':actual.get(c['id'],0),'previous_actual_minor':previous_actual.get(c['id'],0)} for c in categories if c['kind']=='expense'])
     return {
         **totals(accounts), "accounts": accounts, "transactions": transactions, "categories": categories,
         "spending": spending_report(transactions, previous_transactions, month, date.today()),
-        "budgets": [{**c, "limit_minor": limits.get(c["id"]), "actual_minor": actual.get(c["id"], 0),
-                     "previous_actual_minor": previous_actual.get(c["id"], 0)}
-                    for c in categories if c["kind"] == "expense"],
+        "budgets":budgets,"budget_method":method,
         "history": history, "income_minor": income, "spending_minor": spending,
         "cash_flow_minor": income - spending, "uncategorized_minor": actual.get(None, 0),
         "pending_count": sum(t["pending"] for t in transactions),

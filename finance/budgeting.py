@@ -40,7 +40,7 @@ def digest(value):
 
 
 def signature(tx):
-    return digest([tx.get(key) for key in ['source_id','account_id','destination_id','date','amount_minor','kind','category_id','pending','needs_review','transfer_pair_id']])
+    return digest([tx.get(key) for key in ['source_id','account_id','destination_id','other_account_id','direction','date','amount_minor','kind','category_id','pending','needs_review','transfer_pair_id']])
 
 
 def ledger(db, sandbox):
@@ -90,7 +90,7 @@ def projection(db, sandbox, month):
     limits = dict(db.execute(f'SELECT category_id,limit_minor FROM {table} WHERE month=?',(month,)))
     events = [dict(row) for row in db.execute('SELECT e.* FROM budget_events e LEFT JOIN budget_undos u ON e.batch=u.batch WHERE u.batch IS NULL ORDER BY e.id')]
     token = digest([settings, accounts, [{k:v for k,v in tx.items() if k!='observed_at'} for tx in rows], events, metadata, limits])
-    current = [tx for tx in rows if tx['date'][:7]==month and tx['date']<=date.today().isoformat()]
+    current = [tx for tx in rows if tx['currency']=='USD' and tx['date'][:7]==month and tx['date']<=date.today().isoformat()]
     actual, previous, txids = defaultdict(int), defaultdict(int), defaultdict(list)
     for tx in rows:
         if tx['currency']!='USD' or tx['pending'] or tx['needs_review'] or tx.get('transfer_pair_id') or tx['kind'] not in {'expense','refund'} or tx['date']>date.today().isoformat():
@@ -109,7 +109,8 @@ def projection(db, sandbox, month):
     baseline = settings.get('baseline',{})
     start = settings.get('start_date')
     until = min(month+'-31', date.today().isoformat())
-    eligible = [tx for tx in rows if tx['currency']=='USD' and not tx['pending'] and not tx['needs_review'] and start and start<=tx['date']<=until and tx['source_id'] not in baseline]
+    eligible = [tx for tx in rows if tx['currency']=='USD' and not tx['pending'] and not tx['needs_review'] and start and start<=tx['date']<=until and tx['source_id'] not in baseline
+        and not (tx['kind']=='investment' and (not sandbox or tx['source_id'].startswith('m:')))]
     bysource = {tx['source_id']:tx for tx in rows}
     for key, original in baseline.items():
         if key not in bysource or bysource[key]['signature']!=original:
@@ -139,6 +140,7 @@ def projection(db, sandbox, month):
             for key,value in list(balances.items()):
                 if value < 0:
                     ready+=value; balances[key]=0
+            unpaid.clear()  # Prior unfunded credit spending is now existing card debt.
             last_month=day[:7]
         if kind=='event':
             key=item['category']; value=item['amount_minor']
@@ -201,6 +203,12 @@ def projection(db, sandbox, month):
         for key,value in list(balances.items()):
             if value<0:
                 ready+=value; balances[key]=0
+        unpaid.clear()
+    modeled_cash=ready+sum(balances.values())+sum(reserves.values())
+    saved_cash=sum(a['balance_minor'] or 0 for a in accounts if a['id'] in cash)
+    difference=saved_cash-modeled_cash
+    if start and month==date.today().isoformat()[:7] and difference:
+        warnings.append('Opening funding and recorded activity differ from saved cash balances. Review funding before assigning more.')
     result=[]
     for cat in cats:
         meta=metadata.get(cat['id'],{})
@@ -220,13 +228,15 @@ def projection(db, sandbox, month):
             'repeat_monthly':bool(meta.get('repeat_monthly')),'limit_minor':limit,'assigned_minor':assigned[key],
             'activity_minor':-funding_actual[key],'available_minor':available,'cash_available_minor':balances[key],
             'actual_minor':actual[cat['id']],'previous_minor':previous[cat['id']],'need_minor':need,'transaction_ids':txids[cat['id']]})
-    transactions=[{k:tx.get(k) for k in ['id','source_id','account_id','account_name','date','merchant','amount_minor','kind','category_id','pending','needs_review']} for tx in current]
+    transactions=[{k:tx.get(k) for k in ['id','source_id','account_id','account_name','date','merchant','amount_minor','kind','category_id','pending','needs_review','transfer_pair_id']} for tx in current]
     transfers=[{**tx,'linked':tx['source_id'] in used_sources} for tx in eligible if tx['account_id'] in cash and tx['direction']<0 and (tx['kind'] in {'transfer','investment'} or tx.get('transfer_pair_id')) and tx['other_account_id'] not in cash|cards]
     return {'month':month,'settings':settings,'token':token,'accounts':accounts,'categories':result,'ready_minor':ready,
+        'reconciliation':{'saved_cash_minor':saved_cash,'modeled_cash_minor':modeled_cash,'difference_minor':difference},
         'receipts':receipts,'transfers':transfers,'reserves':[{'account_id':a['id'],'name':a['name'],'reserved_minor':reserves[a['id']],
             'balance_minor':a['balance_minor'],'unfunded_minor':sum(v for (_,card),v in unpaid.items() if card==a['id'])} for a in accounts if a['id'] in cards],
         'warnings':list(dict.fromkeys(warnings)), 'uncategorized_minor':actual[None], 'unbudgeted_minor':sum(c['actual_minor'] for c in result if c['limit_minor'] is None),
-        'transactions':transactions,'history':[dict(row) for row in db.execute('SELECT e.*,u.batch IS NOT NULL AS undone FROM budget_events e LEFT JOIN budget_undos u ON e.batch=u.batch ORDER BY e.id DESC LIMIT 200')],
+        'transactions':transactions,'previous_transactions':[{k:tx.get(k) for k in ['id','account_id','category_id','kind','amount_minor','pending','needs_review','transfer_pair_id']} for tx in rows if tx['currency']=='USD' and tx['date'][:7]==previous_month(month)],
+        'history':[dict(row) for row in db.execute('SELECT e.*,u.batch IS NOT NULL AS undone FROM budget_events e LEFT JOIN budget_undos u ON e.batch=u.batch ORDER BY e.id DESC LIMIT 200')],
         'opening_token':digest([accounts,[(tx['source_id'],tx['signature']) for tx in rows]])}
 
 
@@ -316,7 +326,7 @@ def budget_router(path, *, sandbox=False, initialize=lambda:None, source_databas
                 'opening_minor':sum(accounts[i]['balance_minor'] for i in cash),'start_date':date.today().isoformat(),
                 'opening_balances':{str(i):accounts[i]['balance_minor'] for i in cash|cards},
                 'baseline':{tx['source_id']:tx['signature'] for tx in rows if not tx['pending'] and tx['date']<=date.today().isoformat()},'backup_id':backup['id']}
-            db.execute('INSERT INTO budget_settings VALUES (1,?)',(json.dumps(settings),))
+            db.execute('INSERT INTO budget_settings VALUES (1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload',(json.dumps(settings),))
         return {'backup':backup['id']}
     @router.put('/settings')
     def settings(item:Settings,month:str):
@@ -333,6 +343,7 @@ def budget_router(path, *, sandbox=False, initialize=lambda:None, source_databas
     @router.put('/categories/{identifier}')
     def category(identifier:int,item:CategoryEdit):
         prepare()
+        if not item.group.strip():raise HTTPException(422,'Enter a category group name.')
         if item.target_type=='dated' and not item.target_date:
             raise HTTPException(422,'Choose a date for the savings goal.')
         with connect(path,write=True) as db:
@@ -368,6 +379,8 @@ def budget_router(path, *, sandbox=False, initialize=lambda:None, source_databas
     @router.post('/reconcile')
     def reconcile(item:dict,month:str):
         month_valid(month);prepare()
+        if month!=date.today().isoformat()[:7]:
+            raise HTTPException(422,'Reconcile funding in the current month using current saved balances.')
         adjustment=item.get('adjustment_minor',0)
         if type(adjustment)!=int or abs(adjustment)>1_000_000_000_000 or item.get('confirmed') is not True:
             raise HTTPException(422,'Review balances and confirm this budget-only adjustment.')
@@ -377,6 +390,13 @@ def budget_router(path, *, sandbox=False, initialize=lambda:None, source_databas
             if not saved.get('start_date'):raise HTTPException(409,'Set up opening cash first.')
             _,rows=ledger(db,sandbox);lookup={tx['source_id']:tx['signature'] for tx in rows}
             saved['baseline']={key:lookup[key] for key in saved['baseline'] if key in lookup}
+            if adjustment:
+                # A reviewed cash adjustment absorbs unresolved incoming movements;
+                # subsequent classification must not introduce that cash twice.
+                cash=set(saved['cash_accounts'])
+                for tx in rows:
+                    if not tx['pending'] and tx['account_id'] in cash and tx['direction']>0 and tx['kind'] not in {'income','refund'} and tx['other_account_id'] not in cash:
+                        saved['baseline'][tx['source_id']]=tx['signature']
             saved['acknowledged']={ev['source']:lookup.get(ev['source']) for ev in data['history'] if ev['source']}
             db.execute('UPDATE budget_settings SET payload=? WHERE id=1',(json.dumps(saved),))
             db.execute('INSERT INTO budget_events(batch,date,category,amount_minor,kind,note,created_at) VALUES (?,?,?,?,?,?,?)',
@@ -391,7 +411,7 @@ def budget_router(path, *, sandbox=False, initialize=lambda:None, source_databas
             data=state(db,month,item.token)
             if not data['settings'].get('start_date') or month<data['settings']['start_date'][:7]:
                 raise HTTPException(409,'Set up opening cash before assigning money.')
-            if data['warnings'] and any('changed' in w or 'opening' in w for w in data['warnings']):
+            if data['warnings'] and any('changed' in w.lower() or 'opening' in w.lower() for w in data['warnings']):
                 raise HTTPException(409,'Reconcile changed income/opening records before adding allocations.')
             allowed={'c:'+str(c['id']) for c in data['categories']}|{'card:'+str(c['account_id']) for c in data['reserves']}
             if len({line.category for line in item.lines})!=len(item.lines) or any(line.category not in allowed for line in item.lines):
@@ -428,6 +448,8 @@ def budget_router(path, *, sandbox=False, initialize=lambda:None, source_databas
             for line in item.lines:
                 db.execute('INSERT INTO budget_events(batch,date,category,amount_minor,kind,source,signature,note,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
                     (batch,effective,line.category,line.amount_minor,item.kind,item.source,source['signature'] if source else None,item.note,stamp))
+            if item.kind!='use' and month<date.today().isoformat()[:7] and projection(db,sandbox,date.today().isoformat()[:7])['ready_minor']<0:
+                raise HTTPException(422,'This historical assignment would over-allocate current cash. Reduce it or move existing funds.')
         return {'batch':batch}
     @router.post('/undo/{batch}')
     def undo(batch:str):
@@ -447,3 +469,16 @@ def budget_router(path, *, sandbox=False, initialize=lambda:None, source_databas
             db.execute('INSERT OR REPLACE INTO budget_skipped VALUES (?,?)',(receipt['source_id'],receipt['signature']))
         return {'skipped':True}
     return router
+
+
+def overview_budgets(db,sandbox,month,budgets):
+    """Keep Overview's small budget preview consistent with the funded Plan."""
+    settings=config(db)
+    if settings['method']=='categories':return budgets,settings['method']
+    data=projection(db,sandbox,month);lookup={c['id']:c for c in data['categories']}
+    result=[]
+    for row in budgets:
+        c=lookup[row['id']]
+        if c['assigned_minor'] or c['available_minor'] or c['activity_minor']:
+            result.append({**row,'limit_minor':max(0,c['available_minor']-c['activity_minor']),'actual_minor':-c['activity_minor']})
+    return result,settings['method']
