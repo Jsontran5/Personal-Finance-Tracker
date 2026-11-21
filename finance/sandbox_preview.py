@@ -158,6 +158,7 @@ def record_preview_snapshot(db):
         INSERT INTO preview_snapshot_accounts
         SELECT ?,id,name,currency,current_minor,source,checked_at FROM accounts WHERE active=1
     """, (snapshot,))
+    return snapshot
 
 
 def preview_transactions(db, month):

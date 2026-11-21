@@ -17,7 +17,7 @@ class ProductionAppTests(TestCase):
         self.folder=TemporaryDirectory()
         self.root=Path(self.folder.name)
         self.database=self.root/'data/finance.db'
-        self.environment=patch.dict('os.environ',{'APP_ENV':'production','PLAID_LIVE_ENABLED':'false'})
+        self.environment=patch.dict('os.environ',{'APP_ENV':'production','PLAID_LIVE_ENABLED':'false','APP_STARTUP_ENABLED':'false'})
         self.environment.start()
         self.client=TestClient(create_app(self.database),base_url='http://127.0.0.1',headers={'x-finance-request':'1'})
         self.client.__enter__()

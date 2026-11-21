@@ -5,6 +5,7 @@ from tempfile import NamedTemporaryFile
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 import sqlite3
+import asyncio
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -163,14 +164,28 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
     @asynccontextmanager
     async def lifespan(_app):
         initialize(database)
-        yield
+        maintenance.start()
+        try:
+            yield
+        finally:
+            await asyncio.to_thread(maintenance.close)
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
     app.include_router(sandbox_router(database))
     app.include_router(investment_sandbox_router(database))
     app.include_router(combined_router(database))
-    app.include_router(live_router(database))
+    live = live_router(database)
+    app.include_router(live)
+    from .startup import StartupMaintenance
+    from .app_config import startup_enabled
+    maintenance = StartupMaintenance(database, live.startup_operations,
+        app_config['unified'] and startup_enabled(database.parent.parent))
+    app.state.startup_maintenance = maintenance
+
+    @app.get('/api/startup')
+    def startup_status():
+        return maintenance.status()
     app.include_router(manual_debt_router(database))
     app.include_router(review_router(database, after_write=lambda db: record_net_worth(db, date.today())), prefix='/api')
     app.include_router(backup_router(database))
@@ -180,6 +195,8 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
         if app_config['unified'] and (request.url.path.startswith(('/api/plaid/sandbox', '/api/plaid/investments-sandbox', '/api/plaid/combined-sandbox', '/api/sandbox-scenario', '/api/chart-selection/sandbox'))):
             return JSONResponse({'detail': 'Sandbox is available only with APP_ENV=development.'}, status_code=404)
         if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            if maintenance.status()['running'] and (request.url.path == '/api/backups/restore' or request.url.path.endswith('/sync')):
+                return JSONResponse({'detail': 'Startup maintenance is running. Wait for it to finish before syncing or restoring.'}, status_code=409)
             origin = request.headers.get("origin")
             try:
                 valid_origin = origin is None or (

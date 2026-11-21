@@ -631,5 +631,22 @@ def combined_router(database: Path, *, client_factory=plaid_client, production=F
         refresh_manual(database, path)
         return {'selected': sorted(set(item.account_ids))}
 
+    if production:
+        def startup_connections():
+            initialize()
+            with connect(path) as db:
+                return [dict(row) for row in db.execute('''SELECT c.id,c.name,c.profile,c.needs_reauth,
+                    EXISTS(SELECT 1 FROM live_investment_connections i WHERE i.connection_id=c.id) AS investments_enabled,
+                    EXISTS(SELECT 1 FROM live_investment_connections i WHERE i.connection_id=c.id AND i.consented=0) AS investment_consent_pending
+                    FROM multi_connections c WHERE c.item_id IS NOT NULL AND c.token IS NOT NULL ORDER BY c.id''')]
+
+        def startup_snapshot():
+            initialize()
+            with connect(path, write=True) as db:
+                identifier = record_preview_snapshot(db)
+                return {'id': identifier, 'message': 'Saved current balances with their original update times. Charts use the latest daily observations.' if identifier else 'No saved account balances to snapshot yet.'}
+
+        # Reuse the exact same server-side sync guards, consent checks and error handling.
+        router.startup_operations = {'connections': startup_connections, 'sync': sync, 'snapshot': startup_snapshot}
     router.include_router(sandbox_preview_router(database, initialize, path=path))
     return router

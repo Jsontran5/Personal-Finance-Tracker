@@ -187,6 +187,13 @@ class BackupStore:
         return chart_path(self.database, mode)
 
     def resolve(self, identifier):
+        if re.fullmatch(r'automatic/[a-f0-9]{32}/[A-Za-z0-9][A-Za-z0-9._-]{0,130}\.finance-backup\.zip', identifier):
+            path = (self.directory / identifier).resolve()
+            expected = (self.directory / 'automatic' / identifier.split('/')[1]).resolve()
+            automatic = (self.directory / 'automatic').resolve()
+            if automatic.parent == self.directory.resolve() and expected.parent == automatic and path.parent == expected and path.is_file() and path.stat().st_size <= MAX_SIZE:
+                return path
+            raise ValueError('Automatic backup is missing or invalid.')
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,179}', identifier) or not identifier.endswith(('.db', '.finance-backup.zip')):
             raise ValueError('Choose a backup from the project backup list.')
         path = (self.directory / identifier).resolve()
@@ -198,10 +205,15 @@ class BackupStore:
         if not self.directory.is_dir():
             return []
         records = []
-        for path in self.directory.iterdir():
-            if path.name.endswith(('.finance-backup.zip', '.db')) and path.is_file() and path.resolve().parent == self.directory.resolve():
+        for path in [*self.directory.iterdir(), *self.directory.glob('automatic/*/*.finance-backup.zip')]:
+            identifier = path.relative_to(self.directory).as_posix()
+            if path.name.endswith(('.finance-backup.zip', '.db')) and path.is_file():
+                try:
+                    self.resolve(identifier)
+                except ValueError:
+                    continue
                 stat = path.stat()
-                records.append({'id': path.name, 'size_bytes': stat.st_size,
+                records.append({'id': identifier, 'size_bytes': stat.st_size,
                                 'file_date': datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
                                 'format': 'bundle' if path.name.endswith('.zip') else 'legacy_database'})
         return sorted(records, key=lambda row: row['file_date'], reverse=True)[:500]
@@ -240,6 +252,16 @@ class BackupStore:
                 bundle.writestr('settings.json', settings_bytes)
             archive.replace(self.directory / identifier)
             return {'id': identifier, 'created_at': manifest['created_at'], **info, 'workspace': mode, 'recovery': recovery}
+
+    def create_pair(self):
+        from .live_setup import initialize_live
+        from .manual_mirror import refresh_manual
+        live = self.database.with_suffix('.plaid-live.db')
+        with database_lock(self.guard), database_lock(self.database), database_lock(live):
+            with connect(live, write=True) as db:
+                initialize_live(db)
+            refresh_manual(self.database, live, include_all=True)
+            return {'manual': self.create('personal'), 'connected': self.create('live')}
 
     @contextmanager
     def staged(self, identifier):
@@ -452,7 +474,7 @@ def backup_router(database):
     def list_backups():
         records = guarded(store.list)
         if unified:
-            records = [row for row in records if row['id'].startswith(('personal-', 'live-', 'recovery-personal-', 'recovery-live-'))]
+            records = [row for row in records if row['id'].startswith('automatic/') or row['id'].startswith(('personal-', 'live-', 'recovery-personal-', 'recovery-live-'))]
         return {'backups': records}
 
     @router.post('', status_code=201)
@@ -465,16 +487,7 @@ def backup_router(database):
     def create_all():
         if not unified:
             raise HTTPException(409, 'Use an individual workspace backup in development mode.')
-        def work():
-            from .live_setup import initialize_live
-            from .manual_mirror import refresh_manual
-            live = database.with_suffix('.plaid-live.db')
-            with database_lock(store.guard), database_lock(database), database_lock(live):
-                with connect(live, write=True) as db:
-                    initialize_live(db)
-                refresh_manual(database, live, include_all=True)
-                return {'manual': store.create('personal'), 'connected': store.create('live')}
-        return guarded(work)
+        return guarded(store.create_pair)
 
     @router.get('/preview')
     def preview(id: str):
