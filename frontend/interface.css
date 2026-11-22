@@ -693,3 +693,7 @@ button:disabled { opacity: 1; color: var(--muted); background: var(--raised); cu
 .budget-transaction-link:active { background:color-mix(in srgb,var(--accent) 10%,var(--surface)); }
 .budget-transaction-link strong,.budget-transaction-link small { overflow-wrap:anywhere; }
 .budget-transaction-link>small:last-child { color:var(--accent); }
+
+.budget-grouping { display:flex; align-items:center; gap:12px; color:var(--muted); font-size:.85rem; flex-wrap:wrap; }
+.budget-grouping select { width:auto; min-width:180px; }
+.budget-group>.analytics-note { padding:20px; margin:0; }

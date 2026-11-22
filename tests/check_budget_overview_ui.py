@@ -28,12 +28,16 @@ def run():
             today=date.today().isoformat();month=today[:7]
             account=c.post('/api/accounts',json=dict(name='Synthetic checking with a long account name',kind='checking',opening_balance_minor=2400000,date=today)).json()['id']
             plan=c.get('/api/plan?month='+month).json();category=plan['categories'][0]['id']
-            for kind,amount in [('income',500000),('expense',120000),('refund',10000)]:
+            for kind,amount in [('income',500000),('expense',119000),('refund',10000)]:
                 r=c.post('/api/transactions',json=dict(account_id=account,kind=kind,amount_minor=amount,date=today,merchant='Synthetic '+kind,category_id=category if kind!='income' else None));assert r.status_code==201,r.text
+            r=c.post('/api/transactions',json=dict(account_id=account,kind='expense',amount_minor=1000,date=today,merchant='Synthetic uncategorized purchase'));assert r.status_code==201,r.text
             for i in range(16):
                 r=c.post('/api/accounts',json=dict(name='Another synthetic account with a long institution name '+str(i),kind='checking',opening_balance_minor=0,date=today));assert r.status_code==201,r.text
             for i in range(30):
                 r=c.post('/api/categories',json=dict(name='Long synthetic category for everyday purchases '+str(i),kind='expense'));assert r.status_code==201,r.text
+            for name,bucket in [('Shopping','wants'),('Utilities','savings')]:
+                cat=next(cat for cat in c.get('/api/plan?month='+month).json()['categories'] if cat['name']==name)
+                assert c.put('/api/plan/categories/'+str(cat['id']),json=dict(group='Everyday spending',bucket=bucket)).status_code==200
             plan=c.get('/api/plan?month='+month).json()
             assert c.put('/api/plan/settings?month='+month,json=dict(token=plan['token'],method='ratio',ratios=[50,30,20])).status_code==200
             # A different store uses its own IDs and bank classification editor.
@@ -120,7 +124,39 @@ def run():
             js("(()=>{for(const [name,value] of [['needs','60'],['wants','20'],['savings','20']]){const e=document.querySelector('input[name='+name+']');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,value);e.dispatchEvent(new Event('input',{bubbles:true}));}})()")
             click('Save budget');wait(lambda:js("!document.querySelector('dialog[open]')"));wait(lambda:js("Boolean(document.querySelector('.budget-monthly'))"))
             assert js("document.querySelector('.budget-monthly').innerText.includes('60 / 20 / 20')")
-            click('Detailed plan');wait(lambda:js("Boolean(document.querySelector('.budget-table'))"));shot('budget-overview-detailed-plan')
+            click('Detailed plan');wait(lambda:js("Boolean(document.querySelector('.budget-table'))"))
+            def select_group(value):
+                js("(()=>{const e=document.querySelector('select[aria-label=\"Group budget categories by\"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,"+json.dumps(value)+");e.dispatchEvent(new Event('change',{bubbles:true}));})()")
+            assert js("document.querySelector('select[aria-label=\"Group budget categories by\"]').value==='buckets'")
+            assert js("[...document.querySelectorAll('.budget-group summary strong')].map(e=>e.textContent).join('|')==='Needs|Wants|Savings & extra debt|Uncategorized'")
+            # Switching presentation must not reset an in-progress assignment edit.
+            js("(()=>{const e=document.querySelector('input[aria-label=\"Dining assigned\"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'12.34');e.dispatchEvent(new Event('input',{bubbles:true}));})()")
+            for width in (1440,390,320):
+                cdp('Emulation.setDeviceMetricsOverride',dict(width=width,height=1000 if width>850 else 844,deviceScaleFactor=1,mobile=False))
+                for theme in ('dark','light'):
+                    if js('document.documentElement.dataset.theme')!=theme:
+                        js("document.querySelector('.theme-toggle').click()")
+                        wait(lambda:js('!document.querySelector(".theme-toggle").disabled'))
+                    for grouping in ('buckets','custom'):
+                        select_group(grouping)
+                        expected_groups='Needs|Wants|Savings & extra debt|Uncategorized' if grouping=='buckets' else 'Everyday spending|Needs attention'
+                        assert js("[...document.querySelectorAll('.budget-group summary strong')].map(e=>e.textContent).join('|')")==expected_groups
+                        assert js("document.querySelector('input[aria-label=\"Dining assigned\"]').value==='12.34'")
+                        js("document.querySelector('.budget-grouping').scrollIntoView({block:'start'});document.querySelectorAll('.budget-group').forEach(e=>e.open=true)")
+                        shot(f'budget-grouping-{grouping}-{width}-{theme}')
+                        js("document.querySelectorAll('.budget-group').forEach(e=>e.open=false)")
+                        shot(f'budget-grouping-{grouping}-collapsed-{width}-{theme}')
+            select_group('buckets');js("document.querySelectorAll('.budget-group').forEach(e=>e.open=true)")
+            click('Discard edits')
+            # Changing a category bucket relocates its existing row, preserving its custom group.
+            js("[...document.querySelectorAll('.budget-table .text-button')].find(e=>e.textContent==='Dining').click()")
+            wait(lambda:js("Boolean(document.querySelector('dialog[open]'))"))
+            js("(()=>{const e=document.querySelector('select[name=bucket]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,'wants');e.dispatchEvent(new Event('change',{bubbles:true}));})()")
+            click('Save category');wait(lambda:js("!document.querySelector('dialog[open]')"))
+            wait(lambda:js("[...document.querySelectorAll('.budget-group')].find(e=>e.querySelector('summary strong').textContent==='Wants').innerText.includes('Dining')"))
+            select_group('custom')
+            assert js("[...document.querySelectorAll('.budget-group')].find(e=>e.querySelector('summary strong').textContent==='Everyday spending').innerText.includes('Dining')")
+            select_group('buckets');shot('budget-overview-detailed-plan')
             click('Monthly overview');click('Explore spending');wait(lambda:js("document.body.innerText.includes('Where your money went')"));shot('budget-overview-breakdown')
             assert js("document.querySelector('select[aria-label=\"Budget report account\"]').options.length===18")
             click('Groups');js("document.querySelector('.budget-legend-row').click()")
