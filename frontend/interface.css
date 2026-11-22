@@ -668,3 +668,22 @@ button:disabled { opacity: 1; color: var(--muted); background: var(--raised); cu
 .category-merge-preview { display:grid; gap:14px; padding:16px; border:1px solid var(--line); border-radius:14px; font-size:.82rem; overflow-wrap:anywhere; }
 .category-merge-preview p { margin:4px 0; }
 .category-manager .pagination { flex-wrap:wrap; }
+
+/* A light monthly guide sits above optional envelope planning. */
+.budget-monthly { display:grid; gap:24px; }
+.budget-monthly-heading { display:flex; align-items:center; justify-content:space-between; gap:20px; }
+.budget-monthly-heading p { color:var(--muted); margin-bottom:0; }
+.budget-monthly .budget-summary { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.budget-monthly-grid { display:grid; grid-template-columns:1.1fr 1fr; gap:24px; }
+.budget-guide { display:grid; gap:10px; padding:22px 0; border-bottom:1px solid var(--line); }
+.budget-guide>div { display:flex; justify-content:space-between; gap:16px; align-items:baseline; flex-wrap:wrap; }
+.budget-guide span { color:var(--muted); font-size:.82rem; }
+.budget-guide progress { width:100%; }
+.budget-monthly-ring { aspect-ratio:1; border-radius:50%; max-width:280px; }
+.budget-monthly-ring::before { content:''; position:absolute; inset:12%; background:var(--surface); border-radius:50%; }
+.budget-monthly-ring>div { inset:24% 16%; }
+.budget-monthly-categories { padding:18px 0; border-top:1px solid var(--line); }
+.budget-monthly-categories summary { font-weight:600; cursor:pointer; }
+.budget-monthly .budget-legend-row { color:var(--text); }
+@media(max-width:1000px) { .budget-monthly-grid { grid-template-columns:1fr; } }
+@media(max-width:600px) { .budget-monthly .budget-summary { grid-template-columns:1fr; } .budget-monthly-heading { align-items:flex-start; flex-direction:column; } }

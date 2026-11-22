@@ -565,7 +565,7 @@ function App() {
           Overview: 'Net worth, monthly cash flow, and budget progress.',
           Spending: 'See when, where, and how your spending changes.',
           Transactions: 'Browse your ledger and recurring templates.',
-          Budgets: 'Plan category spending and compare it with last month.',
+          Budgets: 'See where your income goes and how much is left to save.',
           Accounts: 'Track balances across the accounts you own.',
           Investments: 'See your holdings, allocation, and investment activity.',
           'Bank sync': mode === 'live' ? 'Prepare and manage real-bank connections through Plaid.' : 'Connect and refresh a test bank through Plaid.',
