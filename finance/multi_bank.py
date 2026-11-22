@@ -23,8 +23,9 @@ def initialize_combined(db, *, production=False):
         raise ValueError('A Production database cannot be opened as Sandbox.')
     for statement in SCHEMA:
         db.execute(statement)
-    if version not in {9, 10, 13, 14}:
-        initialize_preview(db)
+    # Existing Live databases also need additive reporting and category upgrades.
+    # These must run even when optional startup maintenance is disabled.
+    initialize_preview(db)
     db.execute('''CREATE TABLE IF NOT EXISTS multi_connections (
         id INTEGER PRIMARY KEY, institution_id TEXT NOT NULL UNIQUE,name TEXT NOT NULL,
         profile TEXT NOT NULL CHECK(profile IN ('banking','investments')),item_id TEXT UNIQUE,token BLOB,
