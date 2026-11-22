@@ -490,6 +490,7 @@ def overview_budgets(db,sandbox,month,budgets):
     """Keep Overview's small budget preview consistent with the funded Plan."""
     settings=config(db)
     if settings['method']=='categories':
+        budgets=[row for row in budgets if not row.get('archived') or row['actual_minor']]
         table='preview_budgets' if sandbox else 'monthly_budgets'
         repeated={row[0] for row in db.execute('SELECT category_id FROM budget_categories WHERE repeat_monthly=1')}
         for row in budgets:

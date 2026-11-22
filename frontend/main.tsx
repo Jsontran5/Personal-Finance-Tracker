@@ -28,7 +28,7 @@ import './styles.css'
 import './interface.css'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
-type Category = { id: number; name: string; kind: 'expense' | 'income' }
+type Category = { id: number; name: string; kind: 'expense' | 'income'; archived?:number }
 type Entry = { id: number; account_id: number; destination_id: number | null; category_id: number | null; amount_minor: number; kind: Kind; merchant: string; notes: string; date: string; transfer_pair_id?: number | null; transfer_kind?: string | null; transfer_other_account?: string | null; transfer_role?: 'incoming' | 'outgoing' | null }
 type Transaction = Entry & { flow?: Flow; currency: string; account_name: string; category_name: string | null; destination_name: string | null; pending?: number; needs_review?: number; source_merchant?: string; manual_source?: number; manual_transaction_id?: number | null }
 type Template = Omit<Entry, 'date' | 'destination_id'> & { name: string }
@@ -115,7 +115,8 @@ function EntryForm({ data, state, save, remove, busy }: {
   const [categoryId, setCategoryId] = useState(entry?.category_id ?? 0)
   const [destinationId, setDestinationId] = useState(existing?.destination_id ?? 0)
   const currency = data.accounts.find(account => account.id === accountId)?.currency ?? 'USD'
-  const categories = data.categories.filter(category => category.kind === (kind === 'income' ? 'income' : 'expense'))
+  const categories = data.categories.filter(category => category.kind === (kind === 'income' ? 'income' : 'expense') && (!category.archived || category.id===existing?.category_id))
+  useEffect(()=>{if(categoryId && !categories.some(c=>c.id===categoryId))setCategoryId(0)},[categoryId,kind,data.categories,existing?.id])
   const canCategorize = kind !== 'transfer' && kind !== 'investment'
   const merchants = [...new Set(data.recent_entries.map(tx => tx.merchant))].slice(0, 12)
   const recentCategories = [...new Set(data.recent_entries.map(tx => tx.category_id))]
@@ -724,7 +725,7 @@ function App() {
             </select></label>
             {sandboxKind !== 'transfer' && sandboxKind !== 'investment' && <label>Category<select value={sandboxCategory} onChange={event => setSandboxCategory(Number(event.target.value))}>
               <option value={0}>Uncategorized</option>
-              {data.categories.filter(category => category.kind === (sandboxKind === 'income' ? 'income' : 'expense')).map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+              {data.categories.filter(category => category.kind === (sandboxKind === 'income' ? 'income' : 'expense') && (!category.archived || category.id===dialog.entry.category_id)).map(category => <option key={category.id} value={category.id}>{category.name}{category.archived?' (Archived)':''}</option>)}
             </select></label>}
             <label>Notes<textarea name="notes" maxLength={2000} defaultValue={dialog.entry.notes} /></label>
             <TransactionDetails id={dialog.entry.id} request={request} />

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
 type Tx = { id: number; merchant: string; source_merchant?: string; kind: Kind; account_id: number; category_id: number | null }
-type Category = { id: number; name: string; kind: string }
+type Category = { id: number; name: string; kind: string; archived?:number }
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
 type Rule = { id: number; merchant: string; kind: Kind; category_id: number | null; account_id: string | null; active: number }
 type ReviewData = { rows: { id: number; review_status: string }[]; rules: Rule[]; items: Tx[] }
@@ -87,7 +87,7 @@ export function TransactionReview<T extends Tx>({ path, request, transactions, c
           </>}
           {(operation === 'classify' || operation === 'rule') && <>
             <label>Set type<select aria-label="Bulk type" value={kind} onChange={event => { setKind(event.target.value as Kind); setCategory(0) }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            {kind !== 'transfer' && kind !== 'investment' && <label>Set category<select aria-label="Bulk category" value={category} onChange={event => setCategory(Number(event.target.value))}><option value={0}>Uncategorized</option>{categories.filter(item => item.kind === (kind === 'income' ? 'income' : 'expense')).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+            {kind !== 'transfer' && kind !== 'investment' && <label>Set category<select aria-label="Bulk category" value={category} onChange={event => setCategory(Number(event.target.value))}><option value={0}>Uncategorized</option>{categories.filter(item => !item.archived && item.kind === (kind === 'income' ? 'income' : 'expense')).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
           </>}
           {operation === 'rule' && <label className="checkbox"><input type="checkbox" aria-label="Apply rule to future imports" checked={future} onChange={event => setFuture(event.target.checked)} />Also apply to future imports</label>}
           {operation === 'review' && <p className="muted">This acknowledges transactions without assigning categories. Ambiguous credits must be classified first; pending entries are skipped.</p>}

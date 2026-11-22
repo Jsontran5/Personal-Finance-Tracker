@@ -104,3 +104,17 @@ class CategoryTests(TestCase):
         with connect(self.database) as db:
             self.assertFalse(db.execute('SELECT 1 FROM categories WHERE id=?',(original,)).fetchone())
             self.assertEqual(db.execute('SELECT c.name FROM transactions t JOIN categories c ON t.category_id=c.id').fetchone()[0],'Transportation costs')
+    def test_shared_archive_and_unused_delete_stay_gone_after_refresh(self):
+        original=self.b;self.shared();self.edit(self.a,archived=True)
+        for _ in range(2):
+            self.assertEqual(next(r for r in self.listing()['categories'] if r['id']==self.a)['archived'],1)
+        token=self.listing()['token']
+        r=self.client.delete(self.path+'/'+str(self.b),params={'token':token});self.assertEqual(r.status_code,200,r.text)
+        for _ in range(2):self.assertNotIn('Transportation costs',[r['name'] for r in self.listing()['categories']])
+        with connect(self.database) as db:self.assertFalse(db.execute('SELECT 1 FROM categories WHERE id=?',(original,)).fetchone())
+    def test_orphan_links_from_a_partial_restore_are_repaired(self):
+        original=self.a;self.shared()
+        with connect(self.database,write=True) as db:db.execute('DELETE FROM categories WHERE id=?',(original,))
+        rows=self.listing()['categories'];source=next(r for r in rows if r['name']=='Gas')
+        self.edit(source['id'],name='Restored gas')
+        with connect(self.database) as db:self.assertTrue(db.execute("SELECT 1 FROM categories WHERE name='Restored gas'").fetchone())

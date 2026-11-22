@@ -655,3 +655,16 @@ button:disabled { opacity: 1; color: var(--muted); background: var(--raised); cu
  .budget-donut { grid-template-columns:1fr;gap:16px; }
  .budget-comparison { grid-template-columns:1fr; }
 }
+.category-manager-filters { display:grid; grid-template-columns:minmax(0,1fr) minmax(100px,.65fr); gap:10px; margin:18px 0; }
+.category-manager-filters>input { grid-column:1/-1; }
+.category-manager-filters select { min-width:0; width:100%; }
+.managed-category { display:grid; gap:12px; padding:18px 0; border-bottom:1px solid var(--line); }
+.managed-category strong { overflow-wrap:anywhere; }
+.managed-category small { display:block; margin-top:5px; color:var(--muted); }
+.managed-category details { font-size:.78rem; color:var(--muted); }
+.managed-category details p { margin:6px 0; }
+.category-manager fieldset,.category-merge { display:grid; gap:16px; }
+.category-merge select { min-width:0; max-width:100%; width:100%; }
+.category-merge-preview { display:grid; gap:14px; padding:16px; border:1px solid var(--line); border-radius:14px; font-size:.82rem; overflow-wrap:anywhere; }
+.category-merge-preview p { margin:4px 0; }
+.category-manager .pagination { flex-wrap:wrap; }

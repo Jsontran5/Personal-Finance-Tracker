@@ -93,7 +93,7 @@ def run():
                 js("(()=>{const e=document.querySelector("+json.dumps(selector)+");const p=e instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(e,"+json.dumps(value)+");e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()")
             def close():
                 while js("Boolean(document.querySelector('dialog[open]'))"):
-                    js("(()=>{const d=[...document.querySelectorAll('dialog[open]')].at(-1);const b=d.querySelector('[aria-label=\"Close\"],[aria-label=\"Close account details\"]');if(b)b.click();else d.close()})()")
+                    js("(()=>{const d=[...document.querySelectorAll('dialog[open]')].at(-1);const b=d.querySelector('[aria-label=\"Close\"],[aria-label=\"Close account details\"],[aria-label=\"Close category management\"],[aria-label=\"Close budget details\"]');if(b)b.click();else d.close()})()")
             def nav(name):
                 close()
                 if not js("[...document.querySelectorAll('nav button')].some(b=>b.getClientRects().length&&b.textContent.trim()==="+json.dumps(name)+")"):click('[aria-label="More sections"]');ready("document.querySelector('.navigation-sheet[open]')")
@@ -170,6 +170,47 @@ def run():
             ready("document.querySelector('.budget-workspace')?.textContent.includes('No new income waiting')")
             click('.budget-toolbar button','Plan')
             print('Budget limits, opening anchor, target, assignment, partial income/undo and exact 50/30/20 split passed.',flush=True)
+            source_name='QoL Fuel category';renamed='QoL Gas and vehicle fuel with a deliberately long category name'
+            target_name='QoL Transportation and commuting with a deliberately long category name'
+            source_id=post_api('/categories',{'name':source_name,'kind':'expense'})['id']
+            target_id=post_api('/categories',{'name':target_name,'kind':'expense'})['id']
+            post_api('/categories',{'name':'QoL Unused category','kind':'expense'})
+            post_api('/categories',{'name':'QoL Old archived category','kind':'expense'})
+            expense_id=post_api('/transactions',{'account_id':cash,'kind':'expense','amount_minor':2000,'category_id':source_id,'date':date.today().isoformat(),'merchant':'Synthetic category fuel'})['id']
+            js('location.reload()');ready("document.querySelector('.unified-workspace') && document.querySelector('.hero-value')")
+            nav('Budgets');ready("document.querySelector('.budget-table')");click('button','Manage categories');ready("document.querySelector('.category-manager[open] [aria-label=\"Find managed category\"]')")
+            change('[aria-label="Find managed category"]','QoL')
+            def category_action(name,action):
+                js("(()=>{const row=[...document.querySelectorAll('.managed-category')].find(r=>r.querySelector('strong').textContent==="+json.dumps(name)+");if(!row)throw Error('Missing category');[...row.querySelectorAll('button')].find(b=>b.textContent.trim()==="+json.dumps(action)+").click()})()")
+            category_action(source_name,'Rename');change('[aria-label="New category name"]',renamed);click('button','Save name')
+            ready("[...document.querySelectorAll('.managed-category strong')].some(e=>e.textContent==="+json.dumps(renamed)+")")
+            category_action(renamed,'Archive');ready("![...document.querySelectorAll('.managed-category strong')].some(e=>e.textContent==="+json.dumps(renamed)+")")
+            change('[aria-label="Category status"]','archived');ready("document.querySelector('.managed-category')")
+            category_action(renamed,'Restore');change('[aria-label="Category status"]','active')
+            ready("[...document.querySelectorAll('.managed-category strong')].some(e=>e.textContent==="+json.dumps(renamed)+")")
+            category_action('QoL Old archived category','Archive')
+            ready("![...document.querySelectorAll('.managed-category strong')].some(e=>e.textContent==='QoL Old archived category')")
+            category_action('QoL Unused category','Delete')
+            assert js("[...document.querySelectorAll('.category-manager button')].find(b=>b.textContent==='Delete category').disabled")
+            js("document.querySelector('.category-manager input[type=checkbox]').click()")
+            click('button','Delete category');ready("document.querySelector('.category-manager [role=status]')?.textContent.includes('Unused category deleted.') && Boolean(document.querySelector('.managed-category'))")
+            category_action(renamed,'Merge');ready("document.querySelector('[aria-label=\"Merge destination\"]')")
+            local=json.load(urllib.request.urlopen(url+'/api/plaid/live/preview/category-management'))
+            local_target=next(c['id'] for c in local['categories'] if c['name']==target_name)
+            change('[aria-label="Merge destination"]',str(local_target));click('button','Preview merge')
+            ready("document.querySelector('[aria-label=\"Merge confirmation\"]')")
+            assert js("[...document.querySelectorAll('.category-manager button')].find(b=>b.textContent==='Merge categories').disabled")
+            change('[aria-label="Merge confirmation"]','MERGE CATEGORIES');click('button','Merge categories')
+            ready("document.querySelector('.category-manager')?.textContent.includes('Categories merged.')")
+            close()
+            records=json.load(urllib.request.urlopen(url+'/api/overview?month='+date.today().isoformat()[:7]))
+            moved=next(t for t in records['transactions'] if t['id']==expense_id)
+            assert moved['category_id']==target_id and moved['amount_minor']==2000
+            assert not any(c['name']==renamed for c in records['categories'])
+            nav('Transactions');click('button','Add manual transaction');ready("document.querySelector('.editor-inspector[open]')")
+            assert not js("[...document.querySelectorAll('.editor-inspector option')].some(o=>o.textContent.includes('QoL Old archived category'))")
+            close();nav('Budgets');ready("document.querySelector('.budget-table')")
+            print('Shared category rename, archive/restore, guarded unused deletion and previewed merge passed.',flush=True)
             for width in (1440,390):
                 cdp('Emulation.setDeviceMetricsOverride',{'width':width,'height':1000 if width>850 else 844,'deviceScaleFactor':1,'mobile':False})
                 for theme in ('dark','light'):
@@ -191,6 +232,13 @@ def run():
                             click('.budget-toolbar .segmented button:nth-child(3)');shot(f'{width}-{theme}-budget-income')
                             click('.budget-toolbar button','Plan');js("document.querySelector('.budget-table .text-button').click()")
                             ready("document.querySelector('.budget-inspector[open]')");shot(f'{width}-{theme}-budget-category-inspector');close()
+                            click('button','Manage categories');ready("document.querySelector('.category-manager[open] [aria-label=\"Find managed category\"]')")
+                            shot(f'{width}-{theme}-category-manager')
+                            change('[aria-label="Category status"]','archived');shot(f'{width}-{theme}-category-manager-archived')
+                            change('[aria-label="Category status"]','active');change('[aria-label="Find managed category"]','QoL')
+                            ready("document.querySelector('.managed-category')")
+                            category_action(target_name,'Merge');click('button','Preview merge');ready("document.querySelector('.category-merge-preview')")
+                            shot(f'{width}-{theme}-category-merge-preview');close()
                         shot(f'{width}-{theme}-production-'+page.lower().replace(' ','-').replace('&','and'))
                     nav('Bank sync');ready("document.querySelector('.startup-status')?.textContent.includes('Startup finished')")
                     js("document.querySelector('.startup-status summary').click()")

@@ -36,6 +36,11 @@ def refresh_manual(database, combined, *, include_all=False):
     with database_lock(database), database_lock(combined), connect(database, write=include_all) as source, connect(combined, write=True) as db:
         if include_all:
             db.executemany('INSERT OR IGNORE INTO manual_selection(account_id) VALUES (?)', [(r[0],) for r in source.execute('SELECT id FROM accounts')])
+            # A connected-only restore can contain links to an older Manual catalog.
+            # Rebuild those links below instead of leaving management pointed at missing IDs.
+            manual_ids={r[0] for r in source.execute('SELECT id FROM categories')}
+            for link in db.execute('SELECT manual_id FROM category_sync').fetchall():
+                if link[0] not in manual_ids:db.execute('DELETE FROM category_sync WHERE manual_id=?',(link[0],))
             # Shared category names, with no changes to existing classifications.
             for row in source.execute('SELECT * FROM categories').fetchall():
                 identifier=category(db, dict(row))

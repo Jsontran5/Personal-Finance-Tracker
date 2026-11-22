@@ -92,6 +92,17 @@ Spending breakdown has category/group donuts, matching transaction drilldowns, a
 
 All budget configuration, opening anchors, target/group settings and allocation/undo records live in the corresponding financial database and are included in its normal backup. The budget feature has its own schema version; older supported backups acquire empty budget tables on a temporary migration copy. Manual and connected data still restore in the normal Manual-first/Connected-second order. Budgeting requires no additional external API or bank consent.
 
+### Manage categories
+
+Open **Budgets → Manage categories**, or use the management shortcut inside a category's details. Search and filter Active/Archived/All and Income/Expenses. Linked-record counts explain which transactions, limits, targets, allocation history, rules or templates use each category.
+
+- **Rename** retains the category's identity and all existing links. Duplicate names are rejected; use Restore or Merge instead.
+- **Archive / Restore** keeps history and money intact. Archived categories disappear from new manual/bulk assignment choices and income-split suggestions. Existing activity or funds can keep an archived budget row visible with an Archived label; move the funds out or restore the category to work with it. Saved merchant rules are paused when archived and are not automatically enabled on restore. Historical report filters retain the category.
+- **Delete** appears only for categories with no linked records, including target settings and old allocation/rule/template references. Deletion is confirmed and backed up. Used categories should be archived or merged.
+- **Merge** supports categories of the same type. Review counts and budget effects, choose whether conflicting monthly limits are added together or the destination limit is kept, then type `MERGE CATEGORIES`. Existing destination target/group settings win; source settings move if the destination has none. Transactions, templates, rules and allocation records move without changing transaction amounts, account balances or payment classifications. Category balances/card reserves are recalculated and previewed. Income/opening signatures are rebased only for the category changes made by the merge. A stale preview must be refreshed.
+
+In production All accounts, category changes apply to both the connected projection and the canonical manual store in one transaction. Stable category links prevent the old name from returning on refresh. Merge/delete create validated backups first; for full recovery, restore Manual before Connected. Allocation Undo does not reverse a category merge. In development Manual, a category linked to connected data cannot be merged/deleted independently: use production All accounts to keep both stores consistent.
+
 ## Debt details and manual student loans
 
 For Nelnet, select **Accounts → Add manual account → Student loan (manual)** in production mode. In development, choose Manual first and use Add account. Enter the current total amount owed as a positive opening balance. Expand the account, then **Debt details → Add debt details** to enter the servicer, APR/interest rate, fixed/variable rate type, original principal, principal balance, accrued interest, repayment plan, status, and notes. **More balances, payments and dates** contains optional credit limits, payment/statement information, and loan dates. Each Nelnet loan group can have its own account and rate. No Plaid connection is needed.

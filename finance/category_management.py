@@ -221,7 +221,7 @@ def category_router(path,*,sandbox=False,initialize=lambda:None,source_database=
                 raise HTTPException(422,'Restore the destination category before merging into it.')
             counts.append({'store':'connected' if shared and preview else 'manual' if shared else 'workspace','counts':references(db,preview,source)})
             table='preview_budgets' if preview else 'monthly_budgets'
-            conflicts.extend([dict(r) for r in db.execute(f'SELECT a.month,a.limit_minor AS source_minor,b.limit_minor AS target_minor FROM {table} a JOIN {table} b ON a.month=b.month WHERE a.category_id=? AND b.category_id=?',(source,target))])
+            conflicts.extend([{'store':'connected' if shared and preview else 'manual' if shared else 'workspace',**dict(r)} for r in db.execute(f'SELECT a.month,a.limit_minor AS source_minor,b.limit_minor AS target_minor FROM {table} a JOIN {table} b ON a.month=b.month WHERE a.category_id=? AND b.category_id=?',(source,target))])
         token=hashlib.sha256(json.dumps([state_token(linked),item.source_id,item.target_id,item.limit_policy]).encode()).hexdigest()
         # Preview the actual budget reclassification without committing it.
         from .budgeting import projection
