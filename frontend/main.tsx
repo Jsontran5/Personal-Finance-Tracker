@@ -655,7 +655,7 @@ function App() {
             }}>Delete</button></div></div>)}
         </section>}
       </>}
-      {ready && page === 'Budgets' && <BudgetWorkspace key={mode+scenario} request={request} path={(synced?previewPath:'')+'/plan'} month={month} revision={revision} onChanged={()=>setRevision(value=>value+1)} onNewCategory={()=>open({type:'category'})} />}
+      {ready && page === 'Budgets' && <BudgetWorkspace key={mode+scenario} request={request} path={(synced?previewPath:'')+'/plan'} month={month} revision={revision} onChanged={()=>setRevision(value=>value+1)} onNewCategory={()=>open({type:'category'})} onOpenTransaction={id=>{drillSpending([id], 'Budget transaction details', 'Budgets');const entry=ready.transactions.find(tx=>tx.id===id);if(entry)editTransaction(entry)}} />}
       {ready && page === 'Accounts' && <AccountList unified={unified} live={mode === 'live'} key={mode + scenario} accounts={ready.accounts} sandbox={synced} primary={ready.primary_account_id}
         money={money} add={() => unified ? void openManual('account') : open({ type: 'account' })} details={account => <>
           <button className="secondary small" onClick={() => { setPage('Transactions'); setAllReviewDates(true); setAccountFilter(account.id); setCategoryFilter(0); setReviewFilter('all'); setSearch(''); setDrilldown(null) }}>View account transactions →</button>

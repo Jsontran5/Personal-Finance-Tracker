@@ -687,3 +687,9 @@ button:disabled { opacity: 1; color: var(--muted); background: var(--raised); cu
 .budget-monthly .budget-legend-row { color:var(--text); }
 @media(max-width:1000px) { .budget-monthly-grid { grid-template-columns:1fr; } }
 @media(max-width:600px) { .budget-monthly .budget-summary { grid-template-columns:1fr; } .budget-monthly-heading { align-items:flex-start; flex-direction:column; } }
+
+.budget-transaction-link { width:100%; text-align:left; color:var(--text); background:transparent; border:0; border-bottom:1px solid var(--line); border-radius:8px; cursor:pointer; }
+.budget-transaction-link:hover { background:var(--surface-hover,var(--surface)); }
+.budget-transaction-link:active { background:color-mix(in srgb,var(--accent) 10%,var(--surface)); }
+.budget-transaction-link strong,.budget-transaction-link small { overflow-wrap:anywhere; }
+.budget-transaction-link>small:last-child { color:var(--accent); }

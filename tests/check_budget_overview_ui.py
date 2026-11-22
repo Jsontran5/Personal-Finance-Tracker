@@ -36,6 +36,16 @@ def run():
                 r=c.post('/api/categories',json=dict(name='Long synthetic category for everyday purchases '+str(i),kind='expense'));assert r.status_code==201,r.text
             plan=c.get('/api/plan?month='+month).json()
             assert c.put('/api/plan/settings?month='+month,json=dict(token=plan['token'],method='ratio',ratios=[50,30,20])).status_code==200
+            # A different store uses its own IDs and bank classification editor.
+            assert c.get('/api/plaid/live').status_code==200
+            from finance.db import connect
+            from finance.multi_bank import map_accounts
+            with connect(database.with_suffix('.plaid-live.db'),write=True) as db:
+                db.execute("INSERT INTO multi_connections(id,institution_id,name,profile) VALUES (1,'ins_synthetic','Synthetic bank','banking')")
+                map_accounts(db,1,[dict(account_id='checking',name='Synthetic bank checking',type='depository',subtype='checking',balances=dict(current=24000,iso_currency_code='USD'))])
+                db.execute("INSERT INTO transactions VALUES ('p1:purchase','p1:checking',?,'Synthetic bank purchase',4200,'USD','expense',0,0)",(today,))
+                db.execute("INSERT INTO preview_edits VALUES ('p1:purchase','Synthetic bank purchase','expense',1,'Saved bank note')")
+
         sp,cp=freeport(),freeport();server=chrome=ws=None
         try:
             server=subprocess.Popen([sys.executable,__file__,'--server',str(database),str(sp)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=subprocess.CREATE_NO_WINDOW)
@@ -88,7 +98,20 @@ def run():
                     shot(f'budget-overview-categories-{width}-{theme}')
                     js("document.querySelector('.budget-monthly-categories button').click()")
                     wait(lambda:js("Boolean(document.querySelector('dialog[open]'))"));shot(f'budget-overview-inspector-{width}-{theme}')
-                    js("document.querySelector('button[aria-label=\"Close budget details\"]').click()");wait(lambda:js("!document.querySelector('dialog[open]')"))
+                    js("[...document.querySelectorAll('dialog details')].find(e=>e.querySelector('summary').textContent.startsWith('Transactions')).open=true")
+                    expected=js("document.querySelector('.budget-transaction-link strong').textContent")
+                    shot(f'budget-transaction-link-{width}-{theme}')
+                    cdp('Page.bringToFront')
+                    js("document.querySelector('.budget-transaction-link').focus()")
+                    assert js("document.activeElement.matches('.budget-transaction-link')")
+                    cdp('Input.dispatchKeyEvent',dict(type='keyDown',key='Enter',code='Enter',windowsVirtualKeyCode=13,text='\r'))
+                    cdp('Input.dispatchKeyEvent',dict(type='keyUp',key='Enter',code='Enter',windowsVirtualKeyCode=13))
+                    wait(lambda:js("document.querySelector('#dialog-title')?.textContent==='Edit transaction'"))
+                    assert js("document.querySelector('dialog input[name=merchant]').value") == expected
+                    assert js("document.querySelector('h1').textContent==='Transactions'")
+                    shot(f'budget-transaction-editor-{width}-{theme}')
+                    js("document.querySelector('button[aria-label=\"Close\"]').click()")
+                    click('Back to Budgets');wait(lambda:js("Boolean(document.querySelector('.budget-monthly'))"))
                     js("document.querySelector('.budget-monthly-categories').open=false")
             click('Guide: 50 / 30 / 20 ▾');wait(lambda:js("Boolean(document.querySelector('dialog[open]'))"))
             assert js("document.querySelectorAll('dialog input[type=number]').length===0")
@@ -100,7 +123,30 @@ def run():
             click('Detailed plan');wait(lambda:js("Boolean(document.querySelector('.budget-table'))"));shot('budget-overview-detailed-plan')
             click('Monthly overview');click('Explore spending');wait(lambda:js("document.body.innerText.includes('Where your money went')"));shot('budget-overview-breakdown')
             assert js("document.querySelector('select[aria-label=\"Budget report account\"]').options.length===18")
-            print('Budget overview: exact income/spending/surplus, long category lists expanded/collapsed, custom-only percentage fields, method save without funding, detail/breakdown navigation, themes at 1440/390/320 passed.')
+            click('Groups');js("document.querySelector('.budget-legend-row').click()")
+            wait(lambda:js("Boolean(document.querySelector('.budget-transaction-link'))"))
+            expected=js("document.querySelector('.budget-transaction-link strong').textContent")
+            js("document.querySelector('.budget-transaction-link').click()")
+            wait(lambda:js("document.querySelector('#dialog-title')?.textContent==='Edit transaction'"))
+            assert js("document.querySelector('dialog input[name=merchant]').value")==expected
+            js("document.querySelector('button[aria-label=\"Close\"]').click()")
+            click('Back to Budgets');wait(lambda:js("Boolean(document.querySelector('.budget-monthly'))"))
+            # Switch to the synthetic bank store and verify the exact imported entry opens.
+            js("(()=>{const e=document.querySelector('select[aria-label=\"Workspace\"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,'live');e.dispatchEvent(new Event('change',{bubbles:true}));})()")
+            wait(lambda:js("Boolean(document.querySelector('.budget-monthly')) && document.querySelector('select[aria-label=\"Workspace\"]').value==='live'"))
+            wait(lambda:js("document.querySelector('.budget-monthly').innerText.includes('$42.00')"))
+            js("document.querySelector('.budget-monthly-categories').open=true;[...document.querySelectorAll('.budget-monthly-categories button')].find(e=>e.textContent.includes('Groceries')).click()")
+            wait(lambda:js("Boolean(document.querySelector('dialog[open]'))"))
+            js("[...document.querySelectorAll('dialog details')].find(e=>e.querySelector('summary').textContent.startsWith('Transactions')).open=true;document.querySelector('.budget-transaction-link').click()")
+            wait(lambda:js("document.querySelector('#dialog-title')?.textContent==='Classify bank transaction'"))
+            assert js("document.querySelector('dialog input[name=merchant]').value==='Synthetic bank purchase'")
+            shot('budget-bank-transaction-editor')
+            print('Budget overview: exact income/spending/surplus, long category lists expanded/collapsed, custom-only percentage fields, method save without funding, detail/breakdown navigation, keyboard transaction links with return route, exact manual/bank editors, themes at 1440/390/320 passed.')
+        except Exception:
+            if ws:
+                print(js('document.body.innerText').encode('ascii',errors='replace').decode(),flush=True)
+                shot('budget-overview-failure')
+            raise
         finally:
             if ws:ws.close()
             for process in [chrome,server]:
