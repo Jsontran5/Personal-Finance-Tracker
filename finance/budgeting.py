@@ -15,6 +15,8 @@ from .spending import previous_month
 
 
 def initialize_budget(db):
+    from .category_management import initialize_categories
+    initialize_categories(db)
     statements = [
         'CREATE TABLE IF NOT EXISTS budget_schema(id INTEGER PRIMARY KEY CHECK(id=1),version INTEGER NOT NULL)',
         'CREATE TABLE IF NOT EXISTS budget_settings(id INTEGER PRIMARY KEY CHECK(id=1),payload TEXT NOT NULL)',
@@ -84,7 +86,8 @@ def config(db):
 def projection(db, sandbox, month):
     accounts, rows = ledger(db, sandbox)
     settings = config(db)
-    cats = [dict(row) for row in db.execute('SELECT * FROM '+('preview_categories' if sandbox else 'categories')+" WHERE kind='expense' ORDER BY name")]
+    from .category_management import catalog
+    cats=[c for c in catalog(db,sandbox) if c['kind']=='expense']
     metadata = {row['category_id']:dict(row) for row in db.execute('SELECT * FROM budget_categories')}
     table = 'preview_budgets' if sandbox else 'monthly_budgets'
     limits = dict(db.execute(f'SELECT category_id,limit_minor FROM {table} WHERE month=?',(month,)))
@@ -423,6 +426,9 @@ def budget_router(path, *, sandbox=False, initialize=lambda:None, source_databas
             if data['warnings'] and any('changed' in w.lower() or 'opening' in w.lower() for w in data['warnings']):
                 raise HTTPException(409,'Reconcile changed income/opening records before adding allocations.')
             allowed={'c:'+str(c['id']) for c in data['categories']}|{'card:'+str(c['account_id']) for c in data['reserves']}
+            archived={'c:'+str(c['id']) for c in data['categories'] if c.get('archived')}
+            if any(line.category in archived and line.amount_minor>0 for line in item.lines):
+                raise HTTPException(422,'Restore an archived category before assigning more money to it.')
             if len({line.category for line in item.lines})!=len(item.lines) or any(line.category not in allowed for line in item.lines):
                 raise HTTPException(422,'Choose distinct valid categories or card reserves.')
             total=sum(line.amount_minor for line in item.lines)

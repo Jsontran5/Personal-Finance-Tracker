@@ -68,7 +68,7 @@ def category_valid(db, sandbox, category_id, kind):
     if kind in {'transfer', 'investment'}:
         return False
     table = 'preview_categories' if sandbox else 'categories'
-    row = db.execute(f'SELECT kind FROM {table} WHERE id=?', (category_id,)).fetchone()
+    row = db.execute(f'SELECT kind FROM {table} WHERE id=? AND NOT EXISTS(SELECT 1 FROM category_lifecycle s WHERE s.category_id={table}.id AND s.archived=1)', (category_id,)).fetchone()
     return bool(row and row['kind'] == ('income' if kind == 'income' else 'expense'))
 
 

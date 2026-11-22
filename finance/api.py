@@ -191,6 +191,8 @@ def create_app(database: Path = DATABASE, static: Path = ROOT / "dist"):
     app.include_router(backup_router(database))
     from .budgeting import budget_router
     app.include_router(budget_router(database), prefix='/api')
+    from .category_management import category_router
+    app.include_router(category_router(database), prefix='/api')
 
     @app.middleware("http")
     async def protect_local_writes(request: Request, call_next):

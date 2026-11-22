@@ -13,6 +13,9 @@ def category(db, row):
     if not row:
         return None
     name, kind = row['name'], row['kind']
+    link=db.execute('SELECT local_id FROM category_sync WHERE manual_id=?',(row['id'],)).fetchone()
+    if link and db.execute('SELECT 1 FROM preview_categories WHERE id=?',(link[0],)).fetchone():
+        return link[0]
     found = db.execute('SELECT id,kind FROM preview_categories WHERE name=?', (name,)).fetchone()
     if found and found['kind'] != kind:
         name = 'Personal · ' + name
@@ -20,8 +23,11 @@ def category(db, row):
     if found:
         if found['kind'] != kind:
             raise ValueError('Manual category conflicts with an existing combined category.')
-        return found['id']
-    return db.execute('INSERT INTO preview_categories(name,kind) VALUES (?,?)', (name, kind)).lastrowid
+        identifier=found['id']
+    else:
+        identifier=db.execute('INSERT INTO preview_categories(name,kind) VALUES (?,?)', (name, kind)).lastrowid
+    db.execute('INSERT OR REPLACE INTO category_sync VALUES (?,?)',(row['id'],identifier))
+    return identifier
 
 
 def refresh_manual(database, combined, *, include_all=False):
@@ -32,9 +38,20 @@ def refresh_manual(database, combined, *, include_all=False):
             db.executemany('INSERT OR IGNORE INTO manual_selection(account_id) VALUES (?)', [(r[0],) for r in source.execute('SELECT id FROM accounts')])
             # Shared category names, with no changes to existing classifications.
             for row in source.execute('SELECT * FROM categories').fetchall():
-                category(db, dict(row))
-            for row in db.execute('SELECT name,kind FROM preview_categories').fetchall():
-                source.execute('INSERT OR IGNORE INTO categories(name,kind) VALUES (?,?)', (row['name'],row['kind']))
+                identifier=category(db, dict(row))
+                duplicate=db.execute('SELECT 1 FROM preview_categories WHERE name=? AND id<>?',(row['name'],identifier)).fetchone()
+                if not duplicate:db.execute('UPDATE preview_categories SET name=? WHERE id=?',(row['name'],identifier))
+                archived=source.execute('SELECT archived FROM category_lifecycle WHERE category_id=?',(row['id'],)).fetchone()
+                db.execute('INSERT INTO category_lifecycle VALUES (?,?) ON CONFLICT(category_id) DO UPDATE SET archived=excluded.archived',(identifier,archived[0] if archived else 0))
+            for row in db.execute('SELECT id,name,kind FROM preview_categories').fetchall():
+                if db.execute('SELECT 1 FROM category_sync WHERE local_id=?',(row['id'],)).fetchone():continue
+                name=row['name']
+                found=source.execute('SELECT id,kind FROM categories WHERE name=?',(name,)).fetchone()
+                if found and found['kind']!=row['kind']:name='Connected · '+name;found=source.execute('SELECT id,kind FROM categories WHERE name=?',(name,)).fetchone()
+                manual_id=found['id'] if found else source.execute('INSERT INTO categories(name,kind) VALUES (?,?)',(name,row['kind'])).lastrowid
+                db.execute('INSERT INTO category_sync VALUES (?,?)',(manual_id,row['id']))
+                archived=db.execute('SELECT archived FROM category_lifecycle WHERE category_id=?',(row['id'],)).fetchone()
+                source.execute('INSERT OR IGNORE INTO category_lifecycle VALUES (?,?)',(manual_id,archived[0] if archived else 0))
         selected = dict(db.execute('SELECT account_id,fingerprint FROM manual_selection'))
         accounts = {row['id']: row for row in account_balances(source, date.today())}
         transactions = [dict(row) for row in source.execute('SELECT * FROM transactions ORDER BY id')]

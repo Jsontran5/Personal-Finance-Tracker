@@ -104,7 +104,8 @@ def overview(db: sqlite3.Connection, day: date, month: str):
     prior = previous_month(month)
     previous_transactions = month_transactions(db, prior) if prior else []
     income, spending, category_actual = monthly_activity(transactions)
-    categories = [dict(row) for row in db.execute("SELECT * FROM categories ORDER BY name")]
+    from .category_management import catalog
+    categories=catalog(db)
     limits = dict(db.execute("SELECT category_id, limit_minor FROM monthly_budgets WHERE month=?", (month,)))
     _, _, previous_actual = monthly_activity(previous_transactions)
     budgets = [{**c, "limit_minor": limits.get(c["id"]), "actual_minor": category_actual.get(c["id"], 0),

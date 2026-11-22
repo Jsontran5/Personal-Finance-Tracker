@@ -187,7 +187,8 @@ def preview_overview(db, month):
     accounts = preview_accounts(db)
     transactions = preview_transactions(db, month)
     income, spending, actual = monthly_activity(transactions)
-    categories = [dict(row) for row in db.execute("SELECT * FROM preview_categories ORDER BY name")]
+    from .category_management import catalog
+    categories=catalog(db,True)
     limits = dict(db.execute("SELECT category_id,limit_minor FROM preview_budgets WHERE month=?", (month,)))
     previous = previous_month(month)
     previous_transactions = preview_transactions(db, previous) if previous else []
@@ -223,6 +224,8 @@ def sandbox_preview_router(database, initialize_sandbox, *, path=None):
     router.include_router(analytics_router(path, preview_transactions, initialize))
     from .budgeting import budget_router
     router.include_router(budget_router(path, sandbox=True, initialize=initialize, source_database=database))
+    from .category_management import category_router
+    router.include_router(category_router(path,sandbox=True,initialize=initialize,source_database=database))
 
     @router.get('/balance-history')
     def estimated_history():
