@@ -83,6 +83,26 @@ def config(db):
     return json.loads(saved[0]) if saved else {'method':'categories','ratios':[50,30,20], 'cash_accounts':[], 'credit_accounts':[]}
 
 
+def monthly_summary(rows, categories, ratios):
+    """Full-month observation, independent of opening cash and allocation journal."""
+    posted = [tx for tx in rows if not tx['pending'] and not tx['needs_review'] and not tx.get('transfer_pair_id')]
+    income = sum(tx['amount_minor'] for tx in posted if tx['kind'] == 'income')
+    buckets = dict.fromkeys(['needs', 'wants', 'savings', 'uncategorized'], 0)
+    metadata = {c['id']: c for c in categories if c['id']}
+    for tx in posted:
+        if tx['kind'] not in {'expense', 'refund'}:
+            continue
+        category = metadata.get(tx['category_id'])
+        bucket = category['bucket'] if category else 'uncategorized'
+        buckets[bucket] += tx['amount_minor'] * (-1 if tx['kind'] == 'refund' else 1)
+    spending = sum(buckets.values())
+    surplus = income - spending
+    return {'income_minor': income, 'spending_minor': spending, 'surplus_minor': surplus,
+            'surplus_rate': surplus / income * 100 if income > 0 else None,
+            'buckets': buckets, 'ratios': ratios,
+            'excluded_count': sum(bool(tx['pending'] or tx['needs_review']) for tx in rows)}
+
+
 def projection(db, sandbox, month):
     accounts, rows = ledger(db, sandbox)
     settings = config(db)
@@ -242,6 +262,7 @@ def projection(db, sandbox, month):
     transactions=[{k:tx.get(k) for k in ['id','source_id','account_id','account_name','date','merchant','amount_minor','kind','category_id','pending','needs_review','transfer_pair_id']} for tx in current]
     transfers=[{**tx,'linked':tx['source_id'] in used_sources} for tx in eligible if tx['account_id'] in cash and tx['direction']<0 and (tx['kind'] in {'transfer','investment'} or tx.get('transfer_pair_id')) and tx['other_account_id'] not in cash|cards]
     return {'month':month,'settings':settings,'token':token,'accounts':accounts,'categories':result,'ready_minor':ready,
+        'monthly_summary':monthly_summary(current,result,settings['ratios']),
         'reconciliation':{'saved_cash_minor':saved_cash,'modeled_cash_minor':modeled_cash,'difference_minor':difference},
         'receipts':receipts,'transfers':transfers,'reserves':[{'account_id':a['id'],'name':a['name'],'reserved_minor':reserves[a['id']],
             'assigned_minor':assigned['card:'+str(a['id'])],
@@ -347,7 +368,7 @@ def budget_router(path, *, sandbox=False, initialize=lambda:None, source_databas
             raise HTTPException(422,'Needs, Wants and Savings percentages must total 100.')
         with connect(path,write=True) as db:
             data=state(db,month,item.token)
-            if item.method!='categories' and not data['settings'].get('start_date'):
+            if item.method=='zero' and not data['settings'].get('start_date'):
                 raise HTTPException(409,'Review and set up opening budget cash first.')
             saved={**data['settings'],'method':item.method,'ratios':[50,30,20] if item.method=='ratio' else item.ratios}
             db.execute('INSERT INTO budget_settings VALUES (1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload',(json.dumps(saved),))

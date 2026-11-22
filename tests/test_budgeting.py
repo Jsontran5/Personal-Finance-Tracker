@@ -31,6 +31,26 @@ class BudgetTests(TestCase):
     def tx(self,kind,amount,account=None,**extra):
         r=self.client.post('/api/transactions',json={'account_id':account or self.cash,'kind':kind,'amount_minor':amount,'date':self.day,'merchant':'Synthetic '+kind,'category_id':self.category if kind in {'expense','refund'} else None,**extra});self.assertEqual(r.status_code,201,r.text);return r.json()['id']
     def row(self):return next(c for c in self.get()['categories'] if c['id']==self.category)
+    def test_monthly_overview_without_funding_setup_and_fixed_ratio(self):
+        self.tx('income',200000)
+        self.tx('expense',30000,self.card)
+        self.tx('transfer',10000,destination_id=self.card)
+        for method,ratios in [('ratio',[60,20,20]),('custom',[60,20,20])]:
+            result=self.client.put('/api/plan/settings',params={'month':self.month},json={'token':self.get()['token'],'method':method,'ratios':ratios})
+            self.assertEqual(result.status_code,200,result.text)
+            data=self.get()
+            self.assertFalse(data['settings'].get('start_date'))
+            self.assertEqual(data['settings']['ratios'],[50,30,20] if method=='ratio' else ratios)
+            self.assertEqual(data['monthly_summary']['income_minor'],200000)
+            self.assertEqual(data['monthly_summary']['spending_minor'],30000)
+            self.assertEqual(data['monthly_summary']['surplus_minor'],170000)
+        updated=self.client.put(f'/api/plan/categories/{self.category}',json={'group':'Everyday spending','bucket':'wants'})
+        self.assertEqual(updated.status_code,200,updated.text)
+        self.assertEqual(self.get()['monthly_summary']['buckets']['wants'],30000)
+        before=self.get()['monthly_summary']
+        self.setup()
+        self.assertEqual(self.get()['monthly_summary'],before)
+        self.assertEqual(self.row()['activity_minor'],0)
     def test_opening_existing_limits_backfill_and_stale_token(self):
         self.tx('income',10000)
         self.client.put(f'/api/budgets/{self.month}/{self.category}',json={'limit_minor':20000})
