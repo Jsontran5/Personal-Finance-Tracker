@@ -264,16 +264,18 @@ def run():
             saved_balances=js("[document.querySelector('.hero-value').textContent,document.querySelector('.composition-total').textContent]")
             index=int(report_month[:4])*12+int(report_month[5:])-2
             earlier=f'{index//12:04}-{index%12+1:02}'
-            for chosen in (earlier,report_month):
+            for current, chosen in ((report_month,earlier),(earlier,report_month)):
                 click('.month-picker-trigger')
                 ready("document.querySelector('.month-picker-panel:popover-open')")
-                js("(()=>{const e=document.querySelector('[aria-label=\"Jump to reporting month\"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+json.dumps(chosen)+");e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()")
-                click('.month-picker-jump button', 'Go')
+                if current[:4] != chosen[:4]:
+                    year = 'Previous year' if chosen < current else 'Next year'
+                    click(f'.month-picker-year button[aria-label="{year}"]')
+                click(f'.month-picker-cell:nth-child({int(chosen[5:])})')
                 expected_month=date.fromisoformat(chosen+'-01').strftime('%B %Y')
                 ready("document.querySelector('.cashflow .section-heading small')?.textContent.startsWith("+json.dumps(expected_month)+") && document.querySelector('.composition-total')")
                 assert js("[document.querySelector('.hero-value').textContent,document.querySelector('.composition-total').textContent]")==saved_balances
             print('Report filters retained after drilldown, global sorting before pagination and all three Overview cash-flow links reconciled.',flush=True)
-            assert js("document.fonts.load('400 16px Lexend').then(()=>document.fonts.check('400 16px Lexend'))")
+            assert js("document.fonts.load('400 16px Figtree').then(fonts=>fonts.length>0)")
             pages=['Overview','Spending','Transactions','Budgets','Accounts','Investments','Bank sync','Backup & restore']
             for width in (1440,1280,768,390,320):
                 cdp('Emulation.setDeviceMetricsOverride',{'width':width,'height':1000 if width>850 else 844,'deviceScaleFactor':1,'mobile':False})

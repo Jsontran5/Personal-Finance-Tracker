@@ -28,10 +28,8 @@ export function MonthPicker({ label, value, onChange, disabled, max = '9999-12' 
   const [valueYear, valueMonth] = value.split('-').map(Number)
   const [open, setOpen] = useState(false)
   const [year, setYear] = useState(valueYear)
-  const [draft, setDraft] = useState(value)
   const currentMonth = useId()
   const formatted = months[valueMonth - 1].long + ' ' + valueYear
-  const draftValid = /^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$/.test(draft) && draft <= max
 
   function select(next: string) {
     onChange(next)
@@ -39,7 +37,7 @@ export function MonthPicker({ label, value, onChange, disabled, max = '9999-12' 
   }
 
   return <Popover open={open && !disabled} onOpenChange={next => {
-    if (next) { setYear(valueYear); setDraft(value) }
+    if (next) setYear(valueYear)
     setOpen(next)
   }}>
     <PopoverTrigger className="month-picker-trigger" aria-label={label} aria-describedby={currentMonth} data-month={value} disabled={disabled}>
@@ -61,14 +59,6 @@ export function MonthPicker({ label, value, onChange, disabled, max = '9999-12' 
             aria-current={key === value ? 'date' : undefined} disabled={key > max} onClick={() => select(key)}>{name.short}</button>
         })}
       </div>
-      <form className="month-picker-jump" onSubmit={event => {
-        event.preventDefault()
-        if (draftValid) select(draft)
-      }}>
-        <label>Jump to month<input type="month" aria-label={'Jump to ' + label.toLowerCase()} min="0001-01" max={max}
-          value={draft} onChange={event => setDraft(event.target.value)} required /></label>
-        <button type="submit" className="secondary small" disabled={!draftValid}>Go</button>
-      </form>
     </PopoverContent>
   </Popover>
 }

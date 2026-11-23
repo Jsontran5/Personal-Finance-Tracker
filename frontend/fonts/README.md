@@ -1,8 +1,7 @@
-# Lexend
+# Figtree
 
-Unmodified variable font from the official [Google Fonts Lexend distribution](https://github.com/google/fonts/tree/main/ofl/lexend).
+Unmodified variable webfonts from [Erik Kennedy’s Figtree repository](https://github.com/erikdkennedy/figtree/tree/032dfa7fe219ef3a02890d6d3add84eacc9aebfe/fonts/webfonts).
 
-- Local file: Lexend-Variable.ttf (upstream Lexend[wght].ttf), weights 100-900.
-- License: SIL Open Font License 1.1, included in OFL-Lexend.txt.
-- Retrieved November 15, 2026. The app serves it locally through the Vite build; no runtime font request goes to Google or another third party.
-- SHA-256: 3add53e641fbc81da64da4bb254285e2831b52b029527bc0714e2b9610832ee6
+- `Figtree-Variable.woff2` and `Figtree-Italic-Variable.woff2` provide weights 300–900.
+- `OFL-Figtree.txt` contains the SIL Open Font License 1.1.
+- Vite bundles and serves both font files locally.

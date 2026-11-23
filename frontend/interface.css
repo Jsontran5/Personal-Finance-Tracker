@@ -1,21 +1,28 @@
 @layer ui-sdk;
 
 @font-face {
-  font-family: 'Lexend'; src: url('./fonts/Lexend-Variable.ttf') format('truetype');
-  font-weight: 100 900; font-style: normal; font-display: swap;
+  font-family: 'Figtree'; src: url('./fonts/Figtree-Variable.woff2') format('woff2');
+  font-weight: 300 900; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Figtree'; src: url('./fonts/Figtree-Italic-Variable.woff2') format('woff2');
+  font-weight: 300 900; font-style: italic; font-display: swap;
 }
 :root {
-  font-family: 'Lexend', system-ui, sans-serif; color-scheme: dark;
+  --font-family: 'Figtree', system-ui, sans-serif;
+  --ui-font-sans: var(--font-family);
+  --ui-font-mono: var(--font-family);
+  font-family: var(--font-family); color-scheme: dark;
   font-size: 16px; line-height: 1.5; font-synthesis: none;
   --canvas: #121b2d; --surface: #202b43; --raised: #293754;
   --field: #172237; --line: #506385; --control-line: #91a3c6;
-  --text: #f9fbff; --muted: #d5ddf0; --accent: #adc4ff; --accent-hover: #cdddff;
+  --text: #f9fbff; --muted: #e9f0ff; --accent: #adc4ff; --accent-hover: #cdddff;
   --accent-ink: #111e45; --active: #273b6d; --positive: #84e3ab; --negative: #ffb4a8;
   --danger-bg: #472c32; --blue: #85cdff; --blue-tint: #223c60;
   --notice: #ffd17c; --notice-bg: #3e3321; --hero-top: #263d78; --backdrop: #071021bd;
   --teal: #6be4dd; --coral: #ff937e; --amber: var(--notice); --rose: var(--negative);
   --rail: #15203a; --chrome: #15203afa; --rail-edge: #384a70;
-  --rail-text: #f9fbff; --rail-muted: #d3ddf4; --rail-active: #263861; --rail-accent: #adc4ff;
+  --rail-text: #f9fbff; --rail-muted: #e5edff; --rail-active: #263861; --rail-accent: #adc4ff;
   --rail-selected: #4c66df; --rail-selected-ink: #fff;
   --shadow: none; --panel-shadow: 0 24px 75px #040a1aa6;
   --radius: 9px; --radius-control: 6px; --bg: var(--field);
@@ -25,13 +32,13 @@
   color-scheme: light;
   --canvas: #f7f8fe; --surface: #ffffff; --raised: #edf1fd;
   --field: #f9faff; --line: #d9e1f3; --control-line: #7c8bab;
-  --text: #15213c; --muted: #495a7a; --accent: #244cda; --accent-hover: #193bb7;
+  --text: #15213c; --muted: #273653; --accent: #244cda; --accent-hover: #193bb7;
   --accent-ink: #fff; --active: #e5ebff; --positive: #167044; --negative: #a83d32;
   --danger-bg: #ffede9; --blue: #1862a5; --blue-tint: #e8f3ff;
   --notice: #805211; --notice-bg: #fff3d8; --hero-top: #e9efff; --backdrop: #08142c78;
   --teal: #067782; --coral: #c34732;
   --rail: #eff3ff; --chrome: #f6f8fffa; --rail-edge: #d4def8;
-  --rail-text: #18264c; --rail-muted: #46587e; --rail-active: #dfe8ff; --rail-accent: #244cda;
+  --rail-text: #18264c; --rail-muted: #233454; --rail-active: #dfe8ff; --rail-accent: #244cda;
   --rail-selected: #244cda;
   --panel-shadow: 0 24px 75px #1e306036;
 }
@@ -543,8 +550,8 @@ dialog button.primary, dialog button.secondary, dialog button.danger { white-spa
   dialog::backdrop { backdrop-filter: none; }
 }
 @media (prefers-contrast: more) {
-  :root { --line: #777f8e; --muted: #d1d5df; }
-  :root[data-theme="light"] { --line: #747b88; --muted: #414751; }
+  :root { --line: #777f8e; --muted: var(--text); }
+  :root[data-theme="light"] { --line: #747b88; --muted: var(--text); }
   .card, dialog, button.secondary, input, select, textarea { border-color: var(--control-line); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
@@ -565,7 +572,7 @@ dialog button.primary, dialog button.secondary, dialog button.danger { white-spa
   max-width: min(340px, calc(100vw - 24px)); padding: 13px 16px;
   border: 1px solid var(--line); border-radius: 12px;
   background: var(--surface); color: var(--text); box-shadow: 0 12px 36px #0003;
-  font: 400 .82rem/1.6 'Lexend', system-ui, sans-serif; overflow-wrap: anywhere;
+  font: 500 .85rem/1.6 var(--font-family); overflow-wrap: anywhere;
 }
 .context-tooltip::backdrop { background: transparent; pointer-events: none; }
 .page-help { width: min(620px, calc(100vw - 32px)); max-height: min(82dvh, 850px); }

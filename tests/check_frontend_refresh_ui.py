@@ -272,6 +272,8 @@ def exercise(browser, url):
     cdp('Page.navigate', url=url)
     cdp('Page.bringToFront')
     ready("document.querySelector('.hero .chart')")
+    assert js("document.fonts.load('520 16px Figtree').then(fonts => fonts.length > 0)")
+    assert js("getComputedStyle(document.querySelector('h1')).fontFamily.startsWith('Figtree')")
     OUTPUT.mkdir(parents=True, exist_ok=True)
 
     for width in (1440, 1024, 768, 390, 320):
@@ -283,8 +285,8 @@ def exercise(browser, url):
             palette = js("""Object.fromEntries(['text', 'muted', 'surface', 'accent', 'accent-ink', 'control-line', 'field', 'rail-muted', 'rail', 'rail-text', 'rail-active', 'rail-selected', 'rail-selected-ink']
                 .map(name => [name, getComputedStyle(document.documentElement).getPropertyValue('--' + name).trim()]))""")
             for foreground, background, minimum in [
-                ('text', 'surface', 4.5), ('muted', 'surface', 4.5), ('accent-ink', 'accent', 4.5),
-                ('control-line', 'field', 3), ('accent', 'surface', 3), ('rail-muted', 'rail', 4.5), ('rail-text', 'rail-active', 4.5),
+                ('text', 'surface', 4.5), ('muted', 'surface', 7), ('accent-ink', 'accent', 4.5),
+                ('control-line', 'field', 3), ('accent', 'surface', 3), ('rail-muted', 'rail', 7), ('rail-text', 'rail-active', 4.5),
                 ('rail-selected-ink', 'rail-selected', 4.5), ('rail-selected', 'rail', 3),
             ]:
                 assert contrast(palette[foreground], palette[background]) >= minimum, (theme, foreground, background)
@@ -320,11 +322,25 @@ def exercise(browser, url):
                 shot(f'{width}-{theme}-chart-accounts')
                 key('Escape', 'Escape', 27)
                 ready("!document.querySelector('.account-options:popover-open') && document.activeElement.matches('.account-picker-trigger')")
+                page_scroll = js("window.scrollBy(0, 72); window.scrollY")
+                click('.account-picker-trigger')
+                ready("document.querySelector('.account-options:popover-open')")
+                js("document.querySelector('.picker-scroll').scrollTop = 90")
+                ready("document.querySelector('.account-options:popover-open .picker-scroll')?.scrollTop > 0")
+                assert js('window.scrollY') == page_scroll
+                js('window.scrollBy(0, -48)')
+                ready("!document.querySelector('.account-options:popover-open')")
+                assert js('window.scrollY') < page_scroll
 
                 js("window.scrollTo(0, 0); document.querySelector('.month-picker-trigger').focus()")
                 key('Enter', 'Enter', 13)
                 ready("document.querySelector('.month-picker-panel:popover-open')")
                 assert js("document.activeElement.matches('.month-picker-cell[aria-current=date]') && getComputedStyle(document.activeElement).outlineStyle === 'solid'")
+                assert js("""(() => {
+                    const panel = document.querySelector('.month-picker-panel:popover-open');
+                    return panel.offsetWidth <= 256 && panel.offsetHeight < 265 &&
+                        panel.querySelectorAll('.month-picker-cell').length === 12 && !panel.querySelector('input');
+                })()""")
                 shot(f'{width}-{theme}-reporting-month')
                 original_month = js("document.querySelector('.month-picker-trigger').dataset.month")
                 click('.month-picker-year button[aria-label="Previous year"]')
@@ -402,9 +418,9 @@ def exercise(browser, url):
                 click('[aria-label="Comparison month"]')
                 ready("document.querySelector('.month-picker-panel:popover-open')")
                 ready("""(() => {
-                    const go = document.querySelector('.month-picker-panel:popover-open .month-picker-jump button');
-                    const bounds = go.getBoundingClientRect();
-                    return go.contains(document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2));
+                    const lastMonth = document.querySelector('.month-picker-panel:popover-open .month-picker-cell:last-child');
+                    const bounds = lastMonth.getBoundingClientRect();
+                    return lastMonth.contains(document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2));
                 })()""")
                 assert js("""(() => {
                     const cutoff = document.querySelector('[aria-label="Reporting month"]').dataset.month;
@@ -460,8 +476,8 @@ def exercise(browser, url):
     ready(f"document.querySelector('.cashflow .section-heading small')?.textContent.startsWith('January {int(earlier_month[:4])}')")
     click('.month-picker-trigger')
     ready("document.querySelector('.month-picker-panel:popover-open')")
-    search('[aria-label="Jump to reporting month"]', reporting_month)
-    click('.month-picker-jump button', 'Go')
+    click('.month-picker-year button[aria-label="Next year"]')
+    click(f'.month-picker-cell:nth-child({int(reporting_month[5:])})')
     ready(f"document.querySelector('.month-picker-trigger').dataset.month === {json.dumps(reporting_month)} && !document.querySelector('.month-picker-panel:popover-open')")
     js("document.querySelector('.cashflow-total').focus()")
     ready("document.querySelector('[role=tooltip]:popover-open')?.textContent.includes('Transfer')")

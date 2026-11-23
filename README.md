@@ -47,7 +47,7 @@ Select an account to open its inspector: balance, source information, history, t
 
 Overview places cash flow and budget progress alongside net worth, followed by the spending calendar, recent activity and account composition. Net worth account selection is beside its measure controls; its phone/tablet picker stays above the bottom navigation. **About this workspace** expands the environment explanation. Relevant warnings and the Live readiness/linking lock remain visible in their existing workflows. These layout changes preserve financial calculations, stored data, workspace separation and all connection/restore safeguards.
 
-Reduced-motion, reduced-transparency and higher-contrast preferences have dedicated fallbacks. The interface bundles Lexend locally and adds no external font request or motion dependency.
+Reduced-motion, reduced-transparency and higher-contrast preferences have dedicated fallbacks. The interface bundles Figtree locally and adds no external font request or motion dependency.
 
 ## Record your finances
 
@@ -247,7 +247,7 @@ Live schema 14 adds product-specific sync outcomes and includes them in backups.
 
 ## Transaction direction and readable text
 
-The app uses locally bundled **Lexend** with higher-contrast primary/secondary text in both themes. The font license and source are included under frontend/fonts. Disabled buttons remain disabled and use readable muted text rather than low-opacity text.
+The app uses locally bundled **Figtree** with higher-contrast primary and secondary text in both themes. The font license and source are included under frontend/fonts. Disabled buttons use readable muted text.
 
 Ledger rows, recent spending and transaction inspectors show explicit **From / To** endpoints and signed amounts with **In / Out**. The direction comes from the bank-reported amount sign, independently of the income/spending/transfer classification. A card payment into a credit-card account can be incoming while remaining a transfer. Dates, posted/pending state, classification and review state remain visible.
 

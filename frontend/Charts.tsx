@@ -103,9 +103,21 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [search, setSearch] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
   const eligible = accounts.filter(account => account.include_in_net_worth && account.currency === 'USD')
   const selected = eligible.filter(account => !excluded?.includes(account.id))
   const path = '/chart-selection/' + mode
+
+  useEffect(() => {
+    if (!pickerOpen) return
+    const { scrollX, scrollY } = window
+    const dismissOnPageScroll = () => {
+      if (window.scrollX !== scrollX || window.scrollY !== scrollY) setPickerOpen(false)
+    }
+    window.addEventListener('scroll', dismissOnPageScroll, { passive: true })
+    return () => window.removeEventListener('scroll', dismissOnPageScroll)
+  }, [pickerOpen])
+
   useEffect(() => {
     onSelectionChange(excluded === null ? null : accounts.filter(account => account.include_in_net_worth && account.currency === 'USD' && !excluded.includes(account.id)).map(account => account.id))
   }, [accounts, excluded, onSelectionChange])
@@ -157,7 +169,7 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
     </div>
     <div className="hero-controls"><div className="segmented net-worth-modes" aria-label="Balance chart measure">{[['net', 'Net worth'], ['assets', 'Assets'], ['debt', 'Debt']].map(([value, label]) => <button key={value} aria-pressed={chartMode === value} onClick={() => setChartMode(value)}>{label}</button>)}</div>
     {error && <p className="notice" role="alert">{error}{excluded === null && <button className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button>}</p>}
-    {eligible.length > 0 && excluded !== null && <div className="account-picker"><Popover>
+    {eligible.length > 0 && excluded !== null && <div className="account-picker"><Popover open={pickerOpen} onOpenChange={setPickerOpen}>
       <PopoverTrigger className="account-picker-trigger"><Icon name="chevronDown" />Accounts · {selected.length} of {eligible.length}</PopoverTrigger>
       <PopoverContent className="account-options" align="start" sideOffset={8} initialFocus='input[type="search"]'>
         <PopoverTitle>Chart accounts</PopoverTitle>
