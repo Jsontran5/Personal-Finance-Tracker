@@ -276,7 +276,7 @@ def exercise(browser, url):
     assert js("getComputedStyle(document.querySelector('h1')).fontFamily.startsWith('Figtree')")
     OUTPUT.mkdir(parents=True, exist_ok=True)
 
-    for width in (1440, 1024, 768, 390, 320):
+    for width in (1440, 1101, 1024, 768, 390, 320):
         cdp('Emulation.setDeviceMetricsOverride', width=width, height=1000 if width > 850 else 844, deviceScaleFactor=1, mobile=False)
         for theme in ('light', 'dark'):
             if js('document.documentElement.dataset.theme') != theme:
@@ -304,11 +304,14 @@ def exercise(browser, url):
                 if page == 'Overview':
                     assert js("""(() => {
                         const bounds = selector => document.querySelector(selector).getBoundingClientRect();
-                        const cash = bounds('.cashflow'), spending = bounds('.home-spending'), summary = bounds('.overview-summary');
-                        return summary.top > Math.max(cash.bottom, spending.bottom) &&
-                            (innerWidth > 1150 ? cash.right < spending.left && Math.abs(cash.top - spending.top) < 1
-                                : cash.bottom < spending.top);
-                    })()"""), (width, theme, 'Overview calendar and cash flow priority')
+                        const sideBySide = (left, right) => left.right < right.left && Math.abs(left.top - right.top) < 1;
+                        const worth = bounds('.hero'), cash = bounds('.cashflow');
+                        const calendar = bounds('.home-spending'), recent = bounds('.recent-spending');
+                        return (innerWidth > 1100 ? sideBySide(worth, cash) : worth.bottom < cash.top) &&
+                            calendar.top > Math.max(worth.bottom, cash.bottom) &&
+                            (innerWidth > 850 ? sideBySide(calendar, recent) : calendar.bottom < recent.top) &&
+                            bounds('.overview-summary').top > Math.max(calendar.bottom, recent.bottom);
+                    })()"""), (width, theme, 'Overview balance and spending pairs')
                     if width in (1440, 390):
                         start = '.overview-activity' if width == 1440 else '.home-spending'
                         js(f"document.querySelector('{start}').scrollIntoView({{block:'start'}})")
@@ -496,6 +499,9 @@ def exercise(browser, url):
     assert js("document.querySelector('.cashflow-total').getAttribute('aria-describedby') === document.querySelector('[role=tooltip]').id")
     key('Escape', 'Escape', 27)
     ready("!document.querySelector('[role=tooltip]')")
+    click('.cashflow-total')
+    ready("document.querySelector('.drilldown-filter')?.textContent.includes('Cash flow')")
+    click('.drilldown-filter button', 'Back to Overview')
     ready("document.querySelector('.home-spending .calendar-day:not(:disabled)')")
     click('.home-spending .calendar-day:not(:disabled)')
     ready("document.querySelector('.drilldown-filter')")
@@ -555,7 +561,7 @@ def exercise(browser, url):
     ready(f'document.documentElement.dataset.theme !== "{theme}" && !document.querySelector(".theme-toggle").disabled')
     assert js("getComputedStyle(document.querySelector('.theme-toggle')).transitionDuration === '0s'")
     assert not runtime_errors, runtime_errors
-    print('All eight pages rendered in both themes at 1440, 1024, 768, 390, and 320 px. Meters, filters, disclosures, drilldowns, dialogs, keyboard and reduced motion checked.')
+    print('All eight pages rendered in both themes at 1440, 1101, 1024, 768, 390, and 320 px. Meters, filters, disclosures, drilldowns, dialogs, keyboard and reduced motion checked.')
 
 
 if __name__ == '__main__':
