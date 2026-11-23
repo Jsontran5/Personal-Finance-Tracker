@@ -301,6 +301,18 @@ def exercise(browser, url):
                         return meter?.getAttribute('aria-label') && track?.height >= 6 && fill?.width > 0 && fill.width < track.width;
                     })()"""), (width, theme, 'budget meter fill')
                 shot(f'{width}-{theme}-' + page.lower().replace(' & ', '-').replace(' ', '-'))
+                if page == 'Overview':
+                    assert js("""(() => {
+                        const bounds = selector => document.querySelector(selector).getBoundingClientRect();
+                        const cash = bounds('.cashflow'), spending = bounds('.home-spending'), summary = bounds('.overview-summary');
+                        return summary.top > Math.max(cash.bottom, spending.bottom) &&
+                            (innerWidth > 1150 ? cash.right < spending.left && Math.abs(cash.top - spending.top) < 1
+                                : cash.bottom < spending.top);
+                    })()"""), (width, theme, 'Overview calendar and cash flow priority')
+                    if width in (1440, 390):
+                        start = '.overview-activity' if width == 1440 else '.home-spending'
+                        js(f"document.querySelector('{start}').scrollIntoView({{block:'start'}})")
+                        shot(f'{width}-{theme}-overview-calendar')
 
             if width in (1440, 390):
                 nav('Overview')
@@ -484,6 +496,14 @@ def exercise(browser, url):
     assert js("document.querySelector('.cashflow-total').getAttribute('aria-describedby') === document.querySelector('[role=tooltip]').id")
     key('Escape', 'Escape', 27)
     ready("!document.querySelector('[role=tooltip]')")
+    ready("document.querySelector('.home-spending .calendar-day:not(:disabled)')")
+    click('.home-spending .calendar-day:not(:disabled)')
+    ready("document.querySelector('.drilldown-filter')")
+    click('.drilldown-filter button', 'Back to Overview')
+    ready("document.querySelector('main[data-page=Overview] .home-spending .calendar-day')")
+    click('.recent-spending button', 'View all')
+    ready("document.querySelector('.drilldown-filter')?.textContent.includes('Posted spending')")
+    click('.drilldown-filter button', 'Back to Overview')
 
     nav('Transactions')
     js("document.querySelector('.ledger-options button').focus()")

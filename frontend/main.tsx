@@ -10,7 +10,7 @@ import { TransactionDetails } from './TransactionDetails'
 import { AccountList, type Account } from './AccountList'
 import { groupedAccounts } from './accounts'
 import { Chart, NetWorth, type HistoryPoint } from './Charts'
-import { HomeSpending, SpendingPage, defaultReportFilters, type ReportFilters, type SpendingReport } from './Spending'
+import { HomeSpending, SpendingPage, defaultReportFilters, monthLabel, type ReportFilters, type SpendingReport } from './Spending'
 import { AssetSummary } from './AssetSummary'
 import { TransactionReview } from './TransactionReview'
 import { TransferReview } from './TransferReview'
@@ -599,17 +599,23 @@ function App() {
       {!ready && !error && <p className="empty loading-panel" role="status">Loading your ledger…</p>}
       {ready && page === 'Overview' && <>
         <div className="overview-grid">
-        <NetWorth unified={unified} workspaceLabel={mode === 'live' ? 'Live' : mode === 'sandbox' ? 'Sandbox' : 'Manual'} key={mode + scenario} accounts={ready.accounts} history={ready.history} mode={synced ? 'sandbox' : 'personal'}
-          request={request} money={money} revision={revision} onUpdateSnapshots={() => setPage(synced ? 'Bank sync' : 'Accounts')} onSelectionChange={setChartAccountIds} onStart={() => unified ? void openManual('account') : synced ? setPage('Bank sync') : open({ type: 'account' })} />
-        <div className="overview-side"><CashFlow data={ready} month={activeMonth} drill={(ids, label) => drillSpending(ids, label, 'Overview')} />
-          <section className="card overview-budget"><div className="section-heading"><div><h2>Budget progress</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => setPage('Budgets')}>View budgets <Icon name="right" /></button></div>
-            <BudgetRows budgets={budgetRows} edit={editBudget} filter={filterCategory} />
-          </section>
-          <AssetSummary accounts={ready.accounts.filter(account => chartAccountIds?.includes(account.id))} loading={chartAccountIds === null} money={money} openAccounts={() => setPage('Accounts')} />
+          <NetWorth unified={unified} workspaceLabel={mode === 'live' ? 'Live' : mode === 'sandbox' ? 'Sandbox' : 'Manual'} key={mode + scenario} accounts={ready.accounts} history={ready.history} mode={synced ? 'sandbox' : 'personal'}
+            request={request} money={money} revision={revision} onUpdateSnapshots={() => setPage(synced ? 'Bank sync' : 'Accounts')} onSelectionChange={setChartAccountIds} onStart={() => unified ? void openManual('account') : synced ? setPage('Bank sync') : open({ type: 'account' })} />
+          <div className="overview-activity">
+            <CashFlow data={ready} month={activeMonth} drill={(ids, label) => drillSpending(ids, label, 'Overview')} />
+            <HomeSpending report={ready.spending} money={money} drill={(ids, label) => drillSpending(ids, label, 'Overview')} changeMonth={setMonth} openSpending={() => setPage('Spending')} />
+          </div>
+          <div className="overview-summary">
+            <section className="card recent-spending" aria-labelledby="recent-spending-title">
+              <div className="section-heading"><h2 id="recent-spending-title">Recent spending</h2><button className="text-button" onClick={() => drillSpending(ready.spending.eligible_ids, 'Posted spending · ' + monthLabel(ready.spending.month), 'Overview')}>View all</button></div>
+              <TransactionList transactions={ready.transactions.filter(tx => ready.spending.eligible_ids.includes(tx.id)).slice(0, 5)} edit={editTransaction} empty="No posted spending this month." />
+            </section>
+            <section className="card overview-budget"><div className="section-heading"><div><h2>Budget progress</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => setPage('Budgets')}>View budgets <Icon name="right" /></button></div>
+              <BudgetRows budgets={budgetRows} edit={editBudget} filter={filterCategory} />
+            </section>
+            <AssetSummary accounts={ready.accounts.filter(account => chartAccountIds?.includes(account.id))} loading={chartAccountIds === null} money={money} openAccounts={() => setPage('Accounts')} />
+          </div>
         </div>
-        </div>
-        <HomeSpending report={ready.spending} money={money} drill={(ids, label) => drillSpending(ids, label, 'Overview')} changeMonth={setMonth} openSpending={() => setPage('Spending')}
-          recent={<TransactionList transactions={ready.transactions.filter(tx => ready.spending.eligible_ids.includes(tx.id)).slice(0, 5)} edit={editTransaction} empty="No posted spending this month." />} />
       </>}
       {ready && page === 'Spending' && <SpendingPage key={mode + scenario} month={month} money={money} drill={drillSpending} changeMonth={setMonth} sandbox={synced} request={request} path={synced ? previewPath : ''} accounts={ready.accounts} categories={ready.categories} filters={reportFilters} setFilters={setReportFilters} revision={revision}
         transactions={ready.transactions} renderTransactions={ids => <TransactionList transactions={ids.flatMap(id => ready.transactions.find(tx => tx.id === id) ?? [])} edit={editTransaction} />} />}

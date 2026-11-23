@@ -188,17 +188,19 @@ button.primary:active:not(:disabled), button.secondary:active:not(:disabled), .a
 .net-worth-history .history-switch { margin-top: 0; }
 .net-worth-history .chart-grid { stroke: var(--line); }
 .net-worth-history .snapshot-guide { margin-top: 14px; }
-.overview-side { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--workspace-gap); align-items: start; }
-.overview-side > .card { border-top: 1px solid var(--line); }
-.overview-side .cashflow { border-top: 3px solid var(--positive); }
-.overview-side .overview-budget { border-top: 3px solid var(--coral); }
-.overview-side .asset-summary { border-top: 3px solid var(--accent); }
-.overview-side .cashflow-drill { padding-inline: 0; border: 0; border-radius: 0; background: none; }
-.overview-side .cashflow-drill:hover { background: var(--raised); }
-.overview-side .section-heading { flex-wrap: wrap; }
-.overview-side .budget-row { padding-block: 12px; }
-.overview-side .composition-legend { gap: 9px; }
-.home-spending { margin-top: var(--workspace-gap); }
+.overview-activity, .overview-summary { display: grid; gap: var(--workspace-gap); align-items: start; min-width: 0; }
+.overview-activity { grid-template-columns: minmax(235px, 1fr) minmax(0, 1.95fr); }
+.overview-summary { grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(0, 1fr)); }
+.overview-activity .cashflow { border-top: 3px solid var(--positive); }
+.overview-activity .home-spending { border-top: 3px solid var(--blue); min-width: 0; }
+.home-spending .spending-calendar { margin-top: 15px; }
+.overview-summary .overview-budget { border-top: 3px solid var(--coral); }
+.overview-summary .asset-summary { border-top: 3px solid var(--accent); }
+.overview-activity .cashflow-drill { padding-inline: 0; border: 0; border-radius: 0; background: none; }
+.overview-activity .cashflow-drill:hover { background: var(--raised); }
+.overview-activity .section-heading, .overview-summary .section-heading { flex-wrap: wrap; }
+.overview-summary .budget-row { padding-block: 12px; }
+.overview-summary .composition-legend { gap: 9px; }
 
 .spending-page {
   grid-template-columns: minmax(0, 1fr);
@@ -353,8 +355,9 @@ button.primary:active:not(:disabled), button.secondary:active:not(:disabled), .a
 .backup-vault .backup-row > button { justify-self: start; }
 
 @media (max-width: 1150px) {
-  .overview-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .overview-side .asset-summary { grid-column: 1 / -1; }
+  .overview-activity { grid-template-columns: minmax(0, 1fr); }
+  .overview-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview-summary .recent-spending { grid-column: 1 / -1; }
   .portfolio-layout .investment-overview { grid-template-columns: minmax(0, 1fr); }
 }
 
@@ -395,7 +398,7 @@ button.primary:active:not(:disabled), button.secondary:active:not(:disabled), .a
   .app-bar .brand strong { font-size: .91rem; }
   .app-bar .brand-mark { flex-basis: 30px; height: 30px; }
   .app-bar .theme-toggle { padding-inline-end: 3px; }
-  .overview-side { grid-template-columns: minmax(0, 1fr); }
+  .overview-summary { grid-template-columns: minmax(0, 1fr); }
   .hero .balance-summary, .hero .hero-controls { margin-top: 15px; }
   .hero .balance-summary { padding-top: 12px; }
   .net-worth-history .history-legend { margin-block: 8px; }

@@ -252,13 +252,12 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
   </div>
 }
 
-export function HomeSpending({ report, money, drill, changeMonth, recent, openSpending }: {
-  report: SpendingReport; money: Money; drill: Drill; changeMonth: (month: string) => void; recent: ReactNode; openSpending: () => void
+export function HomeSpending({ report, money, drill, changeMonth, openSpending }: {
+  report: SpendingReport; money: Money; drill: Drill; changeMonth: (month: string) => void; openSpending: () => void
 }) {
-  return <section className="card stack home-spending"><div className="section-heading"><div><h2>Spent in {monthLabel(report.month)}</h2><small>Posted purchases minus refunds · USD</small></div><button className="secondary small" onClick={openSpending}>Explore spending →</button></div>
+  return <section className="card home-spending"><div className="section-heading"><div><h2>Spent in {monthLabel(report.month)}</h2><small>Posted purchases minus refunds · USD</small></div><button className="secondary small" onClick={openSpending}>Explore spending →</button></div>
     <strong className="home-spend-value numeric">{money(report.net_minor)}</strong>
-    <div className="home-spending-grid"><SpendingCalendar report={report} money={money} drill={drill} changeMonth={changeMonth} />
-      <div className="recent-spending"><div className="section-heading"><h3>Recent spending</h3><button className="text-button" onClick={() => drill(report.eligible_ids, 'Posted spending · ' + monthLabel(report.month))}>View all</button></div>{recent}</div></div>
+    <SpendingCalendar report={report} money={money} drill={drill} changeMonth={changeMonth} />
     <p className="analytics-note">Calendar labels are rounded; select a day for exact amounts. Refunds reduce spending; blank future days have no actual totals.</p>
   </section>
 }

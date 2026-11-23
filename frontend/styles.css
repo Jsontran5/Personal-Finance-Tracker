@@ -247,7 +247,6 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .breakdown-track { height: 5px; background: var(--raised); border-radius: 9px; overflow: hidden; }
 .breakdown-track > span { display: block; height: 100%; background: var(--blue); border-radius: inherit; }
 .breakdown-track > .refund-bar { background: var(--positive); }
-.home-spending-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 28px; margin-top: 15px; }
 .home-spend-value { display: block; font-size: 1.8rem; letter-spacing: -.04em; }
 .recent-spending { min-width: 0; }
 .recent-spending .row-category { display: none; }
@@ -404,7 +403,6 @@ input[type="checkbox"] { accent-color: var(--accent); }
 }
 
 @media (max-width: 1050px) {
-  .home-spending-grid { grid-template-columns: minmax(0, 1fr); }
   .spending-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 610px) {

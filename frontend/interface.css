@@ -216,7 +216,6 @@ main { max-width: 1570px; padding: 34px clamp(24px, 4vw, 62px) 64px; }
 .balance-summary { padding-top: 17px; margin-top: 9px; gap: 18px; }
 .balance-summary span { font-size: .72rem; }
 .balance-summary strong { font-size: 1.13rem; font-weight: 570; margin-top: 4px; }
-.overview-side { display: grid; gap: 22px; min-width: 0; }
 .cashflow { display: flex; flex-direction: column; border-top: 3px solid var(--teal); }
 .cashflow > h2 { font-size: .88rem; }
 .cashflow-value { font-weight: 620; letter-spacing: -.045em; font-size: clamp(1.8rem, 3.2vw, 2.8rem); }
@@ -305,8 +304,6 @@ fieldset { min-width: 0; }
 .breakdown-row { padding: 16px 2px; gap: 10px; }
 .breakdown-heading { font-size: .8rem; }
 .breakdown-track { height: 4px; }
-.home-spending { margin-top: 22px; }
-.home-spending-grid { gap: 28px; grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); }
 .home-spend-value { font-weight: 550; font-size: 1.8rem; margin-bottom: 18px; }
 .calendar-day { border: 0; border-radius: 9px; min-height: 50px; gap: 3px; padding: 9px 2px; }
 .calendar-day > strong { font-weight: 500; }
@@ -436,7 +433,6 @@ dialog button.primary, dialog button.secondary, dialog button.danger { white-spa
   .overview-grid { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 18px; }
   .card { padding: 21px; }
   .backup-create { grid-template-columns: minmax(0, 1fr); }
-  .home-spending-grid { grid-template-columns: minmax(0, 1fr); }
   .account-groups { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 850px) {
@@ -481,7 +477,7 @@ dialog button.primary, dialog button.secondary, dialog button.danger { white-spa
   .workspace-info > summary > span:last-child { font-size: 0; }
   .workspace-info > summary > span:last-child::after { font-size: .9rem; }
   .card { padding: 20px 17px; border-radius: 16px; }
-  .overview-grid, .dashboard-grid, .home-spending-grid, .analytics-grid, .investment-overview { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .overview-grid, .dashboard-grid, .analytics-grid, .investment-overview { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .hero-value { font-size: 2.4rem; }
   .hero-header .chip { font-size: .57rem; }
   .hero-header { flex-wrap: wrap; }
@@ -490,7 +486,6 @@ dialog button.primary, dialog button.secondary, dialog button.danger { white-spa
   .cashflow-bars { padding-top: 25px; gap: 20px; }
   .section-heading { margin-bottom: 18px; gap: 12px; }
   .section-heading h2 { font-size: 1.05rem; }
-  .home-spending-grid { gap: 25px; }
   .home-spend-value { margin-bottom: 15px; }
   .calendar-grid { gap: 4px; }
   .calendar-day { min-height: 47px; border-radius: 7px; }
