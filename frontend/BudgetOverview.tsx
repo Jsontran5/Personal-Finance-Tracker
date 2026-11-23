@@ -14,8 +14,8 @@ export type MonthlySummary = {
 
 const money = (minor: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(minor / 100)
 const buckets = [
-  { key: 'needs', label: 'Needs', tone: 'teal' },
-  { key: 'wants', label: 'Wants', tone: 'blue' },
+  { key: 'needs', label: 'Needs', tone: 'accent' },
+  { key: 'wants', label: 'Wants', tone: 'coral' },
   { key: 'savings', label: 'Other goal spending', tone: 'positive' },
   { key: 'uncategorized', label: 'Uncategorized', tone: 'amber' },
 ] as const

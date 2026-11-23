@@ -280,11 +280,12 @@ def exercise(browser, url):
             if js('document.documentElement.dataset.theme') != theme:
                 click('.theme-toggle')
                 ready(f'document.documentElement.dataset.theme === "{theme}" && !document.querySelector(".theme-toggle").disabled')
-            palette = js("""Object.fromEntries(['text', 'muted', 'surface', 'accent', 'accent-ink', 'control-line', 'field', 'rail-muted', 'rail', 'rail-text', 'rail-active']
+            palette = js("""Object.fromEntries(['text', 'muted', 'surface', 'accent', 'accent-ink', 'control-line', 'field', 'rail-muted', 'rail', 'rail-text', 'rail-active', 'rail-selected', 'rail-selected-ink']
                 .map(name => [name, getComputedStyle(document.documentElement).getPropertyValue('--' + name).trim()]))""")
             for foreground, background, minimum in [
                 ('text', 'surface', 4.5), ('muted', 'surface', 4.5), ('accent-ink', 'accent', 4.5),
                 ('control-line', 'field', 3), ('accent', 'surface', 3), ('rail-muted', 'rail', 4.5), ('rail-text', 'rail-active', 4.5),
+                ('rail-selected-ink', 'rail-selected', 4.5), ('rail-selected', 'rail', 3),
             ]:
                 assert contrast(palette[foreground], palette[background]) >= minimum, (theme, foreground, background)
             for page, selector in selectors.items():
@@ -320,6 +321,18 @@ def exercise(browser, url):
                 shot(f'{width}-{theme}-investment-activity')
 
             nav('Accounts')
+            if width > 850:
+                assert js("""(() => {
+                    const rail = document.querySelector('.app-bar');
+                    const nav = rail.querySelector('.desktop-navigation');
+                    const [first, last] = [nav.querySelector('button'), [...nav.querySelectorAll('button')].at(-1)];
+                    return getComputedStyle(rail).position === 'sticky' &&
+                        rail.getBoundingClientRect().right <= document.querySelector('main').getBoundingClientRect().left &&
+                        first.getBoundingClientRect().top < last.getBoundingClientRect().top &&
+                        nav.querySelector('[aria-current="page"]').textContent.trim() === 'Accounts';
+                })()"""), (width, theme, 'desktop sidebar')
+            else:
+                assert js("getComputedStyle(document.querySelector('.mobile-navigation')).position === 'fixed'")
             search('[aria-label="Search accounts"]', 'Long-term household')
             ready("document.querySelectorAll('.account-summary').length === 18")
             shot(f'{width}-{theme}-account-list')

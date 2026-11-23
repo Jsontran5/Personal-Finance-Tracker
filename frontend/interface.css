@@ -7,31 +7,33 @@
 :root {
   font-family: 'Lexend', system-ui, sans-serif; color-scheme: dark;
   font-size: 16px; line-height: 1.5; font-synthesis: none;
-  --canvas: #10191c; --surface: #172327; --raised: #223237;
-  --field: #121d20; --line: #34464c; --control-line: #697f84;
-  --text: #f1f8f7; --muted: #b4c9ca; --accent: #78dfd7; --accent-hover: #a4f4ec;
-  --accent-ink: #112d31; --active: #244248; --positive: #a9dc91; --negative: #ffb19d;
-  --danger-bg: #402c27; --blue: #a6c9f2; --blue-tint: #243a4d;
-  --notice: #f3ca84; --notice-bg: #372e20; --hero-top: #235058; --backdrop: #071416b8;
-  --teal: #77d9ce; --amber: var(--notice); --rose: var(--negative);
-  --rail: #172327; --chrome: #172327fa; --rail-edge: #34464c;
-  --rail-text: #f1f8f7; --rail-muted: #b4c9ca; --rail-active: #244248; --rail-accent: #78dfd7;
-  --shadow: none; --panel-shadow: 0 24px 75px #041012a6;
+  --canvas: #11192b; --surface: #192339; --raised: #222f4a;
+  --field: #141e33; --line: #364767; --control-line: #7387ab;
+  --text: #f4f6ff; --muted: #bfcae2; --accent: #9ab5ff; --accent-hover: #bed1ff;
+  --accent-ink: #111e45; --active: #273b6d; --positive: #84e3ab; --negative: #ffb4a8;
+  --danger-bg: #472c32; --blue: #85cdff; --blue-tint: #223c60;
+  --notice: #ffd17c; --notice-bg: #3e3321; --hero-top: #263d78; --backdrop: #071021bd;
+  --teal: #6be4dd; --coral: #ff937e; --amber: var(--notice); --rose: var(--negative);
+  --rail: #15203a; --chrome: #15203afa; --rail-edge: #384a70;
+  --rail-text: #f6f8ff; --rail-muted: #c4cfea; --rail-active: #263861; --rail-accent: #9ab5ff;
+  --rail-selected: #4c66df; --rail-selected-ink: #fff;
+  --shadow: none; --panel-shadow: 0 24px 75px #040a1aa6;
   --radius: 9px; --radius-control: 6px; --bg: var(--field);
   scrollbar-color: var(--control-line) transparent; accent-color: var(--accent);
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --canvas: #f7f9fa; --surface: #ffffff; --raised: #ecf0f2;
-  --field: #f8fafb; --line: #d6e1e4; --control-line: #7c9197;
-  --text: #1f3038; --muted: #4c626b; --accent: #0d7480; --accent-hover: #095b64;
-  --accent-ink: #fff; --active: #e1f1f1; --positive: #365e2a; --negative: #a03625;
-  --danger-bg: #fbece6; --blue: #365b87; --blue-tint: #edf3fa;
-  --notice: #765018; --notice-bg: #fff3dd; --hero-top: #e6f2f2; --backdrop: #07141677;
-  --teal: #0d7480;
-  --rail: #ffffff; --chrome: #fffffffa; --rail-edge: #d6e1e4;
-  --rail-text: #1f3038; --rail-muted: #4c626b; --rail-active: #e1f1f1; --rail-accent: #0d7480;
-  --panel-shadow: 0 24px 75px #182e3436;
+  --canvas: #f7f8fe; --surface: #ffffff; --raised: #edf1fd;
+  --field: #f9faff; --line: #d9e1f3; --control-line: #7c8bab;
+  --text: #15213c; --muted: #495a7a; --accent: #244cda; --accent-hover: #193bb7;
+  --accent-ink: #fff; --active: #e5ebff; --positive: #167044; --negative: #a83d32;
+  --danger-bg: #ffede9; --blue: #1862a5; --blue-tint: #e8f3ff;
+  --notice: #805211; --notice-bg: #fff3d8; --hero-top: #e9efff; --backdrop: #08142c78;
+  --teal: #067782; --coral: #c34732;
+  --rail: #eff3ff; --chrome: #f6f8fffa; --rail-edge: #d4def8;
+  --rail-text: #18264c; --rail-muted: #46587e; --rail-active: #dfe8ff; --rail-accent: #244cda;
+  --rail-selected: #244cda;
+  --panel-shadow: 0 24px 75px #1e306036;
 }
 body { min-width: 0; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 .skip-link { position: fixed; top: 8px; left: 8px; z-index: 100; padding: 12px; border-radius: 8px; background: var(--surface); }
@@ -769,8 +771,8 @@ button:disabled { opacity: 1; color: var(--muted); background: var(--raised); cu
 .budget-guide>div:nth-child(2)>strong { font-size:.88rem; }
 .budget-guide span { color:var(--muted); font-size:.82rem; }
 .budget-guide progress:not(.over) { --bar:var(--bucket); }
-[data-bucket="needs"] { --bucket:var(--teal); }
-[data-bucket="wants"] { --bucket:var(--blue); }
+[data-bucket="needs"] { --bucket:var(--accent); }
+[data-bucket="wants"] { --bucket:var(--coral); }
 [data-bucket="savings"] { --bucket:var(--positive); }
 .budget-distribution .section-heading { flex-wrap:wrap; }
 .budget-distribution .budget-donut { grid-template-columns:minmax(132px,.85fr) minmax(0,1fr); gap:20px; }

@@ -14,7 +14,7 @@ const labels:Record<string,string>={categories:'Category limits',zero:'Zero-base
 const money=(v:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(v/100)
 const editable=(v:number)=>(v/100).toFixed(2)
 const cents=(v:FormDataEntryValue|null|string)=>{const s=String(v??'').trim();if(!/^-?\d+(\.\d{1,2})?$/.test(s))throw Error('Enter a dollar amount with up to two decimal places.');return Math.round(Number(s)*100)}
-const palette=['#3697a2','#5687bb','#75a866','#edbb56','#cb7059','#849ba6','#8bc2af','#d6a678']
+const palette=['#3a62e7','#eb745e','#299c86','#edbb56','#55a6e3','#6b8a54','#bd6554','#537392']
 
 function Sheet({title,close,children}:{title:string;close:()=>void;children:ReactNode}){
   const ref=useRef<HTMLDialogElement>(null)

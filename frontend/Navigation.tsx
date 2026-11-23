@@ -20,8 +20,8 @@ export function Navigation({ page, navigate }: { page: Page; navigate: (page: Pa
   }
   return <>
     <nav className="desktop-navigation" aria-label="Finance sections">
-      <div className="nav-group">{destinations.slice(0, 6).map(item)}</div>
-      <div className="nav-group">{destinations.slice(6).map(item)}</div>
+      <div className="nav-group"><span className="nav-caption">Finances</span>{destinations.slice(0, 6).map(item)}</div>
+      <div className="nav-group"><span className="nav-caption">Manage</span>{destinations.slice(6).map(item)}</div>
     </nav>
     <nav className="mobile-navigation" aria-label="Mobile finance sections">
       {primary.map(name => item(destinations.find(destination => destination[0] === name)!))}

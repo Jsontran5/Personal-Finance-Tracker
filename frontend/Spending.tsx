@@ -94,7 +94,7 @@ function Breakdown({ title, rows, money, drill, children }: { title: string; row
   </section>
 }
 
-const palette = ['#3697a2', '#72a15e', '#5585bd', '#d68b30', '#cb7059', '#6594a3', '#a09539', '#a57258']
+const palette = ['#3a62e7', '#eb745e', '#299c86', '#d68b30', '#55a6e3', '#6b8a54', '#bd6554', '#537392']
 
 function CategoryDonut({ rows, money, drill, income }: { rows: Bucket[]; money: Money; drill: Drill; income: boolean }) {
   const positive = rows.filter(row => row.purchases_minor > 0)
