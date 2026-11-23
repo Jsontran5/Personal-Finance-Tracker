@@ -28,7 +28,7 @@ export function Navigation({ page, navigate }: { page: Page; navigate: (page: Pa
       <button type="button" aria-label="More sections" aria-haspopup="dialog" aria-expanded={more} aria-current={!primary.includes(page) ? 'page' : undefined} onClick={() => setMore(true)}><Icon name="more" /><span>More</span></button>
     </nav>
     {more && <dialog onKeyDown={trapDialogFocus} className="navigation-sheet" ref={sheet} aria-labelledby="navigation-title" onCancel={event => { event.preventDefault(); setMore(false) }}>
-      <div className="dialog-heading"><div><small>YOUR WORKSPACE</small><h2 id="navigation-title">More sections</h2></div><button className="icon" type="button" aria-label="Close navigation" onClick={() => setMore(false)}>×</button></div>
+      <div className="dialog-heading"><h2 id="navigation-title">More sections</h2><button className="icon" type="button" aria-label="Close navigation" onClick={() => setMore(false)}>×</button></div>
       <nav aria-label="More finance sections">{destinations.filter(([name]) => !primary.includes(name)).map(item)}</nav>
     </dialog>}
   </>

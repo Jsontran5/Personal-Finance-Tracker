@@ -7,6 +7,7 @@ const paths = {
   transactions: 'M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4',
   budgets: 'M11 3a9 9 0 1 0 10 10H11z M15 3v6h6a7 7 0 0 0-6-6z',
   accounts: 'M3 10h18L12 4z M5 10v8m5-8v8m4-8v8m5-8v8M3 20h18',
+  card: 'M3 6h18v12H3z M3 10h18m-14 4h5',
   plus: 'M12 5v14M5 12h14',
   right: 'M5 12h14m-5-5 5 5-5 5',
   income: 'M17 7 7 17m0-8v8h8',

@@ -156,7 +156,7 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
       </div>
       <span className="chip">USD · Current saved balances</span>
     </div>
-    <p className="analytics-note">Latest saved account values, independent of the reporting month. The chart uses its own recorded-history range. See Accounts for update times.</p>
+    <p className="analytics-note">Balances reflect the latest saved values across the accounts selected below.</p>
     <div className="hero-controls"><div className="segmented net-worth-modes" aria-label="Balance chart measure">{[['net', 'Net worth'], ['assets', 'Assets'], ['debt', 'Debt']].map(([value, label]) => <button key={value} aria-pressed={chartMode === value} onClick={() => setChartMode(value)}>{label}</button>)}</div>
     {error && <p className="notice" role="alert">{error}{excluded === null && <button className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button>}</p>}
     {eligible.length > 0 && excluded !== null && <details ref={picker} className="account-picker" onKeyDown={event => {

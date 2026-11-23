@@ -173,6 +173,7 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
   return <div className="spending-page">
     <ViewSelector label="Financial report" className="report-tabs" value={filters.measure}
       onChange={measure => change({ measure, category: 'all' })}
+      onReselect={() => change({ category: 'all' })}
       options={[{ value: 'spending', label: 'Spending' }, { value: 'income', label: 'Income' }, { value: 'cashflow', label: 'Cash flow' }]} />
     <section className="card report-filters" aria-label="Report filters">
       <div className="report-filter-fields">
@@ -197,15 +198,15 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
         {comparison && <label>Comparison month<input type="month" aria-label="Comparison month" max={month} value={comparison} onChange={event => { if (event.target.value && event.target.value < month) change({ comparison: event.target.value }) }} /></label>}
         <button className="secondary small" onClick={() => setFilters({ ...defaultReportFilters, measure: filters.measure })}>Reset filters</button>
       </div>
-      <p className="analytics-note">{monthLabel(month)} · {filters.accounts.length ? filters.accounts.length + ' selected accounts' : 'All accounts'} · {filters.category === 'all' ? 'All categories' : filters.category === 'uncategorized' ? 'Uncategorized' : categories.find(category => String(category.id) === filters.category)?.name} · Posted USD only. Filters apply to every total, chart, calendar and transaction link below.</p>
+      <p className="analytics-note">Filters apply to the entire report · Posted USD activity</p>
     </section>
     {error && <p className="notice" role="alert">{error} <button className="secondary small" onClick={() => setRetry(value => value + 1)}>Retry report</button></p>}
     {!report && !error && <p className="muted" role="status">Loading report…</p>}
     {report && <>
       <div className={'spending-metrics' + (income ? ' income-metrics' : '')}>
         {(income ? [['Income', report.net_minor], ['Daily average', report.average_minor]] : cashflow ? [['Cash flow', report.net_minor], ['Income', report.income_minor], ['Net spending', report.spending_minor], ['Daily average', report.average_minor]] : [['Net spending', report.net_minor], ['Purchases', report.purchases_minor], ['Refunds', report.refunds_minor], ['Daily average', report.average_minor]]).map(([title, value]) =>
-          <section className="card metric-card" key={title}><h2>{title}</h2><strong className="numeric">{value === null ? '—' : money(Number(value))}</strong>
-            <small>{title === 'Daily average' ? 'Per elapsed calendar day' : title === 'Net spending' ? 'Purchases minus refunds' : title === 'Cash flow' ? 'Income minus net spending' : 'Posted USD activity'}</small></section>)}
+          <section className="card metric-card" key={title} data-metric={title}><h2>{title}</h2><strong className="numeric">{value === null ? '—' : money(Number(value))}</strong>
+            {title === 'Daily average' ? <small>Per elapsed calendar day</small> : title === 'Net spending' ? <small>Purchases minus refunds</small> : title === 'Cash flow' && <small>Income minus net spending</small>}</section>)}
       </div>
       <section className="card spending-main">
         <div className="section-heading"><div><h2>{label} this month</h2><small>{monthLabel(month)} · {report.through_day ? 'Through day ' + report.through_day : 'No elapsed days'}</small></div>
@@ -229,14 +230,13 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
         </section>}
       </div>
       {!cashflow && <Breakdown title={income ? 'Income category totals' : 'Net spending by category'} rows={rows} money={money} drill={drill} />}
-      <p className="analytics-note">Recorded activity only. Pending entries, credits awaiting classification, transfers and investment activity are excluded. Imported history may be incomplete. Bank categories do not change your assigned categories or budgets.</p>
+      <details className="metric-note report-method"><summary>What this report includes</summary><p>Reports use recorded, posted activity. Pending entries, credits awaiting classification, transfers and investment activity are excluded. Imported history may be incomplete. Bank categories are separate from your assigned categories and budgets.</p></details>
       <section className="card report-transactions" aria-label="Transactions in this report">
         <div className="section-heading"><div><h2>Transactions in this report</h2><small>{monthLabel(report.month)} · {contributing.length} contributing {contributing.length === 1 ? 'transaction' : 'transactions'}</small></div>
           <label className="report-transaction-sort">Sort by<select aria-label="Sort report transactions" value={transactionSort} onChange={event => setTransactionSort(event.target.value)}>
             <option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="largest">Largest amount</option><option value="smallest">Smallest amount</option>
           </select></label>
         </div>
-        <p className="analytics-note">These are the posted entries included in the charts and totals above, using the same reporting month, accounts and category filters. Select a transaction for details.</p>
         {contributing.length ? renderTransactions(contributing.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map(tx => tx.id)) : <p className="empty">No transactions contribute to this report. Try another month or clear the report filters.</p>}
         {contributing.length > pageSize && <div className="pagination" aria-label="Report transaction pages"><span className="muted" role="status">{currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, contributing.length)} of {contributing.length}</span>
           <div className="inline-actions"><button className="secondary small" disabled={currentPage === 0} onClick={() => setTransactionPage(currentPage - 1)}>Previous</button>

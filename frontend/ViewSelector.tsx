@@ -5,10 +5,11 @@ import {
   SegmentedControlItem,
 } from '@ui-sdk/react/segmented-control'
 
-export function ViewSelector<T extends string>({ label, value, onChange, options, className }: {
+export function ViewSelector<T extends string>({ label, value, onChange, onReselect, options, className }: {
   label: string
   value: T
   onChange: (value: T) => void
+  onReselect?: () => void
   options: readonly { value: T; label: ReactNode }[]
   className?: string
 }) {
@@ -18,7 +19,17 @@ export function ViewSelector<T extends string>({ label, value, onChange, options
     value={value}
     onValueChange={next => { if (next !== null) onChange(next) }}
   >
-    {options.map(option => <SegmentedControlItem key={option.value} value={option.value}>{option.label}</SegmentedControlItem>)}
+    {options.map(option => <SegmentedControlItem
+      key={option.value}
+      value={option.value}
+      onClick={option.value === value ? onReselect : undefined}
+      onKeyDown={event => {
+        if (event.key === 'Enter' && !event.repeat) {
+          event.preventDefault()
+          event.currentTarget.click()
+        }
+      }}
+    >{option.label}</SegmentedControlItem>)}
     <SegmentedControlIndicator />
   </SegmentedControl>
 }

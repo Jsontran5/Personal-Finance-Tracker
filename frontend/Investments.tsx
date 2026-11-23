@@ -110,7 +110,7 @@ export function Investments({ sandbox, managed, live, request, money, openBank, 
     {openTestScenario && <div className="notice"><p>The prepared holdings demo is in the Investments test scenario. Your banking connection stays saved separately.</p><button className="secondary small" onClick={openTestScenario}>Switch to investment demo</button></div>}
     <section className="card investment-sync">
       <div className="section-heading"><div><h2>Broker-reported investments</h2><small>{managed ? "View sync times for each institution in Bank sync." : <>Holdings: {stamp(data.state?.holdings_at)} / Activity: {stamp(data.state?.activity_at)}</>}</small></div><span className="chip">{live ? 'LIVE DATA' : 'TEST MODE'}</span></div>
-      <p className="muted">Sync retrieves Plaid’s latest available data, not live quotes. Holdings can update overnight. Initial activity may take up to two minutes.</p>
+      <p className="muted">Values use the latest data reported by your broker. Holdings can update overnight.</p>
       <div className="investment-actions">{!managed && <><button className="primary" disabled={busy} onClick={() => void sync(false)}>Sync holdings</button><button className="secondary" disabled={busy || !data.accounts.length} onClick={() => void sync(true)}>Sync activity</button>
         </>}<button className="secondary" disabled={busy} onClick={openBank}>Manage connection</button></div>
       {busy && <p role="status">Retrieving investment data…</p>}{error && <p className="notice" role="alert">{error}</p>}{message && <p className="notice" role="status">{message}</p>}
@@ -120,7 +120,8 @@ export function Investments({ sandbox, managed, live, request, money, openBank, 
       <div className="investment-overview">
         <section className="card investment-value"><h2>Portfolio value</h2><strong className="hero-value numeric">{total === null ? '—' : money(total)}</strong><p className="muted">Saved USD account balances · cash and securities counted once</p>
           {accounts.some(item => item.currency !== 'USD' || item.current_minor === null) && <p className="notice">Other currencies and missing USD balances are excluded from this total.</p>}
-          <Chart history={history} money={money} label="Recorded portfolio value" /><small>History uses saved account values, including successful balance refreshes. Investment estimates need historical positions and prices; banking estimates do not apply here. Deposits and withdrawals also change value; this is not a return calculation.</small>
+          <Chart history={history} money={money} label="Recorded portfolio value" />
+          <details className="metric-note"><summary>How portfolio history is measured</summary><p>History uses saved balances, including deposits and withdrawals. Measuring investment returns requires historical positions and prices.</p></details>
           <SnapshotGuide open={openBank} />
         </section>
         <section className="card investment-allocation"><h2>Where it’s invested</h2><p className="muted">Positive USD holdings · cash included</p>

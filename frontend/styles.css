@@ -1,57 +1,3 @@
-:root {
-  color-scheme: dark;
-  font-family: "Segoe UI", system-ui, sans-serif;
-  font-synthesis: none;
-  --canvas: #0a111e;
-  --rail: #0d1625;
-  --surface: #111c2c;
-  --raised: #162438;
-  --field: #0d1727;
-  --line: #26354b;
-  --control-line: #425773;
-  --text: #edf4ff;
-  --muted: #a1b2ca;
-  --accent: #78e8be;
-  --accent-hover: #a0f6d7;
-  --accent-ink: #08251e;
-  --active: #18363a;
-  --positive: #78e8be;
-  --negative: #ffadad;
-  --danger-bg: #38242e;
-  --blue: #83b8ff;
-  --blue-tint: #1c304b;
-  --notice: #ffdb9a;
-  --notice-bg: #352b20;
-  --hero-top: #182d46;
-  --backdrop: #050a14bf;
-}
-
-:root[data-theme="light"] {
-  color-scheme: light;
-  --canvas: #eef3f9;
-  --rail: #f9fbfe;
-  --surface: #fff;
-  --raised: #edf3fa;
-  --field: #f8fbff;
-  --line: #d8e2ee;
-  --control-line: #8497ae;
-  --text: #17283f;
-  --muted: #50647e;
-  --accent: #087555;
-  --accent-hover: #065c43;
-  --accent-ink: #fff;
-  --active: #d9f2e8;
-  --positive: #087555;
-  --negative: #a32f48;
-  --danger-bg: #fae7eb;
-  --blue: #255d9e;
-  --blue-tint: #e1edfb;
-  --notice: #744906;
-  --notice-bg: #fff2d7;
-  --hero-top: #e3effc;
-  --backdrop: #17283f73;
-}
-
 :root { background: var(--canvas); color: var(--text); }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; }
@@ -175,11 +121,10 @@ button.small .glyph { width: 14px; height: 14px; }
 .balance-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding-top: 12px; margin-top: auto; border-top: 1px solid var(--line); }
 .balance-summary > div { display: grid; gap: 3px; }
 .balance-summary > div + div { border-left: 1px solid var(--line); padding-left: 14px; }
-.balance-summary span, .cashflow-label { color: var(--muted); font-size: .8rem; }
+.balance-summary span { color: var(--muted); font-size: .8rem; }
 .balance-summary strong { font-size: 1.1rem; overflow-wrap: anywhere; }
 .cashflow { display: flex; flex-direction: column; }
 .panel-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; background: var(--blue-tint); color: var(--blue); }
-.cashflow-label { margin-top: 14px; }
 .cashflow-value { font-size: clamp(1.65rem, 3vw, 2.35rem); letter-spacing: -.045em; margin-top: 3px; overflow-wrap: anywhere; }
 .cashflow-bars { margin-top: auto; display: grid; gap: 14px; padding-top: 24px; }
 .cashflow-bars > div { display: grid; gap: 7px; }

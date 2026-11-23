@@ -1,24 +1,106 @@
-type Category = {id:number;name:string;bucket:string;actual_minor:number;archived?:number}
-export type MonthlySummary = {income_minor:number;spending_minor:number;surplus_minor:number;surplus_rate:number|null;buckets:Record<string,number>;ratios:number[];excluded_count:number}
-const money=(v:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(v/100)
-const names:Record<string,string>={needs:'Needs',wants:'Wants',savings:'Other goal spending',uncategorized:'Uncategorized'}
+import { Icon } from './icons'
 
-export function BudgetOverview({summary:s,categories,month,ratios,onCategory,onBreakdown,onManage}:{summary:MonthlySummary;categories:Category[];month:string;ratios:number[];onCategory:(id:number)=>void;onBreakdown:()=>void;onManage:()=>void}){
-  const target=Math.round(s.income_minor*ratios[2]/100)
-  const rows=['needs','wants','savings','uncategorized'].map(key=>({key,name:names[key],amount:s.buckets[key]??0}))
-  const positive=rows.filter(r=>r.amount>0),total=positive.reduce((sum,r)=>sum+r.amount,0)
-  const colors=['#56b6f7','#a99aff','#50cba0','#edbb56']
-  let offset=0
-  const gradient=positive.map(r=>{const start=offset;offset+=r.amount/total*100;return `${colors[rows.findIndex(row=>row.key===r.key)]} ${start}% ${offset}%`}).join(',')
+type Category = { id: number; name: string; bucket: string; actual_minor: number; archived?: number }
+export type MonthlySummary = {
+  income_minor: number
+  spending_minor: number
+  surplus_minor: number
+  surplus_rate: number | null
+  buckets: Record<string, number>
+  ratios: number[]
+  excluded_count: number
+}
+
+const money = (minor: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(minor / 100)
+const buckets = [
+  { key: 'needs', label: 'Needs', tone: 'teal' },
+  { key: 'wants', label: 'Wants', tone: 'violet' },
+  { key: 'savings', label: 'Other goal spending', tone: 'positive' },
+  { key: 'uncategorized', label: 'Uncategorized', tone: 'amber' },
+] as const
+
+export function BudgetOverview({ summary, categories, month, ratios, onCategory, onBreakdown, onManage }: {
+  summary: MonthlySummary
+  categories: Category[]
+  month: string
+  ratios: number[]
+  onCategory: (id: number) => void
+  onBreakdown: () => void
+  onManage: () => void
+}) {
+  const { income_minor: income, spending_minor: spending, surplus_minor: surplus } = summary
+  const savingsTarget = Math.round(income * ratios[2] / 100)
+  const rows = buckets.map(bucket => ({ ...bucket, amount: summary.buckets[bucket.key] ?? 0 }))
+  const positive = rows.filter(row => row.amount > 0)
+  const total = positive.reduce((sum, row) => sum + row.amount, 0)
+  let offset = 0
+  const gradient = positive.map(row => {
+    const start = offset
+    offset += row.amount / total * 100
+    return `var(--${row.tone}) ${start}% ${offset}%`
+  }).join(', ')
+
   return <div className="budget-monthly">
-    <section className="card budget-monthly-heading"><div><small className="eyebrow">MONTHLY PICTURE · {month}</small><h2>Spend comfortably. Keep saving.</h2><p>Your full month of posted USD activity. No category assignments required.</p></div><button className="secondary small" onClick={onManage}>Organize categories</button></section>
-    <div className="budget-summary"><section><small>Income received</small><strong>{money(s.income_minor)}</strong><span>Posted income this month, excluding transfers.</span></section><section><small>Net spending</small><strong>{money(s.spending_minor)}</strong><span>Purchases less refunds, across your USD accounts.</span></section><section className="budget-ready"><small>{s.surplus_minor<0?'Spending above income':'Income left after spending'}</small><strong className={s.surplus_minor<0?'negative':''}>{money(Math.abs(s.surplus_minor))}</strong><span>{s.income_minor>0?`${s.surplus_rate!.toFixed(1)}% of income remains after spending.`:'A percentage is available once income is recorded.'}</span></section></div>
-    <div className="budget-monthly-grid"><section className="card"><h2>Your monthly guide</h2><p className="analytics-note">{ratios.join(' / ')} is a guide for new income. Existing savings and funded assignments are separate.</p>
-      {['needs','wants'].map((bucket,i)=>{const amount=s.buckets[bucket],allowance=Math.round(s.income_minor*ratios[i]/100);return <div className="budget-guide" key={bucket}><div><strong>{names[bucket]}</strong><span>{ratios[i]}% guide</span></div><div><strong>{money(amount)} spent</strong><span>{s.income_minor>0?`${money(allowance)} guide · ${money(Math.abs(allowance-amount))} ${amount>allowance?'above':'below'}`:'Record income to compare'}</span></div><progress aria-label={names[bucket]+' spending compared with guide'} max={Math.max(1,allowance,amount)} value={Math.max(0,amount)}/></div>})}
-      <div className="budget-guide"><div><strong>Savings potential</strong><span>{ratios[2]}% guide</span></div><div><strong>{money(s.surplus_minor)} left</strong><span>{s.income_minor>0?`${money(target)} guide · ${s.surplus_minor>=target?'Guide met so far':'Below guide so far'}`:'Record income to compare'}</span></div><progress aria-label="Surplus compared with savings guide" max={Math.max(1,target,s.surplus_minor)} value={Math.max(0,s.surplus_minor)}/></div>
-      <p className="analytics-note">This is income minus spending, not confirmed savings or an account balance. Debt principal, investment transfers and withdrawals can change cash without appearing as spending. No forecast of the rest of the month.</p>
-      {(s.buckets.uncategorized!==0||s.excluded_count>0)&&<p className="notice">{money(s.buckets.uncategorized)} uncategorized net spending is included in totals, but stays outside Needs and Wants. {s.excluded_count} pending or needs-review entries excluded.</p>}
-    </section><section className="card"><div className="section-heading"><h2>Where spending went</h2><button className="secondary small" onClick={onBreakdown}>Explore spending</button></div><div className="budget-donut"><div className="budget-ring budget-monthly-ring" role="img" aria-label="Spending by budget bucket" style={{background:gradient?`conic-gradient(${gradient})`:'var(--line)'}}><div><small>Net spending</small><strong>{money(s.spending_minor)}</strong></div></div><div className="budget-chart-legend">{rows.map((r,i)=><div className="budget-legend-row" key={r.key}><i style={{background:colors[i]}}/><span>{r.name}</span><strong>{money(r.amount)}</strong></div>)}</div></div><p className="analytics-note">Ring shows positive net spending. Net-refund buckets remain in totals and the legend. Savings allocations and transfers are not purchases.</p></section></div>
-    <section className="card"><div className="section-heading"><div><h2>Categories inside each bucket</h2><p className="analytics-note">Choose a category to change its bucket. Gas can be Needs; Games can be Wants. Targets are optional.</p></div></div>{['needs','wants','savings'].map(bucket=><details className="budget-monthly-categories" key={bucket}><summary>{bucket==='savings'?'Savings & extra debt categories':names[bucket]} · {categories.filter(c=>c.id&&c.bucket===bucket&&(!c.archived||c.actual_minor)).length} categories</summary>{categories.filter(c=>c.id&&c.bucket===bucket&&(!c.archived||c.actual_minor)).map(c=><button className="budget-comparison" key={c.id} onClick={()=>onCategory(c.id)}><span>{c.name}{c.archived?' (Archived)':''}</span><strong>{money(c.actual_minor)} spent</strong></button>)}</details>)}</section>
+    <div className="budget-summary" aria-label={'Monthly totals for ' + month}>
+      <section><small><Icon name="income" /> Income received</small><strong>{money(income)}</strong><span>Posted income · USD</span></section>
+      <section><small><Icon name="expense" /> Net spending</small><strong>{money(spending)}</strong><span>Purchases minus refunds · USD</span></section>
+      <section className="budget-ready" data-over={surplus < 0 || undefined}>
+        <small><Icon name="budgets" /> {surplus < 0 ? 'Spending above income' : 'Income left after spending'}</small>
+        <strong className={surplus < 0 ? 'negative' : ''}>{money(Math.abs(surplus))}</strong>
+        <span>{income > 0 ? `${summary.surplus_rate!.toFixed(1)}% of income remains after spending.` : 'Record income to see a percentage.'}</span>
+      </section>
+    </div>
+    <div className="budget-monthly-grid">
+      <section className="card">
+        <div className="section-heading"><div><h2>Monthly guide</h2><small>{ratios.join(' / ')} split for new income</small></div></div>
+        {rows.slice(0, 2).map(({ key, label, amount }, index) => {
+          const allowance = Math.round(income * ratios[index] / 100)
+          return <div className="budget-guide" data-bucket={key} key={key}>
+            <div><strong>{label}</strong><span>{ratios[index]}% guide</span></div>
+            <div><strong className="numeric">{money(amount)} spent</strong><span>{income > 0 ? `${money(allowance)} guide · ${money(Math.abs(allowance - amount))} ${amount > allowance ? 'above' : 'below'}` : 'Record income to compare'}</span></div>
+            <progress aria-label={label + ' spending compared with guide'} max={Math.max(1, allowance, amount)} value={Math.max(0, amount)} className={income > 0 && amount > allowance ? 'over' : undefined} />
+          </div>
+        })}
+        <div className="budget-guide" data-bucket="savings">
+          <div><strong>Savings potential</strong><span>{ratios[2]}% guide</span></div>
+          <div><strong className="numeric">{money(surplus)} left</strong><span>{income > 0 ? `${money(savingsTarget)} guide · ${surplus >= savingsTarget ? 'Guide met so far' : 'Below guide so far'}` : 'Record income to compare'}</span></div>
+          <progress aria-label="Surplus compared with savings guide" max={Math.max(1, savingsTarget, surplus)} value={Math.max(0, surplus)} />
+        </div>
+        {(summary.buckets.uncategorized !== 0 || summary.excluded_count > 0) &&
+          <p className="notice">{money(summary.buckets.uncategorized)} uncategorized net spending. {summary.excluded_count} pending or needs-review entries excluded.</p>}
+        <details className="metric-note"><summary>How the guide works</summary>
+          <p>The guide uses the month’s posted USD income. Income left after spending measures potential savings. Actual savings deposits, principal payments, and investment transfers can change cash separately. Existing savings and funded assignments are separate.</p>
+        </details>
+      </section>
+      <section className="card budget-distribution">
+        <div className="section-heading"><h2>Where spending went</h2><button className="secondary small" onClick={onBreakdown}>Explore spending</button></div>
+        <div className="budget-donut">
+          <div className="budget-ring budget-monthly-ring" role="img" aria-label="Spending by budget bucket"
+            style={{ background: gradient ? `conic-gradient(${gradient})` : 'var(--line)' }}>
+            <div><small>Net spending</small><strong>{money(spending)}</strong></div>
+          </div>
+          <div className="budget-chart-legend">{rows.map(row => <div className="budget-legend-row" key={row.key}>
+            <i style={{ background: `var(--${row.tone})` }} /><span>{row.label}</span><strong>{money(row.amount)}</strong>
+          </div>)}</div>
+        </div>
+        <details className="metric-note"><summary>What the ring includes</summary>
+          <p>The ring shows buckets with positive net spending. Net refunds still count in the total and legend. Savings allocations and transfers are excluded.</p>
+        </details>
+      </section>
+    </div>
+    <section className="card">
+      <div className="section-heading"><div><h2>Budget categories</h2><small>Open a category to edit its bucket or view its transactions.</small></div>
+        <button className="secondary small" onClick={onManage}>Organize categories</button>
+      </div>
+      {buckets.slice(0, 3).map(({ key, label }) => {
+        const members = categories.filter(category => category.id && category.bucket === key && (!category.archived || category.actual_minor))
+        return <details className="budget-monthly-categories" data-bucket={key} key={key}>
+          <summary>{key === 'savings' ? 'Savings & extra debt categories' : label} · {members.length} {members.length === 1 ? 'category' : 'categories'}</summary>
+          {members.map(category => <button type="button" className="budget-comparison" key={category.id} onClick={() => onCategory(category.id)}>
+            <span>{category.name}{category.archived ? ' (Archived)' : ''}</span><strong>{money(category.actual_minor)} spent</strong>
+          </button>)}
+        </details>
+      })}
+    </section>
   </div>
 }

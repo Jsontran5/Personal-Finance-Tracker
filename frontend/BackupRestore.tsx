@@ -26,6 +26,7 @@ export function BackupRestore({ request, onRestored, initialWorkspace, unified =
   const [result, setResult] = useState<{ workspace: string; recovery_backup: string }>()
   const [attempt, setAttempt] = useState(0)
   const dialog = useRef<HTMLDialogElement>(null)
+  const restoreTrigger = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     const controller = new AbortController()
     request<{ backups: Backup[] }>('/backups', 'GET', undefined, controller.signal)
@@ -37,6 +38,11 @@ export function BackupRestore({ request, onRestored, initialWorkspace, unified =
   async function run(work: () => Promise<void>) {
     setBusy(true); setError(''); setMessage('')
     try { await work() } catch (failure) { setError((failure as Error).message) } finally { setBusy(false) }
+  }
+  function closePreview() {
+    dialog.current?.close()
+    setPreview(undefined)
+    restoreTrigger.current?.focus({ preventScroll: true })
   }
   const matching = backups?.filter(backup => backup.id.toLowerCase().includes(filter.toLowerCase())) ?? []
   const currentPage = Math.min(page, Math.max(0, Math.ceil(matching.length / 10) - 1))
@@ -61,8 +67,10 @@ export function BackupRestore({ request, onRestored, initialWorkspace, unified =
           const listed = await request<{ backups: Backup[] }>('/backups')
           setBackups(listed.backups); setFilter(''); setPage(0); setMessage(describe(mode) + ' backup created: ' + created.id)
         })}>Create backup</button></div>
-      <p className="analytics-note">Stored in this project’s backups folder, outside Git. Backups contain private financial records. Bank authorization is Windows-user encrypted; API credentials and local context docs are not included. Appearance and current workspace stay unchanged.</p>
-      {unified && <p className="analytics-note">Startup creates an automatic backup pair before syncing if the last automatic pair is over 24 hours old. The latest 14 automatic pairs are retained. Manual and recovery backups are kept separately. Restore the Manual file first, then Connected for the same automatic set.</p>}
+      <details className="metric-note"><summary>Storage and automatic backups</summary>
+        <p>Backup files live in this project’s backups folder and contain private financial records. Bank authorization is encrypted for your Windows user. API credentials and local context files are excluded.</p>
+        {unified && <p>Startup creates a backup pair before syncing when the last automatic pair is over 24 hours old. The latest 14 automatic pairs are kept. Manual and recovery backups are kept separately. Restore Manual first, then Connected from the same set.</p>}
+      </details>
     </section>
     {(mode === 'sandbox_combined' || mode === 'live') && <p className="muted">{unified ? 'All accounts keeps bank feeds and manually entered records independently recoverable. Back up all accounts creates both files. For a full recovery, restore the manual file first and the connected file second. Bank backups require the same connected institutions.' : 'Multi-institution backups require the same connected institutions when restoring. Manual mirrors refresh from Manual; back up Manual separately to preserve their original records.'}</p>}
     {busy && <p className="muted" role="status">Working with local backup files…</p>}
@@ -75,15 +83,18 @@ export function BackupRestore({ request, onRestored, initialWorkspace, unified =
       {!backups && !error && <p className="muted" role="status">Loading backups…</p>}
       {backups && !matching.length && <p className="empty stack">{backups.length ? 'No backups match your search.' : 'No backups yet. Create one before making major changes.'}</p>}
       <div className="backup-list">{matching.slice(currentPage * 10, (currentPage + 1) * 10).map(backup => <article key={backup.id} className="backup-row"><div><strong className="backup-filename">{backup.id}</strong><small>{new Date(backup.file_date).toLocaleString()} · {size(backup.size_bytes)} · {backup.id.startsWith('automatic/') ? 'Automatic backup · ' + (backup.id.split('/').pop()?.startsWith('personal-') ? 'Manual account data' : 'Connected account data') : backup.format === 'bundle' ? backup.id.startsWith('recovery-') ? 'Recovery bundle' : 'Workspace bundle' : 'Legacy database · settings not included'}</small></div>
-        <button className="secondary small" disabled={busy} onClick={() => void run(async () => {
-          const checked = await request<Preview>('/backups/preview?id=' + encodeURIComponent(backup.id))
-          setConfirmation(''); setPreview(checked)
-        })}>Preview restore</button></article>)}</div>
+        <button className="secondary small" disabled={busy} onClick={event => {
+          restoreTrigger.current = event.currentTarget
+          void run(async () => {
+            const checked = await request<Preview>('/backups/preview?id=' + encodeURIComponent(backup.id))
+            setConfirmation(''); setPreview(checked)
+          })
+        }}>Preview restore</button></article>)}</div>
       {matching.length > 10 && <div className="pagination"><span className="muted">{currentPage * 10 + 1}–{Math.min((currentPage + 1) * 10, matching.length)} of {matching.length}</span><div className="inline-actions"><button className="secondary small" disabled={!currentPage || busy} onClick={() => setPage(currentPage - 1)}>Previous backups</button><button className="secondary small" disabled={(currentPage + 1) * 10 >= matching.length || busy} onClick={() => setPage(currentPage + 1)}>Next backups</button></div></div>}
-      <p className="analytics-note">Legacy .db backups are validated and upgraded on a temporary copy. Damaged, incompatible, or wrong-Item files cannot be restored. Other project files are never read from this screen.</p>
+      <details className="metric-note"><summary>Legacy backup compatibility</summary><p>The app validates and upgrades legacy .db backups on a temporary copy. Restore requires a compatible file for the workspace and its connected institutions.</p></details>
     </section>
-    {preview && <dialog onKeyDown={trapDialogFocus} ref={dialog} aria-labelledby="restore-title" onCancel={event => { event.preventDefault(); if (!busy) setPreview(undefined) }}>
-      <div className="dialog-heading"><h2 id="restore-title">Restore {describe(preview.workspace)}?</h2><button className="icon" aria-label="Close restore preview" disabled={busy} onClick={() => setPreview(undefined)}>×</button></div>
+    {preview && <dialog onKeyDown={trapDialogFocus} ref={dialog} aria-labelledby="restore-title" onCancel={event => { event.preventDefault(); if (!busy) closePreview() }}>
+      <div className="dialog-heading"><h2 id="restore-title">Restore {describe(preview.workspace)}?</h2><button className="icon" aria-label="Close restore preview" disabled={busy} onClick={closePreview}>×</button></div>
       <p className="backup-filename">{preview.id}</p>
       <dl className="restore-summary"><div><dt>{preview.created_at ? 'Snapshot created' : 'Legacy file date'}</dt><dd>{new Date(preview.created_at ?? preview.file_date).toLocaleString()}</dd></div>
         <div><dt>{unified ? 'Data source' : 'Workspace'}</dt><dd>{describe(preview.workspace)}</dd></div><div><dt>Schema</dt><dd>{preview.schema_version}{preview.schema_version !== preview.restored_schema_version ? ' → ' + preview.restored_schema_version + ' on restore' : ' · compatible'}</dd></div>
@@ -100,7 +111,7 @@ export function BackupRestore({ request, onRestored, initialWorkspace, unified =
       <p className="analytics-note">Finish any open bank authorization and close other Finance instances before restoring. No bank sync runs automatically.</p>
       <label className="restore-confirm-label">Type {expectedConfirmation} to confirm<input aria-label="Restore confirmation" autoComplete="off" value={confirmation} disabled={busy} onChange={event => setConfirmation(event.target.value)} /></label>
       {error && <p className="notice" role="alert">{error}</p>}
-      <div className="form-actions"><button className="secondary" disabled={busy} onClick={() => setPreview(undefined)}>Cancel</button><button className="danger" disabled={busy || confirmation !== expectedConfirmation} onClick={() => void run(async () => {
+      <div className="form-actions"><button className="secondary" disabled={busy} onClick={closePreview}>Cancel</button><button className="danger" disabled={busy || confirmation !== expectedConfirmation} onClick={() => void run(async () => {
         const restored = await request<{ workspace: string; recovery_backup: string }>('/backups/restore', 'POST', { id: preview.id, preview_token: preview.preview_token, confirmation: preview.confirmation })
         setPreview(undefined); setResult(restored); setAttempt(value => value + 1); onRestored()
       })}>Restore workspace</button></div>

@@ -99,7 +99,7 @@ function Modal({ title, children, close, inspector }: { title: string; children:
     ref.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus()
   }, [])
   return <dialog onKeyDown={trapDialogFocus} className={inspector ? 'inspector editor-inspector' : undefined} ref={ref} onCancel={event => { event.preventDefault(); close() }} aria-labelledby="dialog-title">
-    <div className="dialog-heading"><div><small className="eyebrow">{inspector ? 'DETAILS & EDITING' : 'YOUR WORKSPACE'}</small><h2 id="dialog-title">{title}</h2></div><button type="button" className="icon" aria-label="Close" onClick={close}>×</button></div>
+    <div className="dialog-heading"><h2 id="dialog-title">{title}</h2><button type="button" className="icon" aria-label="Close" onClick={close}>×</button></div>
     {children}
   </dialog>
 }
@@ -182,7 +182,6 @@ function CashFlow({ data, month, drill }: { data: Overview; month: string; drill
     <div className="section-heading"><div><h2 id="cashflow-title">Cash flow</h2><small>{month} · USD</small></div>
       <span className="panel-icon"><Icon name="transactions" /></span>
     </div>
-    <p className="cashflow-label">Income minus spending</p>
     <button className={'cashflow-total cashflow-value numeric ' + (data.cash_flow_minor < 0 ? 'negative' : data.cash_flow_minor > 0 ? 'positive' : '')} data-help="View the posted income, purchases and refunds included in this month’s cash flow. Transfers and pending entries are excluded." onClick={() => drill(eligible.map(tx => tx.id), 'Cash flow · ' + month)}>{money(data.cash_flow_minor)}<small>View transactions →</small></button>
     <div className="cashflow-bars">
       <button className="flow-income cashflow-drill" onClick={() => drill(eligible.filter(tx => tx.kind === 'income').map(tx => tx.id), 'Income · ' + month)}><div><span><Icon name="income" /> Income</span><strong className="numeric">{money(data.income_minor)}</strong></div>
@@ -202,7 +201,7 @@ function TransactionList({ transactions, edit, empty = 'No transactions match th
       const row = <button className="ledger-row" data-transaction-id={tx.id} data-direction={flow.direction} key={tx.id} onClick={() => edit(tx)}>
       <span className={'row-icon row-' + tx.kind + ' flow-' + flow.direction}><Icon name={flow.direction === 'in' ? 'income' : flow.direction === 'out' ? 'expense' : 'transactions'} /></span>
       <span className="row-main"><strong>{tx.merchant}</strong><TransactionFlow flow={flow} /><small className="transaction-meta">{tx.transfer_pair_id ? tx.transfer_kind === 'card_payment' ? 'Card payment' : 'Transfer' : tx.needs_review ? 'Review credit' : kinds[tx.kind]} · <time dateTime={tx.date}>{tx.date}</time>{tx.pending ? ' · Pending' : ' · Posted'}{tx.transfer_pair_id ? ' · Confirmed pair' : ''}{tx.needs_review ? ' · Review credit type' : statuses[tx.id] === 'needs_review' ? ' · Flagged' : statuses[tx.id] === 'reviewed' ? ' · Reviewed' : ''}</small></span>
-      <span className="chip row-category">{tx.transfer_pair_id ? tx.transfer_kind === 'card_payment' ? 'Card payment' : 'Linked transfer' : tx.needs_review ? 'Review credit' : tx.category_name ?? kinds[tx.kind]}</span>
+      <span className="chip row-category" data-tone={tx.category_id ? tx.category_id % 5 : 0}>{tx.transfer_pair_id ? tx.transfer_kind === 'card_payment' ? 'Card payment' : 'Linked transfer' : tx.needs_review ? 'Review credit' : tx.category_name ?? kinds[tx.kind]}</span>
       <span className="row-money"><span className={'numeric ' + (flow.direction === 'in' ? 'positive' : '')}>
         {flow.direction === 'out' ? '\u2212' : flow.direction === 'in' ? '+' : ''}{money(tx.amount_minor, tx.currency)}
       </span><small>{flow.direction === 'in' ? 'In' : flow.direction === 'out' ? 'Out' : flow.direction === 'none' ? 'No movement' : 'Direction unavailable'}</small></span>
@@ -547,9 +546,10 @@ function App() {
     : allReviewDates ? 'No saved transactions match these filters.' : 'No transactions match this month and these filters. Try another month or clear the filters.'
 
   return <div className="shell">
+    <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className="sidebar">
-      <div className="brand"><span className="brand-mark"><Icon name="logo" /></span><div><strong>Personal Finance</strong><small>Private workspace</small></div></div>
-      {unified ? <div className="unified-workspace"><strong>All accounts</strong><small>Connected &amp; manual accounts</small></div> : mode && <label className="workspace-picker">Workspace<select aria-label="Workspace" value={mode ?? 'personal'} disabled={!mode || modePending || busy || !!dialog} onChange={event => void changeMode(event.target.value as Mode)}>
+      <div className="brand"><span className="brand-mark"><Icon name="logo" /></span><strong>Personal<br className="brand-break" /> Finance</strong></div>
+      {!unified && mode && <label className="workspace-picker">Workspace<select aria-label="Workspace" value={mode ?? 'personal'} disabled={!mode || modePending || busy || !!dialog} onChange={event => void changeMode(event.target.value as Mode)}>
         <option value="personal">Manual</option><option value="sandbox">Sandbox preview</option><option value="live">Live</option>
       </select></label>}
       {mode === 'sandbox' && <label className="scenario-picker">Test scenario<select aria-label="Sandbox scenario" disabled={scenarioPending || modePending || busy || !!dialog} value={scenario} onChange={event => void changeScenario(event.target.value as Scenario)}><option value="banking">Banking</option><option value="investments">Investments</option><option value="combined">Combined</option></select></label>}
@@ -569,23 +569,16 @@ function App() {
         <div className="local-status"><i aria-hidden="true" /> Local data</div>
       </div>
     </aside>
-    <main>
+    <main id="main-content" tabIndex={-1} data-workspace={unified ? 'all-accounts' : mode}>
       <header className="page-header">
-        <div><span className="page-context"><i data-mode={mode} />{unified ? 'Your finances' : mode === 'live' ? 'Live workspace' : mode === 'sandbox' ? 'Sandbox · ' + scenario : 'Manual workspace'}</span><h1>{page}</h1><p className="page-description">{{
-          Overview: 'Net worth, monthly cash flow, and budget progress.',
-          Spending: 'See when, where, and how your spending changes.',
-          Transactions: 'Browse your ledger and recurring templates.',
-          Budgets: 'See where your income goes and how much is left to save.',
-          Accounts: 'Track balances across the accounts you own.',
-          Investments: 'See your holdings, allocation, and investment activity.',
-          'Bank sync': mode === 'live' ? 'Prepare and manage real-bank connections through Plaid.' : 'Connect and refresh a test bank through Plaid.',
-          'Backup & restore': 'Save local checkpoints and recover a workspace.',
-        }[page]}</p>{synced && (mode === 'live' || scenario === 'banking') && page !== 'Backup & restore' && <SyncFreshness request={request} revision={revision} open={() => setPage('Bank sync')} />}</div>
+        <div className="page-title"><h1>{page}</h1>
+          {synced && (mode === 'live' || scenario === 'banking') && page !== 'Backup & restore' && <SyncFreshness request={request} revision={revision} open={() => setPage('Bank sync')} />}
+        </div>
         <div className="toolbar">
           <PageHelp page={page} />
           {page !== 'Accounts' && page !== 'Backup & restore' && page !== 'Investments' && <label className="reporting-month">Reporting month<input type="month" aria-label="Reporting month" value={month} disabled={page === 'Transactions' && allReviewDates} onChange={event => { if (event.target.value) setMonth(event.target.value) }} /></label>}
-          {unified && page === 'Transactions' && <button className="secondary" onClick={quickAdd}>Add manual transaction</button>}
-          {page === 'Backup & restore' || page === 'Investments' ? null : synced ? <button className="primary" onClick={() => setPage('Bank sync')}>Bank sync</button>
+          {unified && page === 'Transactions' && <button className="primary with-icon" onClick={quickAdd}><Icon name="plus" />Add manual transaction</button>}
+          {page === 'Backup & restore' || page === 'Investments' ? null : synced ? page !== 'Bank sync' && <button className="secondary with-icon" onClick={() => setPage('Bank sync')}><Icon name="connection" />Bank sync</button>
             : <button className="primary with-icon" disabled={!data} onClick={quickAdd}><Icon name="plus" />Add transaction</button>}
         </div>
       </header>
@@ -597,29 +590,26 @@ function App() {
       {synced && page !== 'Backup & restore' && page !== 'Investments' && !!ready?.review_count && <p className="notice">{ready.review_count} credit entries need classification as income, refunds, or transfers before they count toward cash flow.</p>}
       {synced && page !== 'Backup & restore' && !!ready?.missing_balance_count && <p className="notice">{ready.missing_balance_count} accounts have no reported balance and are excluded from net worth.</p>}
       {error && <p role="alert" className="notice">{error} <button className="secondary small" onClick={() => setRevision(value => value + 1)}>Retry</button></p>}
-      {!ready && !error && <p className="muted" role="status">Loading your ledger…</p>}
+      {!ready && !error && <p className="empty loading-panel" role="status">Loading your ledger…</p>}
       {ready && page === 'Overview' && <>
         <div className="overview-grid">
         <NetWorth unified={unified} workspaceLabel={mode === 'live' ? 'Live' : mode === 'sandbox' ? 'Sandbox' : 'Manual'} key={mode + scenario} accounts={ready.accounts} history={ready.history} mode={synced ? 'sandbox' : 'personal'}
           request={request} money={money} revision={revision} onUpdateSnapshots={() => setPage(synced ? 'Bank sync' : 'Accounts')} onSelectionChange={setChartAccountIds} onStart={() => unified ? void openManual('account') : synced ? setPage('Bank sync') : open({ type: 'account' })} />
         <div className="overview-side"><CashFlow data={ready} month={activeMonth} drill={(ids, label) => drillSpending(ids, label, 'Overview')} />
-          <section className="card"><div className="section-heading"><div><h2>Budget progress</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => setPage('Budgets')}>View budgets <Icon name="right" /></button></div>
+          <section className="card overview-budget"><div className="section-heading"><div><h2>Budget progress</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => setPage('Budgets')}>View budgets <Icon name="right" /></button></div>
             <BudgetRows budgets={budgetRows} edit={editBudget} filter={filterCategory} />
           </section>
         </div>
         </div>
         <HomeSpending report={ready.spending} money={money} drill={(ids, label) => drillSpending(ids, label, 'Overview')} changeMonth={setMonth} openSpending={() => setPage('Spending')}
           recent={<TransactionList transactions={ready.transactions.filter(tx => ready.spending.eligible_ids.includes(tx.id)).slice(0, 5)} edit={editTransaction} empty="No posted spending this month." />} />
-        <div className="dashboard-grid">
-          <AssetSummary accounts={ready.accounts.filter(account => chartAccountIds?.includes(account.id))} loading={chartAccountIds === null} money={money} openAccounts={() => setPage('Accounts')} />
-
-        </div>
+        <div className="dashboard-grid"><AssetSummary accounts={ready.accounts.filter(account => chartAccountIds?.includes(account.id))} loading={chartAccountIds === null} money={money} openAccounts={() => setPage('Accounts')} /></div>
       </>}
       {ready && page === 'Spending' && <SpendingPage key={mode + scenario} month={month} money={money} drill={drillSpending} changeMonth={setMonth} sandbox={synced} request={request} path={synced ? previewPath : ''} accounts={ready.accounts} categories={ready.categories} filters={reportFilters} setFilters={setReportFilters} revision={revision}
         transactions={ready.transactions} renderTransactions={ids => <TransactionList transactions={ids.flatMap(id => ready.transactions.find(tx => tx.id === id) ?? [])} edit={editTransaction} />} />}
       {ready && page === 'Transactions' && <>
-        <section className="card">
-          <div className="section-heading"><div><h2>{allReviewDates ? 'All saved dates' : activeMonth}</h2><small>{entries.length} entries</small></div></div>
+        <section className="card transaction-workspace">
+          <div className="section-heading"><div><h2>Ledger</h2><small>{allReviewDates ? 'All saved dates' : activeMonth} · {entries.length} {entries.length === 1 ? 'entry' : 'entries'}</small></div></div>
           {reviewMessage && <p className="notice" role="status">{reviewMessage}</p>}
           <TransferReview path={(synced ? previewPath : '') + '/review/transfers'} request={request} money={money} revision={ready.transactions} focusId={transferFocus} setFocusId={setTransferFocus}
             complete={message => { setReviewMessage(message); setRevision(value => value + 1) }} />
@@ -644,7 +634,7 @@ function App() {
             <label>Status<select aria-label="Filter posting status" value={postingFilter} onChange={event => setPostingFilter(event.target.value)}><option value="all">Posted &amp; pending</option><option value="posted">Posted only</option><option value="pending">Pending only</option></select></label>
             <label>Sort by<select aria-label="Sort transactions" value={sortOrder} onChange={event => setSortOrder(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="largest">Largest amount</option><option value="smallest">Smallest amount</option></select></label>
           </div>
-          {postingFilter !== 'posted' && <p className="analytics-note">Pending entries can appear here but are excluded from income and spending reports. Amount sorting uses magnitude within each currency.</p>}
+          {postingFilter !== 'posted' && <p className="analytics-note">Pending entries are excluded from reports. Amounts sort by magnitude within each currency.</p>}
           <TransactionList transactions={entries.slice(currentPage * pageSize, (currentPage + 1) * pageSize)} edit={editTransaction} empty={emptyMessage} selected={selectedTransactions} statuses={reviewStatuses}
             toggle={id => setSelectedTransactions(value => value.includes(id) ? value.filter(item => item !== id) : [...value, id])} />
           {entries.length > pageSize && <div className="pagination" aria-label="Transaction pages">

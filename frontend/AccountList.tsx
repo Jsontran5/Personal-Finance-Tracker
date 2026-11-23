@@ -2,6 +2,9 @@ import { trapDialogFocus } from './dialogFocus'
 import { AccountFreshness, type AccountSync } from './AccountFreshness'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { accountLabel, accountGroups, groupedAccounts, type GroupAccount } from './accounts'
+import { Icon } from './icons'
+
+const groupIcons = ['accounts', 'logo', 'plus', 'card', 'transactions', 'overview'] as const
 
 export type Account = GroupAccount & {
   id: number; manual_id?: number | null; sync?: AccountSync | null; name: string; provider_name?: string | null; nickname?: string | null; kind: string; currency: string; balance_minor: number | null;
@@ -16,7 +19,7 @@ function AccountInspector({ account, open, close, money, children }: { account: 
     if (!open && panel?.open) panel.close()
   }, [open])
   return <dialog onKeyDown={trapDialogFocus} className="inspector account-inspector" ref={ref} aria-labelledby={'account-title-' + account.id} onCancel={event => { event.preventDefault(); close() }}>
-    <div className="dialog-heading"><div><small className="eyebrow">ACCOUNT DETAILS</small><h2 id={'account-title-' + account.id}>{account.name}</h2></div><button className="icon" type="button" aria-label="Close account details" onClick={close}>×</button></div>
+    <div className="dialog-heading"><h2 id={'account-title-' + account.id}>{account.name}</h2><button className="icon" type="button" aria-label="Close account details" onClick={close}>×</button></div>
     <div className="account-inspector-value"><small>{accountLabel(account)} · {account.institution_name ?? 'Manual'} · {account.currency}</small><strong className="numeric">{account.balance_minor == null ? '—' : money(account.balance_minor, account.currency)}</strong></div>
     {children}
   </dialog>
@@ -48,25 +51,26 @@ export function AccountList({ accounts, sandbox, live, unified = false, primary,
     {!matching.length && <p className="empty">{accounts.length ? 'No accounts match your search.' : 'No accounts yet.'}</p>}
     <div className="account-groups">
       {groupedAccounts(matching).map(group => {
+        const groupIndex = accountGroups.indexOf(group.name)
         const totals = new Map<string, number | null>()
         for (const account of group.accounts) {
           const previous = totals.get(account.currency)
           totals.set(account.currency, account.balance_minor === null || previous === null ? null : (previous ?? 0) + account.balance_minor)
         }
-        return <details className="card account-group" key={group.name} open={!!search || !!filter || expanded.includes(group.name)}
+        return <details className="card account-group" data-tone={groupIndex} key={group.name} open={!!search || !!filter || expanded.includes(group.name)}
           onToggle={event => {
             if (search || filter) return
             const isOpen = event.currentTarget.open
             setExpanded(value => isOpen ? value.includes(group.name) ? value : [...value, group.name] : value.filter(name => name !== group.name))
           }}>
-          <summary className="group-summary"><span className="group-heading"><strong role="heading" aria-level={2}>{group.name}</strong><small className="group-count">{group.accounts.length} {group.accounts.length === 1 ? 'account' : 'accounts'}</small></span>
+          <summary className="group-summary"><span className="group-heading"><span className="group-icon"><Icon name={groupIcons[groupIndex]} /></span><span><strong role="heading" aria-level={2}>{group.name}</strong><small className="group-count">{group.accounts.length} {group.accounts.length === 1 ? 'account' : 'accounts'}</small></span></span>
             <span className="group-totals numeric"><small>Group total</small>{[...totals].map(([currency, amount]) => <span key={currency}>{amount === null ? 'Incomplete · ' + currency : money(amount, currency)}</span>)}</span>
             <span className="group-toggle" aria-hidden="true">›</span>
           </summary>
           <div className="group-accounts">{group.accounts.map(account => <details name="account-inspector" className="compact-account" key={account.id} open={selected === account.id} onToggle={event => { if (event.target === event.currentTarget) { const isOpen = event.currentTarget.open; setSelected(value => isOpen ? account.id : value === account.id ? null : value) } }}>
             <summary className="account-summary"><span className="account-identity"><strong>{account.name}</strong><small>{accountLabel(account)}{account.institution_name && ` / ${account.institution_name}`} · {account.currency}
               {account.id === primary && ' · Primary'}{!account.include_in_net_worth && ' · Excluded'}</small><AccountFreshness sync={account.sync} now={now} compact cached={account.balance_source === 'cached'} /></span>
-              <span className={'numeric ' + ((account.balance_minor ?? 0) < 0 ? 'negative' : '')}>{account.balance_minor === null ? '—' : money(account.balance_minor, account.currency)}</span>
+              <span className={'numeric ' + ((account.balance_minor ?? 0) < 0 ? 'negative' : '')}>{account.balance_minor === null ? '—' : money(account.balance_minor, account.currency)}</span><span className="account-row-arrow" aria-hidden="true">›</span>
             </summary>
             <AccountInspector account={account} open={selected === account.id} close={() => setSelected(null)} money={money}><div className="account-expanded">
               <p className="muted">{sandbox

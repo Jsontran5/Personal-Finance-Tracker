@@ -57,8 +57,8 @@ export function Connections({ request, onChanged, live = false, unified = false,
         addPanel.current.querySelector<HTMLInputElement>('input[aria-label="Find institution"]')?.focus({ preventScroll: true })
       }
     }} />}
-    <section className="card"><div className="section-heading"><div><h2>Connected institutions</h2><small>{unified ? 'Your bank connections' : live ? 'Live workspace' : 'Combined Sandbox'} · each connection keeps its own authorization and sync state</small></div><span className="chip">{live ? 'LIVE DATA' : 'TEST MODE'}</span></div>
-      <p className="muted">Accounts, spending, investments and net worth share this workspace. Reconnect an existing institution to repair access or select more accounts.</p>
+    <section className="card connection-overview"><div className="section-heading"><div><h2>Connected institutions</h2><small>{unified ? 'All accounts workspace' : live ? 'Live workspace' : 'Combined Sandbox'}</small></div><span className="chip">{live ? 'Live data' : 'Test data'}</span></div>
+      <p className="muted">Reconnect an institution to repair access or change which accounts it shares.</p>
       {!live && <button className="secondary" disabled={!!busy || !status?.configured} onClick={() => void action('Import saved scenarios', async () => {
         const result = await request<{ imported: number }>(base + '/import-scenarios', 'POST')
         return `${result.imported} saved connections copied into Combined. Existing scenarios and Items are unchanged.`
@@ -88,7 +88,7 @@ export function Connections({ request, onChanged, live = false, unified = false,
       {!status && !error && <p role="status">Loading connections…</p>}
       {status && !matching.length && <p className="empty">{status.connections.length ? 'No connections match this filter.' : live ? 'No institutions added yet. Use Find your bank above to get started.' : 'Import your saved Sandbox connections, or add an institution.'}</p>}
       {matching.slice(currentPage * 6, (currentPage + 1) * 6).map(connection => <article className="card connection-card" key={connection.id}>
-        <div className="section-heading"><div><h3>{connection.name}</h3><small>{connection.profile === 'investments' ? 'Investments' : connection.investments_enabled ? 'Banking + investments' : 'Banking'} · {connection.account_count} accounts</small></div><span className="chip">{connection.needs_reauth ? 'Reconnect needed' : connection.connected ? 'Connected' : 'Setup needed'}</span></div>
+        <div className="section-heading"><div><h3>{connection.name}</h3><small>{connection.profile === 'investments' ? 'Investments' : connection.investments_enabled ? 'Banking + investments' : 'Banking'} · {connection.account_count} accounts</small></div><span className="chip connection-status" data-connected={!!connection.connected && !connection.needs_reauth}>{connection.needs_reauth ? 'Reconnect needed' : connection.connected ? 'Connected' : 'Setup needed'}</span></div>
         {connection.last_error && <p className="notice">Last request: {connection.last_error}. Saved data is retained.</p>}
         <div className="connection-actions">
           {connection.session ? <><a className="bank-link" href={connection.url ?? undefined} target="_blank" rel="noopener noreferrer">Open saved Plaid session ↗</a>

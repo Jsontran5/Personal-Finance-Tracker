@@ -69,7 +69,7 @@ export function BankSync({ request, money, onChanged, investmentScenario, openIn
 
   const connection = status?.connection
   return <>
-    <section className="card">
+    <section className="card connection-overview">
       <div className="section-heading"><div><h2>{investmentScenario ? 'Investment test connection' : 'Banking test connection'}</h2><small>Each scenario has its own saved connection and data.</small></div><span className="chip">TEST MODE</span></div>
       {investmentScenario && <p className="muted">For a new test connection, choose First Platypus Bank and use user_good / pass_good. Investments is required for this scenario. Your banking scenario stays saved.</p>}
       {!status && !error && <p role="status" className="muted">Loading bank sync…</p>}
