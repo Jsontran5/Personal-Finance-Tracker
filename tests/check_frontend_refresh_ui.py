@@ -249,7 +249,10 @@ def exercise(browser, url):
 
     def shot(name):
         time.sleep(.16)
-        assert js('document.documentElement.scrollWidth <= document.documentElement.clientWidth'), name
+        assert js('document.documentElement.scrollWidth <= document.documentElement.clientWidth'), (name, js("""
+          [...document.querySelectorAll('body *')].filter(el => el.getBoundingClientRect().right > document.documentElement.clientWidth + 1)
+            .slice(0, 12).map(el => [el.tagName, el.className, Math.round(el.getBoundingClientRect().right)])
+        """))
         assert js("[...document.querySelectorAll('dialog[open]')].every(el => el.scrollWidth <= el.clientWidth + 1)"), name
         data = cdp('Page.captureScreenshot', format='png', captureBeyondViewport=False)['data']
         (OUTPUT / (name + '.png')).write_bytes(base64.b64decode(data))
@@ -271,7 +274,7 @@ def exercise(browser, url):
     ready("document.querySelector('.hero .chart')")
     OUTPUT.mkdir(parents=True, exist_ok=True)
 
-    for width in (1440, 390, 320):
+    for width in (1440, 1024, 768, 390, 320):
         cdp('Emulation.setDeviceMetricsOverride', width=width, height=1000 if width > 850 else 844, deviceScaleFactor=1, mobile=False)
         for theme in ('light', 'dark'):
             if js('document.documentElement.dataset.theme') != theme:
@@ -287,7 +290,34 @@ def exercise(browser, url):
             for page, selector in selectors.items():
                 nav(page)
                 ready(f'document.querySelector({json.dumps(selector)})')
+                if page == 'Budgets':
+                    assert js("""(() => {
+                        const meter = document.querySelector('.budget-guide [role=meter]');
+                        const track = meter?.querySelector('.finance-meter-track')?.getBoundingClientRect();
+                        const fill = meter?.querySelector('.finance-meter-fill')?.getBoundingClientRect();
+                        return meter?.getAttribute('aria-label') && track?.height >= 6 && fill?.width > 0 && fill.width < track.width;
+                    })()"""), (width, theme, 'budget meter fill')
                 shot(f'{width}-{theme}-' + page.lower().replace(' & ', '-').replace(' ', '-'))
+
+            if width in (1440, 390):
+                nav('Budgets')
+                ready("document.querySelector('.budget-toolbar')")
+                for label, panel in [('Detailed plan', 'budget-group'), ('Spending breakdown', 'budget-breakdown'), ('Income allocations', 'budget-income')]:
+                    click('.budget-toolbar .view-selector button', label)
+                    ready(f'document.querySelector(".{panel}")')
+                    assert js("""[...document.querySelectorAll('.budget-summary section button')].every(button =>
+                        button.getBoundingClientRect().right <= button.closest('section').getBoundingClientRect().right &&
+                        button.scrollWidth <= button.clientWidth + 1
+                    )"""), (width, theme, label, 'budget action clipping')
+                    shot(f'{width}-{theme}-{panel}')
+
+                nav('Investments')
+                ready("document.querySelector('.investment-records .investment-row')")
+                js("document.querySelector('.investment-records').scrollIntoView({block: 'start'})")
+                shot(f'{width}-{theme}-investment-holdings')
+                click('[aria-label="Investment view"] button', 'Activity')
+                ready("document.querySelector('.investment-row')?.textContent.includes('Synthetic investment')")
+                shot(f'{width}-{theme}-investment-activity')
 
             nav('Accounts')
             search('[aria-label="Search accounts"]', 'Long-term household')
@@ -347,6 +377,10 @@ def exercise(browser, url):
     ready("!document.querySelector('[role=tooltip]')")
 
     nav('Transactions')
+    js("document.querySelector('.ledger-options button').focus()")
+    key('Enter', 'Enter', 13)
+    ready("document.querySelector('.ledger-options button').getAttribute('aria-expanded') === 'true'")
+    assert js("document.querySelector('[aria-label=\"Sort transactions\"]').getClientRects().length > 0")
     search('[aria-label="Search transactions"]', 'Cedar')
     ready("document.querySelectorAll('.ledger-row').length === 1")
     click('.ledger-row')
@@ -392,7 +426,7 @@ def exercise(browser, url):
     ready(f'document.documentElement.dataset.theme !== "{theme}" && !document.querySelector(".theme-toggle").disabled')
     assert js("getComputedStyle(document.querySelector('.theme-toggle')).transitionDuration === '0s'")
     assert not runtime_errors, runtime_errors
-    print('All eight pages rendered in both themes at 1440, 390, and 320 px. Filters, disclosures, drilldowns, dialogs, keyboard and reduced motion checked.')
+    print('All eight pages rendered in both themes at 1440, 1024, 768, 390, and 320 px. Meters, filters, disclosures, drilldowns, dialogs, keyboard and reduced motion checked.')
 
 
 if __name__ == '__main__':

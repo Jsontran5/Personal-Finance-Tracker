@@ -110,8 +110,7 @@ export function Investments({ sandbox, managed, live, request, money, openBank, 
     {openTestScenario && <div className="notice"><p>The prepared holdings demo is in the Investments test scenario. Your banking connection stays saved separately.</p><button className="secondary small" onClick={openTestScenario}>Switch to investment demo</button></div>}
     <div className="filters investment-filters"><label>Investment account<select aria-label="Investment account" value={account} onChange={event => setAccount(event.target.value)}><option value="">All investment accounts</option>{data.accounts.map(item => <option key={item.id} value={item.id}>{item.name} · {nameOf(item.subtype)}</option>)}</select></label></div>
     <div className="portfolio-layout">
-    <div className="portfolio-records">
-    {!data.state?.holdings_at ? <section className="card"><h2>Load your existing portfolio</h2><p className="empty">In Bank sync, choose Sync holdings first, then Sync activity for each investment institution. Existing positions load as holdings, without becoming new income or spending.</p></section> : <>
+    {!data.state?.holdings_at ? <section className="card investment-empty"><h2>Load your existing portfolio</h2><p className="empty">In Bank sync, choose Sync holdings first, then Sync activity for each investment institution. Existing positions load as holdings, without becoming new income or spending.</p></section> : <>
       <div className="investment-overview">
         <section className="card investment-value"><h2>Portfolio value</h2><strong className="hero-value numeric">{total === null ? '—' : money(total)}</strong><p className="muted">Saved USD account balances · cash and securities counted once</p>
           {accounts.some(item => item.currency !== 'USD' || item.current_minor === null) && <p className="notice">Other currencies and missing USD balances are excluded from this total.</p>}
@@ -151,7 +150,6 @@ export function Investments({ sandbox, managed, live, request, money, openBank, 
         </>}
       </section>
     </>}
-    </div>
     <section className="card investment-sync">
       <div className="section-heading"><div><h2>Broker-reported investments</h2><small>{managed ? "View sync times for each institution in Bank sync." : <>Holdings: {stamp(data.state?.holdings_at)} / Activity: {stamp(data.state?.activity_at)}</>}</small></div><span className="chip">{live ? 'LIVE DATA' : 'TEST MODE'}</span></div>
       <p className="muted">Values use the latest data reported by your broker. Holdings can update overnight.</p>

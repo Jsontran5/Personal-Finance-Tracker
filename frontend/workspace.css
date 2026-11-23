@@ -193,6 +193,7 @@ button.primary:active:not(:disabled), button.secondary:active:not(:disabled), .a
 .transaction-workspace .ledger-row { padding-inline: 6px; }
 
 .budget-workspace .budget-toolbar { padding: 0 0 12px; border-bottom: 1px solid var(--line); }
+.budget-workspace .budget-summary section button { max-width: 100%; white-space: normal; }
 .budget-monthly .budget-summary {
   display: grid;
   grid-template-columns: minmax(0, 1.18fr) minmax(0, 1fr);
@@ -242,12 +243,14 @@ button.primary:active:not(:disabled), button.secondary:active:not(:disabled), .a
 .portfolio-layout {
   display: grid;
   grid-template-columns: minmax(0, 2.8fr) minmax(230px, 1fr);
+  grid-template-areas: 'portfolio connection' 'records records';
   gap: var(--workspace-gap);
   align-items: start;
 }
-.portfolio-records { min-width: 0; display: grid; gap: var(--workspace-gap); }
-.portfolio-records .investment-overview { grid-template-columns: minmax(0, 1.35fr) minmax(180px, 1fr); }
-.investment-sync { border: 0; background: var(--raised); }
+.portfolio-layout .investment-overview { grid-area: portfolio; grid-template-columns: minmax(0, 1.35fr) minmax(180px, 1fr); }
+.portfolio-layout .investment-empty { grid-area: portfolio; }
+.portfolio-layout .investment-records { grid-area: records; }
+.investment-sync { grid-area: connection; border: 0; background: var(--raised); }
 .investment-sync .section-heading { flex-wrap: wrap; }
 .investment-value { background: var(--active); border: 1px solid var(--line); }
 .investment-allocation { border-top: 1px solid var(--line); }
@@ -294,7 +297,7 @@ button.primary:active:not(:disabled), button.secondary:active:not(:disabled), .a
   .app-bar .desktop-navigation button .glyph { display: none; }
   .overview-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .overview-side .asset-summary { grid-column: 1 / -1; }
-  .portfolio-records .investment-overview { grid-template-columns: minmax(0, 1fr); }
+  .portfolio-layout .investment-overview { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 920px) {
@@ -324,7 +327,8 @@ button.primary:active:not(:disabled), button.secondary:active:not(:disabled), .a
   .report-filters .report-account-options { grid-template-columns: minmax(0, 1fr) auto; }
   .report-results { display: contents; }
   .report-results .spending-metrics { order: -1; }
-  .portfolio-records .investment-overview { grid-template-columns: minmax(0, 1fr); }
+  .portfolio-layout { grid-template-areas: 'portfolio' 'records' 'connection'; }
+  .portfolio-layout .investment-overview { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 540px) {
@@ -354,6 +358,10 @@ button.primary:active:not(:disabled), button.secondary:active:not(:disabled), .a
 
 @media (max-width: 610px) {
   .journal-columns { display: none; }
+}
+
+@media (max-width: 420px) {
+  .report-filters .report-filter-fields { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: no-preference) {

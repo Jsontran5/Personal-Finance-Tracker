@@ -44,7 +44,7 @@ export function AccountList({ accounts, sandbox, live, unified = false, primary,
     <div className="account-browser">
     <aside className="account-directory" aria-label="Filter accounts">
       <h3>Find an account</h3>
-      <label>Search<input type="search" aria-label="Search accounts" placeholder="Account or institution" value={search} onChange={event => setSearch(event.target.value)} /></label>
+      <label>Search<input type="search" aria-label="Search accounts" placeholder="Name or bank" value={search} onChange={event => setSearch(event.target.value)} /></label>
       <label>Group<select aria-label="Account group" value={filter} onChange={event => setFilter(event.target.value)}><option value="">All groups</option>
         {accountGroups.filter(name => groups.some(group => group.name === name)).map(name => <option key={name}>{name}</option>)}
       </select></label>
