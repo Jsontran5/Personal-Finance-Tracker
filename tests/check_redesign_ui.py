@@ -221,7 +221,7 @@ def run():
                     fixture.execute('INSERT INTO preview_snapshot_accounts SELECT ?,id,name,currency,current_minor-?,source,? FROM accounts WHERE active=1',(identifier,days*100,day+'T12:00:00'))
             # Drilldowns reconcile with the report's exact eligible IDs. Sorting
             # is global before pagination, and return navigation retains scope.
-            report_month = js("document.querySelector('[aria-label=\"Reporting month\"]').value")
+            report_month = js("document.querySelector('[aria-label=\"Reporting month\"]').dataset.month")
             preview = json.load(urllib.request.urlopen(url+'/api/plaid/combined-sandbox/preview?month='+report_month))
             nav('Spending');ready("document.querySelector('.report-calendar')")
             click('.report-account-filter > summary')
@@ -265,7 +265,10 @@ def run():
             index=int(report_month[:4])*12+int(report_month[5:])-2
             earlier=f'{index//12:04}-{index%12+1:02}'
             for chosen in (earlier,report_month):
-                js("(()=>{const e=document.querySelector('[aria-label=\"Reporting month\"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+json.dumps(chosen)+");e.dispatchEvent(new Event('input',{bubbles:true}));})()")
+                click('.month-picker-trigger')
+                ready("document.querySelector('.month-picker-panel:popover-open')")
+                js("(()=>{const e=document.querySelector('[aria-label=\"Jump to reporting month\"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+json.dumps(chosen)+");e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()")
+                click('.month-picker-jump button', 'Go')
                 expected_month=date.fromisoformat(chosen+'-01').strftime('%B %Y')
                 ready("document.querySelector('.cashflow .section-heading small')?.textContent.startsWith("+json.dumps(expected_month)+") && document.querySelector('.composition-total')")
                 assert js("[document.querySelector('.hero-value').textContent,document.querySelector('.composition-total').textContent]")==saved_balances
@@ -351,9 +354,12 @@ def run():
                     js("document.querySelector('.hero .snapshot-guide').scrollIntoView({block:'center'})")
                     screenshot(f'{width}-{theme}-snapshot-guide')
                     click('.hero .snapshot-guide > summary')
-                    click('.account-picker > summary')
-                    if width<=850:
-                        assert js("document.querySelector('.picker-done').getBoundingClientRect().bottom <= document.querySelector('.mobile-navigation').getBoundingClientRect().top"), 'Picker action covered by navigation'
+                    click('.account-picker-trigger')
+                    ready("document.querySelector('.account-options:popover-open')")
+                    assert js("""(() => {
+                        const done = document.querySelector('.picker-done'), rect = done.getBoundingClientRect();
+                        return done.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+                    })()"""), 'Picker action is obscured'
                     screenshot(f'{width}-{theme}-redesign-chart-account-picker')
                     click('.account-picker button','Done')
                     # Inspect an account using real pointer input, then keyboard close/focus return.

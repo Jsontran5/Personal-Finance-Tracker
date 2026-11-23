@@ -1,4 +1,6 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
+import { Popover, PopoverClose, PopoverContent, PopoverTitle, PopoverTrigger } from '@ui-sdk/react/popover'
+import { Icon } from './icons'
 import { groupedAccounts, type GroupAccount } from './accounts'
 import { BankingHistory, SnapshotGuide } from './BankingHistory'
 
@@ -101,14 +103,6 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [search, setSearch] = useState('')
-  const picker = useRef<HTMLDetailsElement>(null)
-  useEffect(() => {
-    const closeOutside = (event: PointerEvent) => {
-      if (picker.current && !picker.current.contains(event.target as Node)) picker.current.open = false
-    }
-    document.addEventListener('pointerdown', closeOutside)
-    return () => document.removeEventListener('pointerdown', closeOutside)
-  }, [])
   const eligible = accounts.filter(account => account.include_in_net_worth && account.currency === 'USD')
   const selected = eligible.filter(account => !excluded?.includes(account.id))
   const path = '/chart-selection/' + mode
@@ -163,11 +157,10 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
     </div>
     <div className="hero-controls"><div className="segmented net-worth-modes" aria-label="Balance chart measure">{[['net', 'Net worth'], ['assets', 'Assets'], ['debt', 'Debt']].map(([value, label]) => <button key={value} aria-pressed={chartMode === value} onClick={() => setChartMode(value)}>{label}</button>)}</div>
     {error && <p className="notice" role="alert">{error}{excluded === null && <button className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button>}</p>}
-    {eligible.length > 0 && excluded !== null && <details ref={picker} className="account-picker" onKeyDown={event => {
-      if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus() }
-    }}>
-      <summary>Accounts · {selected.length} of {eligible.length}</summary>
-      <div className="account-options">
+    {eligible.length > 0 && excluded !== null && <div className="account-picker"><Popover>
+      <PopoverTrigger className="account-picker-trigger"><Icon name="chevronDown" />Accounts · {selected.length} of {eligible.length}</PopoverTrigger>
+      <PopoverContent className="account-options" align="start" sideOffset={8} initialFocus='input[type="search"]'>
+        <PopoverTitle>Chart accounts</PopoverTitle>
         <div className="picker-toolbar"><input type="search" aria-label="Search chart accounts" placeholder="Find an account" value={search} onChange={event => setSearch(event.target.value)} />
           <button className="secondary small" disabled={busy} onClick={() => void saveSelection([])}>Select all</button>
           <button className="secondary small" disabled={busy} onClick={() => void saveSelection(eligible.map(account => account.id))}>Clear</button></div>
@@ -190,9 +183,9 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
         })}
         {!eligible.some(account => (account.name + ' ' + (account.institution_name ?? '')).toLowerCase().includes(search.toLowerCase())) && <p className="muted">No matching accounts.</p>}
         </div>
-        <button className="secondary small picker-done" onClick={() => { if (picker.current) { picker.current.open = false; picker.current.querySelector('summary')?.focus() } }}>Done</button>
-      </div>
-    </details>}
+        <PopoverClose className="secondary small picker-done">Done</PopoverClose>
+      </PopoverContent>
+    </Popover></div>}
     </div>
     {excluded === null && !error && <p className="muted">Loading chart selection…</p>}
     {excluded !== null && eligible.length === 0 && <div className="welcome">

@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { ViewSelector } from './ViewSelector'
+import { MonthPicker, previousMonth } from './MonthPicker'
 
 export type Bucket = { key: string; label: string; purchases_minor: number; refunds_minor: number; net_minor: number; transaction_ids: number[]; purchase_transaction_ids: number[] }
 type Day = { day: number; date: string; purchases_minor: number; refunds_minor: number; net_minor: number | null; cumulative_minor: number | null; transaction_ids: number[] }
@@ -176,7 +177,7 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
       onReselect={() => change({ category: 'all' })}
       options={[{ value: 'spending', label: 'Spending' }, { value: 'income', label: 'Income' }, { value: 'cashflow', label: 'Cash flow' }]} />
     <section className="card report-filters" aria-label="Report filters">
-      <h2>Report filters</h2>
+      <div className="section-heading"><h2>Report filters</h2><p className="analytics-note">Posted USD activity</p></div>
       <div className="report-filter-fields">
         <details className="report-account-filter"><summary>Accounts · {filters.accounts.length ? filters.accounts.length + ' selected' : 'All'}</summary>
           <div className="report-account-options">
@@ -194,12 +195,11 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
         </select></label>
         <label>Compare with<select aria-label="Report comparison" value={comparison ? 'custom' : 'previous'} onChange={event => {
           if (event.target.value === 'previous') change({ comparison: '' })
-          else { const date = new Date(month + '-01T12:00:00'); date.setMonth(date.getMonth() - 1); change({ comparison: String(date.getFullYear()).padStart(4, '0') + '-' + String(date.getMonth() + 1).padStart(2, '0') }) }
+          else change({ comparison: previousMonth(month) })
         }}><option value="previous">Previous month</option><option value="custom" disabled={month === '0001-01'}>Choose month</option></select></label>
-        {comparison && <label>Comparison month<input type="month" aria-label="Comparison month" max={month} value={comparison} onChange={event => { if (event.target.value && event.target.value < month) change({ comparison: event.target.value }) }} /></label>}
+        {comparison && <MonthPicker label="Comparison month" value={comparison} max={previousMonth(month)} onChange={value => change({ comparison: value })} />}
         <button className="secondary small" onClick={() => setFilters({ ...defaultReportFilters, measure: filters.measure })}>Reset filters</button>
       </div>
-      <p className="analytics-note">Filters apply to the entire report · Posted USD activity</p>
     </section>
     <div className="report-results">
     {error && <p className="notice" role="alert">{error} <button className="secondary small" onClick={() => setRetry(value => value + 1)}>Retry report</button></p>}
@@ -217,6 +217,9 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
           <small>{report.comparison_month && monthLabel(report.comparison_month) + ' · '}{report.comparison_days ? `days 1–${report.comparison_days}` : 'No comparable elapsed days'}{report.previous_minor !== null && ' · ' + money(report.previous_minor)}</small></div>
         <SpendingTrend report={report} money={money} />
       </section>
+    </>}
+    </div>
+    {report && <div className="report-details">
       <div className="analytics-grid report-calendar-grid">
         <section className={'card report-calendar ' + (cashflow ? 'cashflow-calendar' : '')}><div className="section-heading"><h2>{label} calendar</h2></div>
           <SpendingCalendar report={report} money={money} drill={drill} changeMonth={changeMonth} />
@@ -245,8 +248,7 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
             <button className="secondary small" disabled={currentPage === lastPage} onClick={() => setTransactionPage(currentPage + 1)}>Next</button></div>
         </div>}
       </section>
-    </>}
-    </div>
+    </div>}
   </div>
 }
 

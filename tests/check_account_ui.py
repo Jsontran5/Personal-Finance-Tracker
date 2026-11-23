@@ -185,8 +185,9 @@ def run():
                     js("document.querySelector('.net-worth-modes button:nth-child(3)').click()")
                     assert js("document.querySelector('#net-worth-title').textContent") == 'Debt'
                     js("document.querySelector('.net-worth-modes button:first-child').click()")
-                    js("document.querySelector('.account-picker > summary').click()")
-                    assert js("document.querySelector('.picker-scroll').clientHeight <= 301")
+                    js("document.querySelector('.account-picker-trigger').click()")
+                    ready("document.querySelector('.account-options:popover-open')")
+                    assert js("document.querySelector('.picker-scroll').clientHeight <= 321")
                     assert js("document.querySelector('.hero').getBoundingClientRect().height") == before
                     screenshot(label + '-selector')
                     js("document.querySelector('.picker-done').click()")
@@ -198,7 +199,7 @@ def run():
                     screenshot(label + '-asset-table')
                     nav('Spending')
                     ready("document.querySelector('.metric-card')")
-                    report = js("fetch('/api/plaid/sandbox/preview?month='+document.querySelector('input[type=month]').value).then(r=>r.json()).then(d=>d.spending)")
+                    report = js("fetch('/api/plaid/sandbox/preview?month='+document.querySelector('[aria-label=\"Reporting month\"]').dataset.month).then(r=>r.json()).then(d=>d.spending)")
                     assert js("document.querySelector('.metric-card > strong').textContent") == js(f"new Intl.NumberFormat('en-US',{{style:'currency',currency:'USD'}}).format({report['net_minor']}/100)")
                     screenshot(label + '-spending')
                     js("document.querySelector('.analytics-grid').scrollIntoView({block:'start'})")
@@ -229,7 +230,7 @@ def run():
                         ready("document.querySelector('.compact-account[open] .balance-chart')")
                         screenshot(label + '-balance-history')
                         js("[...document.querySelectorAll('.compact-account[open] button')].find(b=>b.textContent.includes('View account transactions')).click()")
-                        ready("document.querySelector('h1')?.textContent==='Transactions' && document.querySelector('input[type=month]').disabled")
+                        ready("document.querySelector('h1')?.textContent==='Transactions' && document.querySelector('[aria-label=\"Reporting month\"]').disabled")
                         assert js("document.querySelector('select[aria-label=\"Filter account\"]').value") != '0'
                         screenshot(label + '-account-transaction-shortcut')
                         nav('Accounts')
@@ -289,7 +290,7 @@ def run():
                     js("document.querySelector('.transfer-panel > summary').click()")
                     change('select[aria-label="Review date scope"]', 'all')
                     change('select[aria-label="Review filter"]', 'needs_review')
-                    assert js("document.querySelector('input[type=month]').disabled")
+                    assert js("document.querySelector('[aria-label=\"Reporting month\"]').disabled")
                     screenshot(label + '-all-history-review')
                     change('select[aria-label="Review filter"]', 'all')
                     change('select[aria-label="Review date scope"]', 'month')
@@ -369,14 +370,15 @@ def run():
 
             # Group selection, persistence, search, and mortgage empty state on the copy only.
             nav('Overview')
-            ready("document.querySelector('.account-picker > summary')")
-            js("document.querySelector('.account-picker > summary').click()")
+            ready("document.querySelector('.account-picker-trigger')")
+            js("document.querySelector('.account-picker-trigger').click()")
+            ready("document.querySelector('.account-options:popover-open')")
             js("document.querySelector('.picker-group legend input').click()")
             ready("!document.querySelector('.picker-group legend input').disabled")
-            selected = js("document.querySelector('.account-picker > summary').textContent")
+            selected = js("document.querySelector('.account-picker-trigger').textContent")
             assert '9 of 14' in selected, selected
             cdp('Page.reload')
-            ready("document.querySelector('.account-picker > summary')?.textContent.includes('9 of 14')")
+            ready("document.querySelector('.account-picker-trigger')?.textContent.includes('9 of 14')")
             nav('Transactions')
             mortgage = js("[...document.querySelectorAll('select[aria-label=\"Filter account\"] option')].find(o=>o.textContent==='Plaid Mortgage').value")
             change('select[aria-label="Filter account"]', mortgage)

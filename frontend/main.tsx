@@ -28,6 +28,7 @@ import { StartupStatus } from './StartupStatus'
 import { BudgetWorkspace } from './BudgetWorkspace'
 import { TransactionFlow, type Flow } from './TransactionFlow'
 import { FinanceMeter } from './FinanceMeter'
+import { MonthPicker } from './MonthPicker'
 import './styles.css'
 import './interface.css'
 import './workspace.css'
@@ -581,7 +582,7 @@ function App() {
         </div>
         <div className="toolbar">
           <PageHelp page={page} />
-          {page !== 'Accounts' && page !== 'Backup & restore' && page !== 'Investments' && <label className="reporting-month">Reporting month<input type="month" aria-label="Reporting month" value={month} disabled={page === 'Transactions' && allReviewDates} onChange={event => { if (event.target.value) setMonth(event.target.value) }} /></label>}
+          {page !== 'Accounts' && page !== 'Backup & restore' && page !== 'Investments' && <MonthPicker label="Reporting month" value={month} disabled={page === 'Transactions' && allReviewDates} onChange={setMonth} />}
           {unified && page === 'Transactions' && <button className="primary with-icon" onClick={quickAdd}><Icon name="plus" />Add manual transaction</button>}
           {page === 'Backup & restore' || page === 'Investments' ? null : synced ? page !== 'Bank sync' && <button className="secondary with-icon" onClick={() => setPage('Bank sync')}><Icon name="connection" />Bank sync</button>
             : <button className="primary with-icon" disabled={!data} onClick={quickAdd}><Icon name="plus" />Add transaction</button>}

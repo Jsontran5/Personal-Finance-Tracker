@@ -7,15 +7,15 @@
 :root {
   font-family: 'Lexend', system-ui, sans-serif; color-scheme: dark;
   font-size: 16px; line-height: 1.5; font-synthesis: none;
-  --canvas: #11192b; --surface: #192339; --raised: #222f4a;
-  --field: #141e33; --line: #364767; --control-line: #7387ab;
-  --text: #f4f6ff; --muted: #bfcae2; --accent: #9ab5ff; --accent-hover: #bed1ff;
+  --canvas: #121b2d; --surface: #202b43; --raised: #293754;
+  --field: #172237; --line: #506385; --control-line: #91a3c6;
+  --text: #f9fbff; --muted: #d5ddf0; --accent: #adc4ff; --accent-hover: #cdddff;
   --accent-ink: #111e45; --active: #273b6d; --positive: #84e3ab; --negative: #ffb4a8;
   --danger-bg: #472c32; --blue: #85cdff; --blue-tint: #223c60;
   --notice: #ffd17c; --notice-bg: #3e3321; --hero-top: #263d78; --backdrop: #071021bd;
   --teal: #6be4dd; --coral: #ff937e; --amber: var(--notice); --rose: var(--negative);
   --rail: #15203a; --chrome: #15203afa; --rail-edge: #384a70;
-  --rail-text: #f6f8ff; --rail-muted: #c4cfea; --rail-active: #263861; --rail-accent: #9ab5ff;
+  --rail-text: #f9fbff; --rail-muted: #d3ddf4; --rail-active: #263861; --rail-accent: #adc4ff;
   --rail-selected: #4c66df; --rail-selected-ink: #fff;
   --shadow: none; --panel-shadow: 0 24px 75px #040a1aa6;
   --radius: 9px; --radius-control: 6px; --bg: var(--field);
@@ -39,8 +39,6 @@ body { min-width: 0; -webkit-font-smoothing: antialiased; text-rendering: optimi
 .skip-link { position: fixed; top: 8px; left: 8px; z-index: 100; padding: 12px; border-radius: 8px; background: var(--surface); }
 .skip-link:not(:focus) { clip-path: inset(50%); }
 main:focus { outline: none; }
-.reporting-month { display: grid; gap: 4px; color: var(--muted); font-size: .76rem; }
-.reporting-month input { font-size: .85rem; }
 .page-header .toolbar { align-items: flex-end; }
 .report-transactions { min-width: 0; }
 .report-transactions .section-heading { flex-wrap: wrap; }
@@ -200,9 +198,6 @@ main { max-width: 1570px; padding: 34px clamp(24px, 4vw, 62px) 64px; }
 .hero-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; }
 .hero-controls .net-worth-modes, .hero-controls .account-picker { margin: 0; }
 .hero-controls > .notice { flex-basis: 100%; }
-.account-picker { align-self: center; margin-top: 16px; font-size: .75rem; }
-.account-picker > summary { padding: 5px 10px; border: 1px solid var(--line); border-radius: 20px; background: var(--field); }
-.account-options { width: min(460px, calc(100vw - 50px)); inset-inline-start: auto; inset-inline-end: 0; border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: var(--panel-shadow); }
 .picker-group legend { font-size: .8rem; }
 .balance-chart { margin-top: 10px; }
 .chart { height: 190px; color: var(--blue); }
@@ -481,7 +476,6 @@ dialog button.primary, dialog button.secondary, dialog button.danger { white-spa
   .card { padding: 20px 17px; border-radius: 16px; }
   .overview-grid, .dashboard-grid, .home-spending-grid, .analytics-grid, .investment-overview { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .hero-value { font-size: 2.4rem; }
-  .account-options { inset-inline-start: 0; inset-inline-end: auto; }
   .hero-header .chip { font-size: .57rem; }
   .hero-header { flex-wrap: wrap; }
   .chart { height: 170px; }
@@ -563,8 +557,6 @@ dialog button.primary, dialog button.secondary, dialog button.danger { white-spa
 
 /* Keep every picker action reachable above the mobile navigation. */
 @media (max-width: 850px) {
-  .account-options { position: fixed; top: auto; bottom: calc(82px + env(safe-area-inset-bottom)); inset-inline: 16px; margin: 0 auto; width: min(460px, calc(100% - 32px)); max-height: calc(100dvh - 120px); z-index: 25; grid-template-rows: auto minmax(0, 1fr) auto; }
-  .account-options .picker-scroll { min-height: 0; max-height: min(40dvh, 300px); }
 }
 
 /* Context help uses the browser top layer, including inside account inspectors. */

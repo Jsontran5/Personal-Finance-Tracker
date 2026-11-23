@@ -301,6 +301,38 @@ def exercise(browser, url):
                 shot(f'{width}-{theme}-' + page.lower().replace(' & ', '-').replace(' ', '-'))
 
             if width in (1440, 390):
+                nav('Overview')
+                ready("document.querySelector('.account-picker-trigger')")
+                js("document.querySelector('.account-picker-trigger').scrollIntoView({block:'center'})")
+                js("document.querySelector('.account-picker-trigger').focus()")
+                key('Enter', 'Enter', 13)
+                ready("document.querySelector('.account-options:popover-open')")
+                ready("""(() => {
+                    const panel = document.querySelector('.account-options:popover-open');
+                    const list = panel.querySelector('.picker-scroll');
+                    const body = panel.getBoundingClientRect();
+                    const covers = (x, y) => panel.contains(document.elementFromPoint(x, y));
+                    return body.left >= -1 && body.right <= innerWidth + 1 && body.bottom <= innerHeight + 1 &&
+                        body.top >= -1 && getComputedStyle(panel).backgroundColor.startsWith('rgb(') &&
+                        list.scrollHeight > list.clientHeight &&
+                        [16, body.height / 2, body.height - 16].every(y => covers(body.left + body.width / 2, body.top + y));
+                })()""")
+                shot(f'{width}-{theme}-chart-accounts')
+                key('Escape', 'Escape', 27)
+                ready("!document.querySelector('.account-options:popover-open') && document.activeElement.matches('.account-picker-trigger')")
+
+                js("window.scrollTo(0, 0); document.querySelector('.month-picker-trigger').focus()")
+                key('Enter', 'Enter', 13)
+                ready("document.querySelector('.month-picker-panel:popover-open')")
+                assert js("document.activeElement.matches('.month-picker-cell[aria-current=date]') && getComputedStyle(document.activeElement).outlineStyle === 'solid'")
+                shot(f'{width}-{theme}-reporting-month')
+                original_month = js("document.querySelector('.month-picker-trigger').dataset.month")
+                click('.month-picker-year button[aria-label="Previous year"]')
+                assert js("document.querySelector('.month-picker-year strong').textContent") == str(int(original_month[:4]) - 1)
+                key('Escape', 'Escape', 27)
+                ready("!document.querySelector('.month-picker-panel:popover-open') && document.activeElement.matches('.month-picker-trigger')")
+                assert js("document.querySelector('.month-picker-trigger').dataset.month") == original_month
+
                 nav('Budgets')
                 ready("document.querySelector('.budget-toolbar')")
                 for label, panel in [('Detailed plan', 'budget-group'), ('Spending breakdown', 'budget-breakdown'), ('Income allocations', 'budget-income')]:
@@ -350,6 +382,41 @@ def exercise(browser, url):
 
             nav('Spending')
             ready("document.querySelector('.report-tabs [data-checked]')")
+            if width == 1440:
+                ready("document.querySelector('.report-transactions')")
+                assert js("""(() => {
+                    const bounds = document.querySelector('.spending-page').getBoundingClientRect();
+                    const ledger = document.querySelector('.report-transactions').getBoundingClientRect();
+                    return Math.abs(ledger.left - bounds.left) < 1 && Math.abs(ledger.right - bounds.right) < 1;
+                })()"""), (width, theme, 'report ledger uses full content width')
+                js("document.querySelector('.report-transactions').scrollIntoView({block:'start'})")
+                shot(f'{width}-{theme}-spending-ledger')
+            if width in (1440, 390):
+                js("""(() => {
+                    const compare = document.querySelector('[aria-label="Report comparison"]');
+                    compare.value = 'custom';
+                    compare.dispatchEvent(new Event('change', {bubbles:true}));
+                })()""")
+                ready('document.querySelector(\'[aria-label="Comparison month"]\')')
+                js("document.querySelector('[aria-label=\"Comparison month\"]').scrollIntoView({block:'center'})")
+                click('[aria-label="Comparison month"]')
+                ready("document.querySelector('.month-picker-panel:popover-open')")
+                ready("""(() => {
+                    const go = document.querySelector('.month-picker-panel:popover-open .month-picker-jump button');
+                    const bounds = go.getBoundingClientRect();
+                    return go.contains(document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2));
+                })()""")
+                assert js("""(() => {
+                    const cutoff = document.querySelector('[aria-label="Reporting month"]').dataset.month;
+                    const panel = document.querySelector('.month-picker-panel:popover-open');
+                    const year = Number(panel.querySelector('.month-picker-year strong').textContent);
+                    return [...panel.querySelectorAll('.month-picker-cell')].every((cell, index) =>
+                        cell.disabled === (year === Number(cutoff.slice(0, 4)) && index + 1 >= Number(cutoff.slice(5))));
+                })()"""), (width, theme, 'comparison dates before reporting month')
+                shot(f'{width}-{theme}-comparison-month')
+                key('Escape', 'Escape', 27)
+                ready("!document.querySelector('.month-picker-panel:popover-open')")
+                click('.report-filter-fields button', 'Reset filters')
             click('.report-account-filter summary')
             ready("document.querySelectorAll('.report-account-scroll input').length >= 20")
             js("document.querySelector('.report-account-filter').scrollIntoView({block: 'start'})")
@@ -383,6 +450,19 @@ def exercise(browser, url):
 
     nav('Overview')
     ready("document.querySelector('.cashflow-total')")
+    reporting_month = js("document.querySelector('.month-picker-trigger').dataset.month")
+    click('.month-picker-trigger')
+    ready("document.querySelector('.month-picker-panel:popover-open')")
+    click('.month-picker-year button[aria-label="Previous year"]')
+    click('.month-picker-cell', 'Jan')
+    earlier_month = f'{int(reporting_month[:4]) - 1:04}-01'
+    ready(f"document.querySelector('.month-picker-trigger').dataset.month === {json.dumps(earlier_month)}")
+    ready(f"document.querySelector('.cashflow .section-heading small')?.textContent.startsWith('January {int(earlier_month[:4])}')")
+    click('.month-picker-trigger')
+    ready("document.querySelector('.month-picker-panel:popover-open')")
+    search('[aria-label="Jump to reporting month"]', reporting_month)
+    click('.month-picker-jump button', 'Go')
+    ready(f"document.querySelector('.month-picker-trigger').dataset.month === {json.dumps(reporting_month)} && !document.querySelector('.month-picker-panel:popover-open')")
     js("document.querySelector('.cashflow-total').focus()")
     ready("document.querySelector('[role=tooltip]:popover-open')?.textContent.includes('Transfer')")
     assert js("document.querySelector('.cashflow-total').getAttribute('aria-describedby') === document.querySelector('[role=tooltip]').id")

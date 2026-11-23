@@ -103,19 +103,15 @@ button.small .glyph { width: 14px; height: 14px; }
 .chart-caption { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; font-size: .71rem; color: var(--muted); margin: 3px 0 13px; }
 .balance-chart { display: flex; flex-direction: column; }
 .chart-gap-note { margin-bottom: 12px; }
-.account-picker { position: relative; margin-top: 13px; color: var(--muted); font-size: .84rem; }
-.account-picker summary { cursor: pointer; }
-.account-options { position: absolute; top: calc(100% + 8px); inset-inline: 0; z-index: 5; display: grid; gap: 12px; padding: 14px; border: 1px solid var(--control-line); border-radius: 10px; background: var(--surface); box-shadow: 0 12px 36px #0004; }
 .picker-toolbar { display: flex; flex-wrap: wrap; gap: 7px; }
 .picker-toolbar input { flex: 1 1 140px; width: 100%; }
-.picker-scroll { max-height: min(300px, 40vh); overflow: auto; overscroll-behavior: contain; padding: 3px; }
+.picker-scroll { min-height: 0; max-height: min(320px, 40dvh); overflow: auto; overscroll-behavior: contain; padding: 4px 6px; }
 .picker-group { display: grid; gap: 7px; padding: 8px 0 12px 14px; }
 .picker-group + .picker-group { border-top: 1px solid var(--line); }
 .picker-group legend { padding: 7px 0; }
 .picker-group legend label { color: var(--muted); font-size: .76rem; }
 .picker-group input { flex-shrink: 0; }
 .picker-done { justify-self: end; }
-.account-options > button { justify-self: start; }
 .account-options label { color: var(--text); overflow-wrap: anywhere; }
 .chart-point:focus { outline: 2px solid var(--blue); }
 .balance-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding-top: 12px; margin-top: auto; border-top: 1px solid var(--line); }
