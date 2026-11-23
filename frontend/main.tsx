@@ -1,3 +1,5 @@
+import '@ui-sdk/core/web.css'
+import { Switch, SwitchThumb } from '@ui-sdk/react/switch'
 import { trapDialogFocus } from './dialogFocus'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -366,8 +368,8 @@ function App() {
     finally { setScenarioPending(false) }
   }
 
-  async function toggleTheme() {
-    const next = theme === 'dark' ? 'light' : 'dark'
+  async function setDarkMode(checked: boolean) {
+    const next = checked ? 'dark' : 'light'
     setTheme(next)
     setThemePending(true)
     setThemeError('')
@@ -553,9 +555,17 @@ function App() {
       {mode === 'sandbox' && <label className="scenario-picker">Test scenario<select aria-label="Sandbox scenario" disabled={scenarioPending || modePending || busy || !!dialog} value={scenario} onChange={event => void changeScenario(event.target.value as Scenario)}><option value="banking">Banking</option><option value="investments">Investments</option><option value="combined">Combined</option></select></label>}
       <Navigation page={page} navigate={item => { setPage(item); setKindFilter('all'); setPostingFilter('all'); setSortOrder('newest'); setAllReviewDates(false); setReviewFilter('all'); setDrilldown(null); setCategoryFilter(0); setAccountFilter(0); setSearch('') }} />
       <div className="sidebar-footer">
-        <button className="theme-toggle" type="button" role="switch" aria-checked={theme === 'dark'} disabled={themePending} onClick={() => void toggleTheme()}>
-          <Icon name={theme === 'dark' ? 'moon' : 'sun'} /><span>Dark mode</span><i className="switch-track" aria-hidden="true" />
-        </button>
+        <Switch className="theme-toggle" aria-label="Dark mode" checked={theme === 'dark'} disabled={themePending}
+          onCheckedChange={checked => void setDarkMode(checked)}
+          onKeyDown={event => {
+            if (event.key === 'Enter' && !event.repeat) {
+              event.preventDefault()
+              event.currentTarget.click()
+            }
+          }}>
+          <Icon name={theme === 'dark' ? 'moon' : 'sun'} /><span className="theme-label">Dark mode</span>
+          <span className="switch-track" aria-hidden="true"><SwitchThumb /></span>
+        </Switch>
         <div className="local-status"><i aria-hidden="true" /> Local data</div>
       </div>
     </aside>

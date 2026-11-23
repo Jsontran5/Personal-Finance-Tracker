@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { trapDialogFocus } from './dialogFocus'
 import { CategoryManager } from './CategoryManager'
 import { BudgetOverview, type MonthlySummary } from './BudgetOverview'
+import { ViewSelector } from './ViewSelector'
 
 type Request = <T>(path:string,method?:string,body?:object,signal?:AbortSignal)=>Promise<T>
 type Cat={id:number;name:string;kind?:string;archived?:number;group:string;bucket:string;target_minor:number;target_type:string;target_date:string|null;repeat_monthly:boolean;limit_minor:number|null;assigned_minor:number;activity_minor:number;available_minor:number;cash_available_minor:number;actual_minor:number;previous_minor:number;need_minor:number}
@@ -82,7 +83,15 @@ export function BudgetWorkspace({request,path,month,revision,onChanged,onNewCate
     if(dialog==='reconcile')return request(path+'/reconcile?month='+month,'POST',{token:d.token,adjustment_minor:cents(f.get('adjustment')),confirmed:f.has('confirm')})
   })}
   return <div className="budget-workspace">
-    <div className="budget-toolbar"><div className="segmented" aria-label="Budget views">{['Monthly overview','Plan','Spending breakdown','Income allocations'].map(t=><button key={t} aria-pressed={tab===t} onClick={()=>setTab(t)}>{t==='Plan'?'Detailed plan':t}{t==='Income allocations'&&!!d.receipts.length&&<span className="budget-count">{d.receipts.length}</span>}</button>)}</div><button className="secondary" onClick={()=>chooseMethod(tab==='Monthly overview'?(d.settings.method==='custom'?'custom':'ratio'):d.settings.method)}>{tab==='Monthly overview'?'Guide: '+labels[d.settings.method==='custom'?'custom':'ratio']:labels[d.settings.method]} ▾</button></div>
+    <div className="budget-toolbar">
+      <ViewSelector label="Budget views" value={tab} onChange={setTab} options={[
+        { value: 'Monthly overview', label: 'Monthly overview' },
+        { value: 'Plan', label: 'Detailed plan' },
+        { value: 'Spending breakdown', label: 'Spending breakdown' },
+        { value: 'Income allocations', label: <>Income allocations{!!d.receipts.length && <span className="budget-count">{d.receipts.length}</span>}</> },
+      ]} />
+      <button className="secondary" onClick={()=>chooseMethod(tab==='Monthly overview'?(d.settings.method==='custom'?'custom':'ratio'):d.settings.method)}>{tab==='Monthly overview'?'Guide: '+labels[d.settings.method==='custom'?'custom':'ratio']:labels[d.settings.method]} ▾</button>
+    </div>
     {error&&<p className="notice" role="alert">{error}</p>}{message&&<p className="muted" role="status">{message}</p>}
     {tab!=='Monthly overview'&&!!d.warnings.length&&<details className="notice"><summary>{d.warnings.length} budget reconciliation {d.warnings.length===1?'notice':'notices'}</summary>{d.warnings.map(w=><p key={w}>{w}</p>)}<button className="secondary small" onClick={()=>setDialog('reconcile')}>Review funding</button></details>}
     {tab!=='Monthly overview'&&<div className="budget-summary"><section className="budget-ready"><small>{funded?'Ready to assign':'Monthly category plan'}</small><strong className={funded&&d.ready_minor<0?'negative':''}>{money(funded?d.ready_minor:planned)}</strong><span>{funded?'Received money without a job. Zero means every dollar is assigned.':'Limits are a spending plan, not funded cash.'}</span>{!setup&&<button className="primary small" onClick={()=>chooseMethod('zero')}>Set up funded budgeting</button>}</section><section><small>{funded?'Assigned this month':'Planned'}</small><strong>{money(planned)}</strong><span>{funded?'Carryover remains in category availability.':d.categories.filter(c=>c.limit_minor!==null).length+' categories with limits'}</span></section><section><small>Net spending · {month} · all USD accounts</small><strong>{money(spent)}</strong><span>Posted purchases less refunds</span></section><section><small>Overspent categories</small><strong>{d.categories.filter(c=>available(c)<0).length}</strong><span>{money(d.uncategorized_minor)} uncategorized spending</span></section></div>}

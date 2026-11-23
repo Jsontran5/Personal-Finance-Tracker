@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Chart } from './Charts'
 import { SnapshotGuide } from './BankingHistory'
+import { ViewSelector } from './ViewSelector'
 
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
 type Money = (value: number, currency?: string) => string
@@ -128,7 +129,9 @@ export function Investments({ sandbox, managed, live, request, money, openBank, 
         </section>
       </div>
       <section className="card investment-records">
-        <div className="section-heading"><div className="segmented" aria-label="Investment view">{['holdings', 'activity'].map(value => <button key={value} aria-pressed={tab === value} onClick={() => setTab(value)}>{nameOf(value)}</button>)}</div><small>{tab === 'holdings' ? `${holdings.length} positions` : `${activity?.total ?? '…'} records`}</small></div>
+        <div className="section-heading"><ViewSelector label="Investment view" value={tab} onChange={setTab}
+          options={[{ value: 'holdings', label: 'Holdings' }, { value: 'activity', label: 'Activity' }]} />
+          <small>{tab === 'holdings' ? `${holdings.length} positions` : `${activity?.total ?? '…'} records`}</small></div>
         <div className="filters"><input type="search" aria-label="Search investments" placeholder="Find a security or activity" maxLength={120} value={search} onChange={event => setSearch(event.target.value)} />
           {tab === 'activity' && <><select aria-label="Investment activity type" value={kind} onChange={event => setKind(event.target.value)}><option value="">All activity types</option>{['buy', 'sell', 'cash', 'fee', 'transfer', 'cancel'].map(value => <option key={value} value={value}>{nameOf(value)}</option>)}</select>
             <label>From<input type="date" aria-label="Investment activity from" value={start} onChange={event => setStart(event.target.value)} /></label><label>Through<input type="date" aria-label="Investment activity through" value={end} onChange={event => setEnd(event.target.value)} /></label></>}

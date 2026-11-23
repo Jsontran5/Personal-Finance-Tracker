@@ -1,4 +1,5 @@
 import { useEffect, useId, useState, type ReactNode } from 'react'
+import { ViewSelector } from './ViewSelector'
 
 export type Bucket = { key: string; label: string; purchases_minor: number; refunds_minor: number; net_minor: number; transaction_ids: number[]; purchase_transaction_ids: number[] }
 type Day = { day: number; date: string; purchases_minor: number; refunds_minor: number; net_minor: number | null; cumulative_minor: number | null; transaction_ids: number[] }
@@ -170,8 +171,9 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
   const lastPage = Math.max(0, Math.ceil(contributing.length / pageSize) - 1)
   const currentPage = Math.min(transactionPage, lastPage)
   return <div className="spending-page">
-    <div className="segmented report-tabs" aria-label="Financial report">{[['spending', 'Spending'], ['income', 'Income'], ['cashflow', 'Cash flow']].map(([value, text]) =>
-      <button key={value} aria-pressed={filters.measure === value} onClick={() => change({ measure: value, category: 'all' })}>{text}</button>)}</div>
+    <ViewSelector label="Financial report" className="report-tabs" value={filters.measure}
+      onChange={measure => change({ measure, category: 'all' })}
+      options={[{ value: 'spending', label: 'Spending' }, { value: 'income', label: 'Income' }, { value: 'cashflow', label: 'Cash flow' }]} />
     <section className="card report-filters" aria-label="Report filters">
       <div className="report-filter-fields">
         <details className="report-account-filter"><summary>Accounts · {filters.accounts.length ? filters.accounts.length + ' selected' : 'All'}</summary>

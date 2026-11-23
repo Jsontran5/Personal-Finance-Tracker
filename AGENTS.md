@@ -4,3 +4,8 @@
 - Make small, frequent commits after verified logical changes. Keep unrelated user edits out of commits. Never commit credentials, financial data, runtime files, or backups.
 - The repository has local commit/push hooks protecting context folders. Preserve those hooks. Do not rewrite Git history without user authorization.
 - For frontend changes, render and visually inspect both themes at desktop and narrow widths, including long account lists and expanded/collapsed details. Record verification in the local project state.
+
+# UI SDK
+
+- Before using ui-sdk, follow the ui-sdk skill if installed and read `node_modules/@ui-sdk/react/docs/llms.txt`.
+- Before building a new component, also search `node_modules/@ui-sdk/react/docs/core.md` by heading and read the adjacent `rendering.md`.
