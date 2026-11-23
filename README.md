@@ -208,6 +208,22 @@ The local Git repository tracks source, the public README, the dependency lockfi
 
 For the regression tests, install optional test dependencies with `.venv\Scripts\python.exe -m pip install -r requirements-dev.txt`, then run `.venv\Scripts\python.exe -m unittest discover -s tests -v`. Build the dashboard with `npm.cmd run build`.
 
+### Synthetic frontend preview
+
+From the redesign worktree, run the commands below, then open the loopback URL printed in the terminal. The preview starts with synthetic accounts, transactions, categories, investments, and a backup. It creates a fresh fixture under the worktree’s ignored `data/` directory, disables startup maintenance, and blocks Plaid requests. Stop it with Ctrl+C.
+
+```powershell
+npm ci
+npm run build
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.venv\Scripts\python.exe tests/check_frontend_refresh_ui.py --preview
+```
+
+With Chrome installed, omit `--preview` to run the browser checks and save screenshots to `data/ui-qa/frontend-refresh/`.
+
+### Additional browser checks
+
 With Chrome installed and the 14-account Sandbox dataset available, run `.venv\Scripts\python.exe tests/check_account_ui.py` for the expanded-layout checks. It uses isolated database copies and writes screenshots under ignored `data/ui-qa`.
 
 For an opt-in check against Plaid's actual investment APIs, run `.venv\Scripts\python.exe tests/check_investment_sandbox.py --run`. It loads the existing server-side Sandbox credentials, creates a temporary investment-capable Sandbox Item, imports holdings/activity into a temporary database, and removes that test Item afterward. It does not use or replace the application's saved Item and makes no Production calls.

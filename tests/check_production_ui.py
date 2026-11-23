@@ -19,7 +19,7 @@ def serve(database,port):
     from unittest.mock import patch
     import uvicorn
     from finance.api import create_app
-    with patch.dict(os.environ,{'APP_ENV':'production','PLAID_LIVE_ENABLED':'false'}):
+    with patch.dict(os.environ,{'APP_ENV':'production','PLAID_LIVE_ENABLED':'false'}), patch('finance.plaid_sandbox.urlopen', side_effect=AssertionError('No provider calls in UI QA')):
         app=create_app(Path(database))
         maintenance=app.state.startup_maintenance
         original=maintenance.status
@@ -86,8 +86,9 @@ def run():
                 assert 'exceptionDetails' not in result,result
                 return result.get('result',{}).get('value')
             def ready(expression):wait(lambda:js('Boolean('+expression+')'))
-            def click(selector,text=None):
-                point=js("(()=>{const e=[...document.querySelectorAll("+json.dumps(selector)+")].find(e=>e.getClientRects().length"+(" && e.textContent.trim()==="+json.dumps(text) if text else '')+");if(!e)throw Error('Missing control');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
+            def click(selector,text=None,prefix=False):
+                match = '' if text is None else " && e.textContent.trim().startsWith("+json.dumps(text)+")" if prefix else " && e.textContent.trim()==="+json.dumps(text)
+                point=js("(()=>{const e=[...document.querySelectorAll("+json.dumps(selector)+")].find(e=>e.getClientRects().length"+match+");if(!e)throw Error('Missing control');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
                 cdp('Input.dispatchMouseEvent',{'type':'mousePressed','button':'left','clickCount':1,**point});cdp('Input.dispatchMouseEvent',{'type':'mouseReleased','button':'left','clickCount':1,**point})
             def change(selector,value):
                 js("(()=>{const e=document.querySelector("+json.dumps(selector)+");const p=e instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(e,"+json.dumps(value)+");e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()")
@@ -103,7 +104,7 @@ def run():
                 assert js('document.documentElement.scrollWidth<=document.documentElement.clientWidth'),name
                 assert js("[...document.querySelectorAll('dialog[open]')].every(e=>e.scrollWidth<=e.clientWidth+1)"),name
                 (OUTPUT/(name+'.png')).write_bytes(base64.b64decode(cdp('Page.captureScreenshot',{'format':'png','captureBeyondViewport':False})['data']))
-            cdp('Page.enable');cdp('Page.navigate',{'url':url});ready("document.querySelector('.unified-workspace') && document.querySelector('.hero-value')")
+            cdp('Page.enable');cdp('Page.navigate',{'url':url});ready("document.querySelector('[data-workspace=all-accounts]') && document.querySelector('.hero-value')")
             assert not js("Boolean(document.querySelector('[aria-label=\"Workspace\"],[aria-label=\"Sandbox scenario\"]'))")
             nav('Accounts');click('button','Add manual account');ready("document.querySelector('.editor-inspector[open] input[name=name]')")
             change('.editor-inspector input[name=name]','UI manual cash');change('.editor-inspector select[name=kind]','cash');change('.editor-inspector input[name=amount]','1000');click('.editor-inspector button','Save')
@@ -123,7 +124,7 @@ def run():
             change('.editor-inspector input[name=amount]','35');click('.editor-inspector button','Save transaction');ready("!document.querySelector('.editor-inspector[open]')")
             saved=json.load(urllib.request.urlopen(url+'/api/overview?month='+date.today().isoformat()[:7]))
             assert saved['transactions'][0]['amount_minor']==3500
-            nav('Budgets');ready("document.querySelector('.budget-table')")
+            nav('Budgets');ready("document.querySelector('.budget-toolbar')");click('.budget-toolbar button','Detailed plan');ready("document.querySelector('.budget-table')")
             budget_category=js("document.querySelector('.budget-table .text-button').textContent")
             change('input[aria-label="'+budget_category+' limit"]','150')
             click('.budget-save-bar button','Save changes');ready("!document.querySelector('.budget-save-bar')")
@@ -135,7 +136,7 @@ def run():
             ready("document.querySelector('.budget-inspector input[name=target]')")
             change('.budget-inspector input[name=target]','100')
             change('.budget-inspector input[name=group]','Monthly essentials and everyday spending with a long group name')
-            click('.budget-inspector button','Save budget');ready("!document.querySelector('.budget-inspector[open]')")
+            click('.budget-inspector button','Save category');ready("!document.querySelector('.budget-inspector[open]')")
             change('input[aria-label="'+budget_category+' assigned"]','50')
             click('.budget-save-bar button','Save changes');ready("!document.querySelector('.budget-save-bar')")
             cash=next(a['id'] for a in saved['accounts'] if a['name']=='UI manual cash')
@@ -143,9 +144,9 @@ def run():
                 req=urllib.request.Request(url+'/api'+path,data=json.dumps(body).encode(),headers={'content-type':'application/json','x-finance-request':'1'},method=method)
                 return json.load(urllib.request.urlopen(req))
             post_api('/transactions',{'account_id':cash,'kind':'income','amount_minor':20000,'date':date.today().isoformat(),'merchant':'Synthetic budget paycheck'})
-            js('location.reload()');ready("document.querySelector('.unified-workspace') && document.querySelector('.hero-value')")
-            nav('Budgets');ready("document.querySelector('.budget-table')")
-            click('.budget-toolbar .segmented button:nth-child(3)');ready("document.querySelector('.budget-card-row')?.textContent.includes('Synthetic budget paycheck')")
+            js('location.reload()');ready("document.querySelector('[data-workspace=all-accounts]') && document.querySelector('.hero-value')")
+            nav('Budgets');ready("document.querySelector('.budget-toolbar')");click('.budget-toolbar button','Detailed plan');ready("document.querySelector('.budget-table')")
+            click('.budget-toolbar button','Income allocations',prefix=True);ready("document.querySelector('.budget-card-row')?.textContent.includes('Synthetic budget paycheck')")
             click('button','Suggest split');ready("document.querySelector('.budget-inspector[open]')")
             assert js("document.querySelector('input[aria-label=\"Split to "+budget_category+"\"]').value")=='50.00'
             click('.budget-inspector button','Apply split');ready("!document.querySelector('.budget-inspector[open]')")
@@ -156,19 +157,19 @@ def run():
             budget=json.load(urllib.request.urlopen(url+'/api'+planpath+'?month='+date.today().isoformat()[:7]))
             for i,cat in enumerate(budget['categories'][:3]):
                 post_api(planpath+'/categories/'+str(cat['id']),{'group':cat['group'] if i==0 else ['','Lifestyle','Savings goals'][i],'bucket':['needs','wants','savings'][i],'target_minor':20000,'target_type':'monthly'},'PUT')
-            js('location.reload()');ready("document.querySelector('.unified-workspace') && document.querySelector('.hero-value')")
-            nav('Budgets');ready("document.querySelector('.budget-toolbar>button')")
+            js('location.reload()');ready("document.querySelector('[data-workspace=all-accounts]') && document.querySelector('.hero-value')")
+            nav('Budgets');ready("document.querySelector('.budget-toolbar')");click('.budget-toolbar button','Detailed plan')
             js("document.querySelector('.budget-toolbar>button').click()")
             ready("document.querySelector('.budget-inspector select')")
             change('.budget-inspector select','ratio');click('.budget-inspector button','Save budget')
             ready("!document.querySelector('.budget-inspector[open]') && document.querySelector('.budget-toolbar>button')?.textContent.includes('50 / 30 / 20')")
-            click('.budget-toolbar .segmented button:nth-child(3)');click('button','Suggest split')
+            click('.budget-toolbar button','Income allocations',prefix=True);click('button','Suggest split')
             ready("document.querySelector('.budget-inspector[open]')")
             for cat,value in zip(budget['categories'][:3],['100.00','60.00','40.00']):
                 assert js("document.querySelector('input[aria-label=\"Split to "+cat['name']+"\"]').value")==value
             click('.budget-inspector button','Apply split');ready("!document.querySelector('.budget-inspector[open]')")
             ready("document.querySelector('.budget-workspace')?.textContent.includes('No new income waiting')")
-            click('.budget-toolbar button','Plan')
+            click('.budget-toolbar button','Detailed plan')
             print('Budget limits, opening anchor, target, assignment, partial income/undo and exact 50/30/20 split passed.',flush=True)
             source_name='QoL Fuel category';renamed='QoL Gas and vehicle fuel with a deliberately long category name'
             target_name='QoL Transportation and commuting with a deliberately long category name'
@@ -177,8 +178,8 @@ def run():
             post_api('/categories',{'name':'QoL Unused category','kind':'expense'})
             post_api('/categories',{'name':'QoL Old archived category','kind':'expense'})
             expense_id=post_api('/transactions',{'account_id':cash,'kind':'expense','amount_minor':2000,'category_id':source_id,'date':date.today().isoformat(),'merchant':'Synthetic category fuel'})['id']
-            js('location.reload()');ready("document.querySelector('.unified-workspace') && document.querySelector('.hero-value')")
-            nav('Budgets');ready("document.querySelector('.budget-table')");click('button','Manage categories');ready("document.querySelector('.category-manager[open] [aria-label=\"Find managed category\"]')")
+            js('location.reload()');ready("document.querySelector('[data-workspace=all-accounts]') && document.querySelector('.hero-value')")
+            nav('Budgets');ready("document.querySelector('.budget-toolbar')");click('.budget-toolbar button','Detailed plan');ready("document.querySelector('.budget-table')");click('button','Manage categories');ready("document.querySelector('.category-manager[open] [aria-label=\"Find managed category\"]')")
             change('[aria-label="Find managed category"]','QoL')
             def category_action(name,action):
                 js("(()=>{const row=[...document.querySelectorAll('.managed-category')].find(r=>r.querySelector('strong').textContent==="+json.dumps(name)+");if(!row)throw Error('Missing category');[...row.querySelectorAll('button')].find(b=>b.textContent.trim()==="+json.dumps(action)+").click()})()")
@@ -209,7 +210,7 @@ def run():
             assert not any(c['name']==renamed for c in records['categories'])
             nav('Transactions');click('button','Add manual transaction');ready("document.querySelector('.editor-inspector[open]')")
             assert not js("[...document.querySelectorAll('.editor-inspector option')].some(o=>o.textContent.includes('QoL Old archived category'))")
-            close();nav('Budgets');ready("document.querySelector('.budget-table')")
+            close();nav('Budgets');ready("document.querySelector('.budget-toolbar')");click('.budget-toolbar button','Detailed plan');ready("document.querySelector('.budget-table')")
             print('Shared category rename, archive/restore, guarded unused deletion and previewed merge passed.',flush=True)
             for width in (1440,390):
                 cdp('Emulation.setDeviceMetricsOverride',{'width':width,'height':1000 if width>850 else 844,'deviceScaleFactor':1,'mobile':False})
@@ -223,14 +224,16 @@ def run():
                         if page=='Bank sync':ready("document.querySelector('.live-readiness')");assert not js("Boolean(document.querySelector('.manual-selection'))")
                         if page=='Backup & restore':assert js("[...document.querySelectorAll('[aria-label=\"Backup workspace\"] option')].every(o=>!o.textContent.includes('Sandbox'))")
                         if page=='Budgets':
+                            ready("document.querySelector('.budget-toolbar')")
+                            click('.budget-toolbar button','Detailed plan')
                             ready("document.querySelector('.budget-table')")
                             shot(f'{width}-{theme}-budget-plan')
                             js("document.querySelector('.budget-group summary').click()")
                             shot(f'{width}-{theme}-budget-collapsed')
                             js("document.querySelector('.budget-group summary').click()")
                             click('.budget-toolbar button','Spending breakdown');shot(f'{width}-{theme}-budget-spending')
-                            click('.budget-toolbar .segmented button:nth-child(3)');shot(f'{width}-{theme}-budget-income')
-                            click('.budget-toolbar button','Plan');js("document.querySelector('.budget-table .text-button').click()")
+                            click('.budget-toolbar button','Income allocations');shot(f'{width}-{theme}-budget-income')
+                            click('.budget-toolbar button','Detailed plan');js("document.querySelector('.budget-table .text-button').click()")
                             ready("document.querySelector('.budget-inspector[open]')");shot(f'{width}-{theme}-budget-category-inspector');close()
                             click('button','Manage categories');ready("document.querySelector('.category-manager[open] [aria-label=\"Find managed category\"]')")
                             shot(f'{width}-{theme}-category-manager')
@@ -269,7 +272,7 @@ def run():
                     click('[aria-label="Dismiss startup notification"]');ready("!document.querySelector('.startup-toast')")
                     nav('Bank sync');ready("document.querySelector('.startup-status')?.textContent.includes('finished with issues')")
                     fixture.unlink()
-                    js('location.reload()');ready("document.querySelector('.unified-workspace') && document.querySelector('.hero-value')")
+                    js('location.reload()');ready("document.querySelector('[data-workspace=all-accounts]') && document.querySelector('.hero-value')")
                     nav('Accounts');js("[...document.querySelectorAll('.account-summary')].find(e=>e.textContent.includes('UI manual cash')).click()")
                     ready("document.querySelector('.account-inspector[open]')");shot(f'{width}-{theme}-production-manual-inspector')
                     assert 'Record balance' in js("document.querySelector('.account-inspector[open]').textContent")
