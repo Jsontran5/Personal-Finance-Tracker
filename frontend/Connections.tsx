@@ -50,13 +50,7 @@ export function Connections({ request, onChanged, live = false, unified = false,
   }
 
   return <div className="connections-page">
-    {live && <LiveReadiness request={request} revision={status?.connections.length} onFindInstitution={() => {
-      if (addPanel.current) {
-        addPanel.current.open = true
-        addPanel.current.scrollIntoView({ block: 'start' })
-        addPanel.current.querySelector<HTMLInputElement>('input[aria-label="Find institution"]')?.focus({ preventScroll: true })
-      }
-    }} />}
+    <div className="connection-directory">
     <section className="card connection-overview"><div className="section-heading"><div><h2>Connected institutions</h2><small>{unified ? 'All accounts workspace' : live ? 'Live workspace' : 'Combined Sandbox'}</small></div><span className="chip">{live ? 'Live data' : 'Test data'}</span></div>
       <p className="muted">Reconnect an institution to repair access or change which accounts it shares.</p>
       {!live && <button className="secondary" disabled={!!busy || !status?.configured} onClick={() => void action('Import saved scenarios', async () => {
@@ -124,6 +118,15 @@ export function Connections({ request, onChanged, live = false, unified = false,
       </article>)}
       {matching.length > 6 && <div className="pagination"><button className="secondary small" disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>Previous connections</button><small>Page {currentPage + 1} of {Math.ceil(matching.length / 6)}</small><button className="secondary small" disabled={(currentPage + 1) * 6 >= matching.length} onClick={() => setPage(currentPage + 1)}>Next connections</button></div>}
     </section>
+    </div>
+    <aside className="connection-setup" aria-label="Connection setup">
+    {live && <LiveReadiness request={request} revision={status?.connections.length} onFindInstitution={() => {
+      if (addPanel.current) {
+        addPanel.current.open = true
+        addPanel.current.scrollIntoView({ block: 'start' })
+        addPanel.current.querySelector<HTMLInputElement>('input[aria-label="Find institution"]')?.focus({ preventScroll: true })
+      }
+    }} />}
     {unified ? <p className="analytics-note">Manual accounts are included automatically. Add or edit them from Accounts alongside your connected bank accounts.</p> : <section className="card"><details className="manual-selection"><summary>Include accounts from Manual</summary><p className="muted">Choose only accounts that are not already connected through Plaid. Selected balances and transactions appear here as read-only mirrors; edit them in Manual. Updates are reflected when this workspace reloads.</p>
       <div className="manual-selection-list">{manual.map(account => <label className="checkbox" key={account.id}><input type="checkbox" checked={selected.includes(account.id)} disabled={!!busy} onChange={event => setSelected(value => event.target.checked ? [...value, account.id] : value.filter(id => id !== account.id))} />{account.name}</label>)}</div>
       {!manual.length && <p className="empty">No Manual accounts yet. Add a manual account, such as Nelnet, in Manual first.</p>}
@@ -131,5 +134,6 @@ export function Connections({ request, onChanged, live = false, unified = false,
         await request(base + '/manual', 'PUT', { account_ids: selected }); return 'Manual account selection saved. Manual records are unchanged.'
       })}>Include selected manual accounts</button>
     </details></section>}
+    </aside>
   </div>
 }

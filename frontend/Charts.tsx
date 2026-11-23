@@ -150,13 +150,17 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
   })
 
   return <section className="card hero" aria-labelledby="net-worth-title">
+    <div className="net-worth-statement">
     <div className="hero-header">
       <div><h2 id="net-worth-title">{chartMode === 'net' ? 'Net worth' : chartMode === 'assets' ? 'Assets' : 'Debt'}</h2>
         <strong className="hero-value numeric">{excluded !== null && complete ? money(chartMode === 'assets' ? assets : chartMode === 'debt' ? liabilities : assets - liabilities) : '—'}</strong>
       </div>
       <span className="chip">USD · Current saved balances</span>
     </div>
-    <p className="analytics-note">Balances reflect the latest saved values across the accounts selected below.</p>
+    <div className="balance-summary">
+      <div><span>Total assets</span><strong className="numeric">{excluded !== null && complete ? money(assets) : '—'}</strong></div>
+      <div><span>Total liabilities</span><strong className="numeric">{excluded !== null && complete ? money(liabilities) : '—'}</strong></div>
+    </div>
     <div className="hero-controls"><div className="segmented net-worth-modes" aria-label="Balance chart measure">{[['net', 'Net worth'], ['assets', 'Assets'], ['debt', 'Debt']].map(([value, label]) => <button key={value} aria-pressed={chartMode === value} onClick={() => setChartMode(value)}>{label}</button>)}</div>
     {error && <p className="notice" role="alert">{error}{excluded === null && <button className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button>}</p>}
     {eligible.length > 0 && excluded !== null && <details ref={picker} className="account-picker" onKeyDown={event => {
@@ -197,16 +201,13 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
       <button className="primary" onClick={onStart}>{unified ? 'Add manual account' : mode === 'sandbox' ? 'Open Bank sync' : 'Add your first account'}</button>
     </div>}
     {excluded !== null && eligible.length > 0 && selected.length === 0 && <p className="empty">Select an account to view net worth.</p>}
-    {excluded !== null && selected.length > 0 && <>
+    {selected.length > 0 && !complete && <p className="muted">A selected account has no current balance. Totals are incomplete.</p>}
+    </div>
+    {excluded !== null && selected.length > 0 && <div className="net-worth-history">
       <div className="segmented history-switch" aria-label="Balance history source"><button aria-pressed={historyView === 'snapshots'} onClick={() => setHistoryView('snapshots')}>Snapshots</button>
         <button disabled={mode === 'personal'} data-help="Estimate past banking balances from saved transactions. Investments and loans are excluded. Manual accounts use recorded balances." aria-pressed={historyView === 'estimates'} onClick={() => setHistoryView('estimates')}>Banking estimates</button></div>
       {historyView === 'snapshots' ? <Chart history={points} money={money} label={'Recorded ' + (chartMode === 'net' ? 'net worth' : chartMode)} /> : <BankingHistory ids={selected.map(account => account.id)} measure={chartMode} request={request} money={money} revision={revision} renderChart={(points, title) => <Chart history={points} money={money} estimated label={title} />} />}
       <SnapshotGuide manual={mode === 'personal'} open={onUpdateSnapshots} />
-    </>}
-    {selected.length > 0 && !complete && <p className="muted">A selected account has no current balance. Totals are incomplete.</p>}
-    <div className="balance-summary">
-      <div><span>Total assets</span><strong className="numeric">{excluded !== null && complete ? money(assets) : '—'}</strong></div>
-      <div><span>Total liabilities</span><strong className="numeric">{excluded !== null && complete ? money(liabilities) : '—'}</strong></div>
-    </div>
+    </div>}
   </section>
 }

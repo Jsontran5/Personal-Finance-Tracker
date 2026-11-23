@@ -1,5 +1,6 @@
 import '@ui-sdk/core/web.css'
 import { Switch, SwitchThumb } from '@ui-sdk/react/switch'
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from '@ui-sdk/react/collapsible'
 import { trapDialogFocus } from './dialogFocus'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -26,8 +27,10 @@ import { RefreshAll } from './RefreshAll'
 import { StartupStatus } from './StartupStatus'
 import { BudgetWorkspace } from './BudgetWorkspace'
 import { TransactionFlow, type Flow } from './TransactionFlow'
+import { FinanceMeter } from './FinanceMeter'
 import './styles.css'
 import './interface.css'
+import './workspace.css'
 
 type Kind = 'expense' | 'income' | 'refund' | 'transfer' | 'investment'
 type Category = { id: number; name: string; kind: 'expense' | 'income'; archived?:number }
@@ -185,9 +188,9 @@ function CashFlow({ data, month, drill }: { data: Overview; month: string; drill
     <button className={'cashflow-total cashflow-value numeric ' + (data.cash_flow_minor < 0 ? 'negative' : data.cash_flow_minor > 0 ? 'positive' : '')} data-help="View the posted income, purchases and refunds included in this month’s cash flow. Transfers and pending entries are excluded." onClick={() => drill(eligible.map(tx => tx.id), 'Cash flow · ' + month)}>{money(data.cash_flow_minor)}<small>View transactions →</small></button>
     <div className="cashflow-bars">
       <button className="flow-income cashflow-drill" onClick={() => drill(eligible.filter(tx => tx.kind === 'income').map(tx => tx.id), 'Income · ' + month)}><div><span><Icon name="income" /> Income</span><strong className="numeric">{money(data.income_minor)}</strong></div>
-        <progress aria-label="Income relative to the larger monthly total" max={magnitude} value={data.income_minor} /></button>
+        <FinanceMeter label="Income relative to the larger monthly total" max={magnitude} value={data.income_minor} /></button>
       <button className="flow-spending cashflow-drill" onClick={() => drill(eligible.filter(tx => tx.kind !== 'income').map(tx => tx.id), 'Spending · ' + month)}><div><span><Icon name="expense" /> Spending</span><strong className="numeric">{money(data.spending_minor)}</strong></div>
-        <progress aria-label="Net spending magnitude relative to the larger monthly total" max={magnitude} value={Math.abs(data.spending_minor)} /></button>
+        <FinanceMeter label="Net spending magnitude relative to the larger monthly total" max={magnitude} value={Math.abs(data.spending_minor)} /></button>
     </div>
   </section>
 }
@@ -219,7 +222,7 @@ function BudgetRows({ budgets, edit, filter, compare = false }: { budgets: Budge
     const percent = limit > 0 ? budget.actual_minor / limit : budget.actual_minor > 0 ? 1 : 0
     return <div className="budget-row" key={budget.id}>
       <div><button className="text-button" onClick={() => filter(budget.id)}>{budget.name}</button><button className="secondary small" onClick={() => edit(budget)}>{remaining === null ? 'Set limit' : 'Edit limit'}</button></div>
-      {remaining !== null && <progress aria-label={budget.name + ' budget used'} max={1} value={Math.max(0, Math.min(1, percent))} className={remaining < 0 ? 'over' : ''} />}
+      {remaining !== null && <FinanceMeter label={budget.name + ' budget used'} max={1} value={Math.max(0, Math.min(1, percent))} over={remaining < 0} />}
       <small>{money(budget.actual_minor)} spent{remaining !== null && (' · ' + money(Math.abs(remaining)) + (remaining < 0 ? ' over' : ' remaining'))}{compare && ' · ' + money(budget.previous_actual_minor) + ' prior month'}</small>
     </div>
   })}</div>
@@ -547,8 +550,9 @@ function App() {
 
   return <div className="shell">
     <a className="skip-link" href="#main-content">Skip to content</a>
-    <aside className="sidebar">
-      <div className="brand"><span className="brand-mark"><Icon name="logo" /></span><strong>Personal<br className="brand-break" /> Finance</strong></div>
+    <header className="sidebar app-bar">
+      <div className="app-bar-content">
+      <div className="brand"><span className="brand-mark"><Icon name="logo" /></span><strong>Personal Finance</strong></div>
       {!unified && mode && <label className="workspace-picker">Workspace<select aria-label="Workspace" value={mode ?? 'personal'} disabled={!mode || modePending || busy || !!dialog} onChange={event => void changeMode(event.target.value as Mode)}>
         <option value="personal">Manual</option><option value="sandbox">Sandbox preview</option><option value="live">Live</option>
       </select></label>}
@@ -568,8 +572,9 @@ function App() {
         </Switch>
         <div className="local-status"><i aria-hidden="true" /> Local data</div>
       </div>
-    </aside>
-    <main id="main-content" tabIndex={-1} data-workspace={unified ? 'all-accounts' : mode}>
+      </div>
+    </header>
+    <main id="main-content" tabIndex={-1} data-workspace={unified ? 'all-accounts' : mode} data-page={page}>
       <header className="page-header">
         <div className="page-title"><h1>{page}</h1>
           {synced && (mode === 'live' || scenario === 'banking') && page !== 'Backup & restore' && <SyncFreshness request={request} revision={revision} open={() => setPage('Bank sync')} />}
@@ -599,23 +604,17 @@ function App() {
           <section className="card overview-budget"><div className="section-heading"><div><h2>Budget progress</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => setPage('Budgets')}>View budgets <Icon name="right" /></button></div>
             <BudgetRows budgets={budgetRows} edit={editBudget} filter={filterCategory} />
           </section>
+          <AssetSummary accounts={ready.accounts.filter(account => chartAccountIds?.includes(account.id))} loading={chartAccountIds === null} money={money} openAccounts={() => setPage('Accounts')} />
         </div>
         </div>
         <HomeSpending report={ready.spending} money={money} drill={(ids, label) => drillSpending(ids, label, 'Overview')} changeMonth={setMonth} openSpending={() => setPage('Spending')}
           recent={<TransactionList transactions={ready.transactions.filter(tx => ready.spending.eligible_ids.includes(tx.id)).slice(0, 5)} edit={editTransaction} empty="No posted spending this month." />} />
-        <div className="dashboard-grid"><AssetSummary accounts={ready.accounts.filter(account => chartAccountIds?.includes(account.id))} loading={chartAccountIds === null} money={money} openAccounts={() => setPage('Accounts')} /></div>
       </>}
       {ready && page === 'Spending' && <SpendingPage key={mode + scenario} month={month} money={money} drill={drillSpending} changeMonth={setMonth} sandbox={synced} request={request} path={synced ? previewPath : ''} accounts={ready.accounts} categories={ready.categories} filters={reportFilters} setFilters={setReportFilters} revision={revision}
         transactions={ready.transactions} renderTransactions={ids => <TransactionList transactions={ids.flatMap(id => ready.transactions.find(tx => tx.id === id) ?? [])} edit={editTransaction} />} />}
-      {ready && page === 'Transactions' && <>
+      {ready && page === 'Transactions' && <div className="journal-layout">
         <section className="card transaction-workspace">
-          <div className="section-heading"><div><h2>Ledger</h2><small>{allReviewDates ? 'All saved dates' : activeMonth} · {entries.length} {entries.length === 1 ? 'entry' : 'entries'}</small></div></div>
-          {reviewMessage && <p className="notice" role="status">{reviewMessage}</p>}
-          <TransferReview path={(synced ? previewPath : '') + '/review/transfers'} request={request} money={money} revision={ready.transactions} focusId={transferFocus} setFocusId={setTransferFocus}
-            complete={message => { setReviewMessage(message); setRevision(value => value + 1) }} />
-          <TransactionReview<Transaction> key={mode + scenario} path={(synced ? previewPath : '') + '/review'} request={request} transactions={ready.transactions} categories={ready.categories} accounts={ready.accounts} allDates={allReviewDates} setAllDates={setAllReviewDates} onHistory={setReviewHistory}
-            selected={selectedTransactions} setSelected={setSelectedTransactions} pageIds={entries.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map(tx => tx.id)} matchingIds={entries.map(tx => tx.id)} filter={reviewFilter} setFilter={setReviewFilter} onStatuses={setReviewStatuses}
-            complete={message => { setReviewMessage(message); setRevision(value => value + 1) }} />
+          <div className="section-heading"><div><h2>Ledger</h2><small>{allReviewDates ? 'All saved dates' : activeMonth} · {entries.length} {entries.length === 1 ? 'entry' : 'entries'}</small></div><a className="review-jump" href="#review-tools">Review tools</a></div>
           {drilldown && <div className="drilldown-filter"><span>{drilldown.label}</span><div className="inline-actions"><button className="secondary small" onClick={() => setDrilldown(null)}>Clear report filter</button><button className="secondary small" onClick={() => { setDrilldown(null); setPage(drillOrigin) }}>Back to {drillOrigin}</button></div></div>}
           <div className="filters">
             <input type="search" aria-label="Search transactions" placeholder="Search transactions" value={search} onChange={event => setSearch(event.target.value)} />
@@ -629,12 +628,17 @@ function App() {
               {ready.categories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}
             </select>
           </div>
+          <Collapsible className="ledger-options">
+            <CollapsibleTrigger className="secondary small">Type, status and sort{(kindFilter !== 'all' || postingFilter !== 'all' || sortOrder !== 'newest') && ' · Changed'}</CollapsibleTrigger>
+            <CollapsiblePanel keepMounted>
           <div className="filters transaction-type-filters">
             <label>Transaction type<select aria-label="Filter transaction type" value={kindFilter} onChange={event => setKindFilter(event.target.value)}><option value="all">All types</option>{Object.entries(kinds).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
             <label>Status<select aria-label="Filter posting status" value={postingFilter} onChange={event => setPostingFilter(event.target.value)}><option value="all">Posted &amp; pending</option><option value="posted">Posted only</option><option value="pending">Pending only</option></select></label>
             <label>Sort by<select aria-label="Sort transactions" value={sortOrder} onChange={event => setSortOrder(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="largest">Largest amount</option><option value="smallest">Smallest amount</option></select></label>
           </div>
           {postingFilter !== 'posted' && <p className="analytics-note">Pending entries are excluded from reports. Amounts sort by magnitude within each currency.</p>}
+          </CollapsiblePanel></Collapsible>
+          {!!entries.length && <div className="journal-columns" aria-hidden="true"><span>Transaction</span><span>Category</span><span>Amount</span></div>}
           <TransactionList transactions={entries.slice(currentPage * pageSize, (currentPage + 1) * pageSize)} edit={editTransaction} empty={emptyMessage} selected={selectedTransactions} statuses={reviewStatuses}
             toggle={id => setSelectedTransactions(value => value.includes(id) ? value.filter(item => item !== id) : [...value, id])} />
           {entries.length > pageSize && <div className="pagination" aria-label="Transaction pages">
@@ -643,7 +647,16 @@ function App() {
               <button className="secondary small" disabled={currentPage === lastPage} onClick={() => setTransactionPage(currentPage + 1)}>Next</button></div>
           </div>}
         </section>
-        {(mode === 'personal' || unified) && <section className="card stack"><div className="section-heading"><div><h2>Recurring templates</h2><small>Reuse a paycheck or regular expense.</small></div>
+        <aside id="review-tools" className="review-station" aria-label="Transaction review" tabIndex={-1}>
+          <h2>Transaction review</h2>
+          {reviewMessage && <p className="notice" role="status">{reviewMessage}</p>}
+          <TransferReview path={(synced ? previewPath : '') + '/review/transfers'} request={request} money={money} revision={ready.transactions} focusId={transferFocus} setFocusId={setTransferFocus}
+            complete={message => { setReviewMessage(message); setRevision(value => value + 1) }} />
+          <TransactionReview<Transaction> key={mode + scenario} path={(synced ? previewPath : '') + '/review'} request={request} transactions={ready.transactions} categories={ready.categories} accounts={ready.accounts} allDates={allReviewDates} setAllDates={setAllReviewDates} onHistory={setReviewHistory}
+            selected={selectedTransactions} setSelected={setSelectedTransactions} pageIds={entries.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map(tx => tx.id)} matchingIds={entries.map(tx => tx.id)} filter={reviewFilter} setFilter={setReviewFilter} onStatuses={setReviewStatuses}
+            complete={message => { setReviewMessage(message); setRevision(value => value + 1) }} />
+        </aside>
+        {(mode === 'personal' || unified) && <section className="card journal-templates"><div className="section-heading"><div><h2>Recurring templates</h2><small>Reuse a paycheck or regular expense.</small></div>
           <button className="secondary small" disabled={!(unified ? manualOverview : ready)?.accounts.length} onClick={() => unified ? void openManual('transaction', undefined, true) : open({ type: 'transaction', template: true })}>New template</button></div>
           {!(unified ? manualOverview?.templates ?? [] : ready.templates).length && <p className="empty">Saved templates will appear here.</p>}
           {(unified ? manualOverview?.templates ?? [] : ready.templates).map(template => <div className="history-row" key={template.id}><strong>{template.name}</strong><div className="inline-actions">
@@ -654,7 +667,7 @@ function App() {
               catch (failure) { setError((failure as Error).message) }
             }}>Delete</button></div></div>)}
         </section>}
-      </>}
+      </div>}
       {ready && page === 'Budgets' && <BudgetWorkspace key={mode+scenario} request={request} path={(synced?previewPath:'')+'/plan'} month={month} revision={revision} onChanged={()=>setRevision(value=>value+1)} onNewCategory={()=>open({type:'category'})} onOpenTransaction={id=>{drillSpending([id], 'Budget transaction details', 'Budgets');const entry=ready.transactions.find(tx=>tx.id===id);if(entry)editTransaction(entry)}} />}
       {ready && page === 'Accounts' && <AccountList unified={unified} live={mode === 'live'} key={mode + scenario} accounts={ready.accounts} sandbox={synced} primary={ready.primary_account_id}
         money={money} add={() => unified ? void openManual('account') : open({ type: 'account' })} details={account => <>

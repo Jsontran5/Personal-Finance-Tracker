@@ -282,7 +282,7 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .composition-bar > span { flex-basis: 0; min-width: 0; }
 .mix-0 { background: var(--blue); }
 .mix-1 { background: var(--accent); }
-.mix-2 { background: #b7a5ee; }
+.mix-2 { background: #83a9d7; }
 .mix-3 { background: #e9b66f; }
 .mix-4 { background: #83c5d3; }
 .mix-5 { background: #dc97b6; }

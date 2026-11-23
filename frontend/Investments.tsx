@@ -108,14 +108,9 @@ export function Investments({ sandbox, managed, live, request, money, openBank, 
 
   return <div className="investments-page">
     {openTestScenario && <div className="notice"><p>The prepared holdings demo is in the Investments test scenario. Your banking connection stays saved separately.</p><button className="secondary small" onClick={openTestScenario}>Switch to investment demo</button></div>}
-    <section className="card investment-sync">
-      <div className="section-heading"><div><h2>Broker-reported investments</h2><small>{managed ? "View sync times for each institution in Bank sync." : <>Holdings: {stamp(data.state?.holdings_at)} / Activity: {stamp(data.state?.activity_at)}</>}</small></div><span className="chip">{live ? 'LIVE DATA' : 'TEST MODE'}</span></div>
-      <p className="muted">Values use the latest data reported by your broker. Holdings can update overnight.</p>
-      <div className="investment-actions">{!managed && <><button className="primary" disabled={busy} onClick={() => void sync(false)}>Sync holdings</button><button className="secondary" disabled={busy || !data.accounts.length} onClick={() => void sync(true)}>Sync activity</button>
-        </>}<button className="secondary" disabled={busy} onClick={openBank}>Manage connection</button></div>
-      {busy && <p role="status">Retrieving investment data…</p>}{error && <p className="notice" role="alert">{error}</p>}{message && <p className="notice" role="status">{message}</p>}
-    </section>
     <div className="filters investment-filters"><label>Investment account<select aria-label="Investment account" value={account} onChange={event => setAccount(event.target.value)}><option value="">All investment accounts</option>{data.accounts.map(item => <option key={item.id} value={item.id}>{item.name} · {nameOf(item.subtype)}</option>)}</select></label></div>
+    <div className="portfolio-layout">
+    <div className="portfolio-records">
     {!data.state?.holdings_at ? <section className="card"><h2>Load your existing portfolio</h2><p className="empty">In Bank sync, choose Sync holdings first, then Sync activity for each investment institution. Existing positions load as holdings, without becoming new income or spending.</p></section> : <>
       <div className="investment-overview">
         <section className="card investment-value"><h2>Portfolio value</h2><strong className="hero-value numeric">{total === null ? '—' : money(total)}</strong><p className="muted">Saved USD account balances · cash and securities counted once</p>
@@ -129,7 +124,7 @@ export function Investments({ sandbox, managed, live, request, money, openBank, 
           {!allocation.length && <p className="empty">No valued USD holdings reported.</p>}<small>Missing values, other currencies, and short positions are excluded. Holdings may differ from balances because of settlement or update timing.</small>
         </section>
       </div>
-      <section className="card investment-records">
+      <section className="card investment-records" data-view={tab}>
         <div className="section-heading"><ViewSelector label="Investment view" value={tab} onChange={setTab}
           options={[{ value: 'holdings', label: 'Holdings' }, { value: 'activity', label: 'Activity' }]} />
           <small>{tab === 'holdings' ? `${holdings.length} positions` : `${activity?.total ?? '…'} records`}</small></div>
@@ -156,5 +151,14 @@ export function Investments({ sandbox, managed, live, request, money, openBank, 
         </>}
       </section>
     </>}
+    </div>
+    <section className="card investment-sync">
+      <div className="section-heading"><div><h2>Broker-reported investments</h2><small>{managed ? "View sync times for each institution in Bank sync." : <>Holdings: {stamp(data.state?.holdings_at)} / Activity: {stamp(data.state?.activity_at)}</>}</small></div><span className="chip">{live ? 'LIVE DATA' : 'TEST MODE'}</span></div>
+      <p className="muted">Values use the latest data reported by your broker. Holdings can update overnight.</p>
+      <div className="investment-actions">{!managed && <><button className="primary" disabled={busy} onClick={() => void sync(false)}>Sync holdings</button><button className="secondary" disabled={busy || !data.accounts.length} onClick={() => void sync(true)}>Sync activity</button>
+        </>}<button className="secondary" disabled={busy} onClick={openBank}>Manage connection</button></div>
+      {busy && <p role="status">Retrieving investment data…</p>}{error && <p className="notice" role="alert">{error}</p>}{message && <p className="notice" role="status">{message}</p>}
+    </section>
+    </div>
   </div>
 }

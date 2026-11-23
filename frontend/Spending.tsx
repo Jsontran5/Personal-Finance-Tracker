@@ -94,7 +94,7 @@ function Breakdown({ title, rows, money, drill, children }: { title: string; row
   </section>
 }
 
-const palette = ['#4385e8', '#28a88c', '#9771db', '#d68b30', '#d65c87', '#6594a3', '#a09539', '#a57258']
+const palette = ['#3697a2', '#72a15e', '#5585bd', '#d68b30', '#cb7059', '#6594a3', '#a09539', '#a57258']
 
 function CategoryDonut({ rows, money, drill, income }: { rows: Bucket[]; money: Money; drill: Drill; income: boolean }) {
   const positive = rows.filter(row => row.purchases_minor > 0)
@@ -176,6 +176,7 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
       onReselect={() => change({ category: 'all' })}
       options={[{ value: 'spending', label: 'Spending' }, { value: 'income', label: 'Income' }, { value: 'cashflow', label: 'Cash flow' }]} />
     <section className="card report-filters" aria-label="Report filters">
+      <h2>Report filters</h2>
       <div className="report-filter-fields">
         <details className="report-account-filter"><summary>Accounts · {filters.accounts.length ? filters.accounts.length + ' selected' : 'All'}</summary>
           <div className="report-account-options">
@@ -200,6 +201,7 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
       </div>
       <p className="analytics-note">Filters apply to the entire report · Posted USD activity</p>
     </section>
+    <div className="report-results">
     {error && <p className="notice" role="alert">{error} <button className="secondary small" onClick={() => setRetry(value => value + 1)}>Retry report</button></p>}
     {!report && !error && <p className="muted" role="status">Loading report…</p>}
     {report && <>
@@ -244,6 +246,7 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
         </div>}
       </section>
     </>}
+    </div>
   </div>
 }
 

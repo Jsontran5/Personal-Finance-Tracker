@@ -41,15 +41,18 @@ export function AccountList({ accounts, sandbox, live, unified = false, primary,
   return <section className="accounts-workspace">
     <div className="section-heading"><div><h2>{unified ? 'All accounts' : live ? 'Live accounts' : sandbox ? 'Sandbox accounts' : 'Manual accounts'}</h2><small>{accounts.length} accounts · Latest saved balances</small></div>
       {(!sandbox || unified) && <button className="primary" onClick={add}>{unified ? 'Add manual account' : '＋ Add account'}</button>}</div>
-    <div className="filters">
-      <input type="search" aria-label="Search accounts" placeholder="Find an account" value={search} onChange={event => setSearch(event.target.value)} />
-      <select aria-label="Account group" value={filter} onChange={event => setFilter(event.target.value)}><option value="">All groups</option>
+    <div className="account-browser">
+    <aside className="account-directory" aria-label="Filter accounts">
+      <h3>Find an account</h3>
+      <label>Search<input type="search" aria-label="Search accounts" placeholder="Account or institution" value={search} onChange={event => setSearch(event.target.value)} /></label>
+      <label>Group<select aria-label="Account group" value={filter} onChange={event => setFilter(event.target.value)}><option value="">All groups</option>
         {accountGroups.filter(name => groups.some(group => group.name === name)).map(name => <option key={name}>{name}</option>)}
-      </select>
-    </div>
-    {accounts.some(account => account.currency !== 'USD') && <p className="muted">Currencies are shown separately; no conversion is applied.</p>}
-    {!matching.length && <p className="empty">{accounts.length ? 'No accounts match your search.' : 'No accounts yet.'}</p>}
+      </select></label>
+      <p className="muted" role="status">{matching.length} of {accounts.length} accounts</p>
+      {accounts.some(account => account.currency !== 'USD') && <p className="muted">Balances are shown in their original currencies.</p>}
+    </aside>
     <div className="account-groups">
+      {!matching.length && <p className="empty">{accounts.length ? 'No accounts match your search.' : 'No accounts yet.'}</p>}
       {groupedAccounts(matching).map(group => {
         const groupIndex = accountGroups.indexOf(group.name)
         const totals = new Map<string, number | null>()
@@ -86,6 +89,7 @@ export function AccountList({ accounts, sandbox, live, unified = false, primary,
           </details>)}</div>
         </details>
       })}
+    </div>
     </div>
   </section>
 }

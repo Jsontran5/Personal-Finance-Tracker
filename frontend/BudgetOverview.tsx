@@ -1,4 +1,5 @@
 import { Icon } from './icons'
+import { FinanceMeter } from './FinanceMeter'
 
 type Category = { id: number; name: string; bucket: string; actual_minor: number; archived?: number }
 export type MonthlySummary = {
@@ -14,7 +15,7 @@ export type MonthlySummary = {
 const money = (minor: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(minor / 100)
 const buckets = [
   { key: 'needs', label: 'Needs', tone: 'teal' },
-  { key: 'wants', label: 'Wants', tone: 'violet' },
+  { key: 'wants', label: 'Wants', tone: 'blue' },
   { key: 'savings', label: 'Other goal spending', tone: 'positive' },
   { key: 'uncategorized', label: 'Uncategorized', tone: 'amber' },
 ] as const
@@ -42,13 +43,15 @@ export function BudgetOverview({ summary, categories, month, ratios, onCategory,
 
   return <div className="budget-monthly">
     <div className="budget-summary" aria-label={'Monthly totals for ' + month}>
-      <section><small><Icon name="income" /> Income received</small><strong>{money(income)}</strong><span>Posted income · USD</span></section>
-      <section><small><Icon name="expense" /> Net spending</small><strong>{money(spending)}</strong><span>Purchases minus refunds · USD</span></section>
       <section className="budget-ready" data-over={surplus < 0 || undefined}>
         <small><Icon name="budgets" /> {surplus < 0 ? 'Spending above income' : 'Income left after spending'}</small>
         <strong className={surplus < 0 ? 'negative' : ''}>{money(Math.abs(surplus))}</strong>
         <span>{income > 0 ? `${summary.surplus_rate!.toFixed(1)}% of income remains after spending.` : 'Record income to see a percentage.'}</span>
       </section>
+      <div className="budget-month-flows">
+        <section><small><Icon name="income" /> Income received</small><strong>{money(income)}</strong><span>Posted income · USD</span></section>
+        <section><small><Icon name="expense" /> Net spending</small><strong>{money(spending)}</strong><span>Purchases minus refunds · USD</span></section>
+      </div>
     </div>
     <div className="budget-monthly-grid">
       <section className="card">
@@ -58,13 +61,13 @@ export function BudgetOverview({ summary, categories, month, ratios, onCategory,
           return <div className="budget-guide" data-bucket={key} key={key}>
             <div><strong>{label}</strong><span>{ratios[index]}% guide</span></div>
             <div><strong className="numeric">{money(amount)} spent</strong><span>{income > 0 ? `${money(allowance)} guide · ${money(Math.abs(allowance - amount))} ${amount > allowance ? 'above' : 'below'}` : 'Record income to compare'}</span></div>
-            <progress aria-label={label + ' spending compared with guide'} max={Math.max(1, allowance, amount)} value={Math.max(0, amount)} className={income > 0 && amount > allowance ? 'over' : undefined} />
+            <FinanceMeter label={label + ' spending compared with guide'} max={Math.max(1, allowance, amount)} value={Math.max(0, amount)} over={income > 0 && amount > allowance} />
           </div>
         })}
         <div className="budget-guide" data-bucket="savings">
           <div><strong>Savings potential</strong><span>{ratios[2]}% guide</span></div>
           <div><strong className="numeric">{money(surplus)} left</strong><span>{income > 0 ? `${money(savingsTarget)} guide · ${surplus >= savingsTarget ? 'Guide met so far' : 'Below guide so far'}` : 'Record income to compare'}</span></div>
-          <progress aria-label="Surplus compared with savings guide" max={Math.max(1, savingsTarget, surplus)} value={Math.max(0, surplus)} />
+          <FinanceMeter label="Surplus compared with savings guide" max={Math.max(1, savingsTarget, surplus)} value={Math.max(0, surplus)} />
         </div>
         {(summary.buckets.uncategorized !== 0 || summary.excluded_count > 0) &&
           <p className="notice">{money(summary.buckets.uncategorized)} uncategorized net spending. {summary.excluded_count} pending or needs-review entries excluded.</p>}

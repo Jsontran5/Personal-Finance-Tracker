@@ -1,5 +1,6 @@
 import { trapDialogFocus } from './dialogFocus'
 import { useEffect, useRef, useState } from 'react'
+import { Icon } from './icons'
 
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
 type Backup = { id: string; size_bytes: number; file_date: string; format: string }
@@ -55,7 +56,8 @@ export function BackupRestore({ request, onRestored, initialWorkspace, unified =
       ? 'Restores the saved encrypted bank authorization for this Windows user. No bank connection is created or contacted during restore.'
       : preview?.workspace !== 'personal' ? 'This backup has no saved bank connection.' : unified ? 'Your connected bank authorizations are unaffected.' : 'Your Sandbox bank connections are unaffected.'
   return <div className="backup-page">
-    <section className="card backup-create"><div><h2>{unified ? 'Back up your accounts' : 'Back up a workspace'}</h2><p className="analytics-note">Save a consistent copy of accounts, transactions, budgets, review/rule state, transfer links, and chart selection.</p></div>
+    <div className="backup-actions">
+    <section className="card backup-create"><div><span className="feature-mark"><Icon name="backup" /></span><h2>{unified ? 'Back up your accounts' : 'Back up a workspace'}</h2><p className="analytics-note">Save a copy of your accounts, transactions, budgets, and settings.</p></div>
       {unified && <button className="primary" disabled={busy} onClick={() => void run(async () => {
         const pair = await request<{ manual: { id: string }; connected: { id: string } }>('/backups/all', 'POST')
         const listed = await request<{ backups: Backup[] }>('/backups')
@@ -70,19 +72,20 @@ export function BackupRestore({ request, onRestored, initialWorkspace, unified =
       <details className="metric-note"><summary>Storage and automatic backups</summary>
         <p>Backup files live in this project’s backups folder and contain private financial records. Bank authorization is encrypted for your Windows user. API credentials and local context files are excluded.</p>
         {unified && <p>Startup creates a backup pair before syncing when the last automatic pair is over 24 hours old. The latest 14 automatic pairs are kept. Manual and recovery backups are kept separately. Restore Manual first, then Connected from the same set.</p>}
+        {(mode === 'sandbox_combined' || mode === 'live') && <p>{unified ? 'Restore the Manual file first and Connected second for a full recovery. Bank backups require the same connected institutions.' : 'Multi-institution backups require the same connected institutions. Back up Manual separately to preserve the original records mirrored here.'}</p>}
       </details>
     </section>
-    {(mode === 'sandbox_combined' || mode === 'live') && <p className="muted">{unified ? 'All accounts keeps bank feeds and manually entered records independently recoverable. Back up all accounts creates both files. For a full recovery, restore the manual file first and the connected file second. Bank backups require the same connected institutions.' : 'Multi-institution backups require the same connected institutions when restoring. Manual mirrors refresh from Manual; back up Manual separately to preserve their original records.'}</p>}
     {busy && <p className="muted" role="status">Working with local backup files…</p>}
     {error && <p className="notice" role="alert">{error}{!backups && <button className="secondary small" onClick={() => setAttempt(value => value + 1)}>Retry</button>}</p>}
     {message && <p className="notice backup-message" role="status">{message}</p>}
     {result && <section className="card restore-result"><h2>{describe(result.workspace)} restored</h2><p className="analytics-note">App data has been refreshed. The previous workspace is available as a recovery backup:</p><p className="backup-filename">{result.recovery_backup}</p>
       <button className="primary" onClick={() => window.location.reload()}>Reload application</button></section>}
-    <section className="card"><div className="section-heading"><div><h2>Saved backups</h2><small>{backups?.length ?? 0} project-local files · newest first</small></div><button className="secondary small" disabled={busy} onClick={() => setAttempt(value => value + 1)}>Refresh list</button></div>
+    </div>
+    <section className="card backup-vault"><div className="section-heading"><div><h2>Saved backups</h2><small>{backups?.length ?? 0} project-local files · newest first</small></div><button className="secondary small" disabled={busy} onClick={() => setAttempt(value => value + 1)}>Refresh list</button></div>
       <input type="search" aria-label="Search backups" placeholder="Search backups" value={filter} onChange={event => { setFilter(event.target.value); setPage(0) }} />
       {!backups && !error && <p className="muted" role="status">Loading backups…</p>}
       {backups && !matching.length && <p className="empty stack">{backups.length ? 'No backups match your search.' : 'No backups yet. Create one before making major changes.'}</p>}
-      <div className="backup-list">{matching.slice(currentPage * 10, (currentPage + 1) * 10).map(backup => <article key={backup.id} className="backup-row"><div><strong className="backup-filename">{backup.id}</strong><small>{new Date(backup.file_date).toLocaleString()} · {size(backup.size_bytes)} · {backup.id.startsWith('automatic/') ? 'Automatic backup · ' + (backup.id.split('/').pop()?.startsWith('personal-') ? 'Manual account data' : 'Connected account data') : backup.format === 'bundle' ? backup.id.startsWith('recovery-') ? 'Recovery bundle' : 'Workspace bundle' : 'Legacy database · settings not included'}</small></div>
+      <div className="backup-list">{matching.slice(currentPage * 10, (currentPage + 1) * 10).map(backup => <article key={backup.id} className="backup-row"><span className="file-mark"><Icon name="backup" /></span><div><strong className="backup-filename">{backup.id}</strong><small>{new Date(backup.file_date).toLocaleString()} · {size(backup.size_bytes)} · {backup.id.startsWith('automatic/') ? 'Automatic backup · ' + (backup.id.split('/').pop()?.startsWith('personal-') ? 'Manual account data' : 'Connected account data') : backup.format === 'bundle' ? backup.id.startsWith('recovery-') ? 'Recovery bundle' : 'Workspace bundle' : 'Legacy database · settings not included'}</small></div>
         <button className="secondary small" disabled={busy} onClick={event => {
           restoreTrigger.current = event.currentTarget
           void run(async () => {
