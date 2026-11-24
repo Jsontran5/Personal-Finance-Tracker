@@ -94,6 +94,8 @@ Spending breakdown has category/group donuts, matching transaction drilldowns, a
 
 All budget configuration, opening anchors, target/group settings and allocation/undo records live in the corresponding financial database and are included in its normal backup. The budget feature has its own schema version; older supported backups acquire empty budget tables on a temporary migration copy. Manual and connected data still restore in the normal Manual-first/Connected-second order. Budgeting requires no additional external API or bank consent.
 
+Funded Detailed plan keeps the Available column and adds a purpose label: positive configured monthly targets use **Available to spend**; contribution, refill and dated targets use **Reserved toward goal**. Categories without a positive target stay **Available**; negative availability is flagged as needing funding. The label follows target behavior, not the Needs/Wants/Savings bucket. Expand **What does Available mean?** for the explanation. These labels do not change calculations or move money.
+
 ### Manage categories
 
 Every Budgets tab has **New category** and **Manage categories**. The category hub brings creation, editing, transaction details and lifecycle actions together. Search and filter Active/Archived/All and Income/Expenses. Linked-record counts explain which transactions, limits, targets, allocation history, rules or templates use each category.

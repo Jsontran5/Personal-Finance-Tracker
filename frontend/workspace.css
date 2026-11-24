@@ -447,3 +447,5 @@ button.primary:active:not(:disabled), button.secondary:active:not(:disabled), .a
 .category-library-guide { margin-top:16px; color:var(--muted); font-size:.85rem; }
 .category-library-guide summary { cursor:pointer; }
 .category-success { background:color-mix(in srgb,var(--positive) 10%,var(--surface)); border-color:color-mix(in srgb,var(--positive) 35%,var(--line)); color:var(--text); }
+
+.budget-table .budget-availability-label { display: block; margin-top: .4rem; max-width: 12rem; margin-left: auto; text-align: right; line-height: 1.4; white-space: normal; color: var(--text); }
