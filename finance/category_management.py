@@ -108,9 +108,44 @@ def merge_one(db,sandbox,source,target,policy):
 
 
 Name=Annotated[str,StringConstraints(strip_whitespace=True,min_length=1,max_length=120)]
+class BudgetFields(BaseModel):
+    group:Annotated[str,StringConstraints(strip_whitespace=True,min_length=1,max_length=80)]='Everyday spending'
+    bucket:Literal['needs','wants','savings']='needs'
+    target_minor:int=Field(default=0,strict=True,ge=0,le=1_000_000_000_000)
+    target_type:Literal['monthly','contribution','refill','dated']='monthly'
+    target_date:date|None=None
+    repeat_monthly:bool=False
+
+
+def category_budget(db,identifier):
+    row=db.execute('SELECT * FROM budget_categories WHERE category_id=?',(identifier,)).fetchone()
+    if not row:return BudgetFields().model_dump(mode='json')
+    return {'group':row['group_name'],**{key:row[key] for key in ['bucket','target_minor','target_type','target_date','repeat_monthly']}}
+
+
+def save_category_budget(db,identifier,item):
+    if item.target_type=='dated' and not item.target_date:
+        raise HTTPException(422,'Choose a date for the savings goal.')
+    # Keep a genuinely unused default category eligible for guarded deletion.
+    if item==BudgetFields() and not db.execute('SELECT 1 FROM budget_categories WHERE category_id=?',(identifier,)).fetchone():return
+    db.execute('''INSERT INTO budget_categories VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(category_id) DO UPDATE SET group_name=excluded.group_name,bucket=excluded.bucket,
+        target_minor=excluded.target_minor,target_type=excluded.target_type,target_date=excluded.target_date,
+        repeat_monthly=excluded.repeat_monthly''',
+        (identifier,item.group,item.bucket,item.target_minor,item.target_type,item.target_date.isoformat() if item.target_date else None,int(item.repeat_monthly)))
+
+
+class Create(BaseModel):
+    name:Name
+    kind:Literal['income','expense']
+    budget:BudgetFields|None=None
+    token:str
+
+
 class Edit(BaseModel):
     name:Name|None=None
     archived:bool|None=None
+    budget:BudgetFields|None=None
     token:str
 class Merge(BaseModel):
     source_id:int=Field(gt=0)
@@ -174,16 +209,37 @@ def category_router(path,*,sandbox=False,initialize=lambda:None,source_database=
             rows=catalog(db,sandbox)
             token=state_token([(db,sandbox,None,None)]+([(manual,False,None,None)] if manual else []))
             for row in rows:
+                row['budget']=category_budget(db,row['id']) if row['kind']=='expense' else None
                 linked=stores(db,manual,row['id'])
                 row['references']={('connected' if shared and preview else 'manual' if shared else 'workspace'):references(current,preview,s) for current,preview,s,_ in linked}
                 row['can_delete']=not any(sum(counts.values()) for counts in row['references'].values())
             return {'categories':rows,'token':token,'shared':shared}
+    @router.post('',status_code=201)
+    def create(item:Create):
+        prepare()
+        if item.kind=='income' and item.budget is not None:
+            raise HTTPException(422,'Income categories do not have spending buckets or targets.')
+        with context() as (db,manual):
+            linked=[(db,sandbox,None,None)]+([(manual,False,None,None)] if manual else [])
+            if item.token!=state_token(linked):raise HTTPException(409,'Categories or records changed. Reload before creating.')
+            for current,preview,_,_ in linked:
+                table='preview_categories' if preview else 'categories'
+                if current.execute(f'SELECT 1 FROM {table} WHERE name=?',(item.name,)).fetchone():
+                    raise HTTPException(409,'That name already exists. Edit or restore the existing category instead.')
+            manual_id=manual.execute('INSERT INTO categories(name,kind) VALUES (?,?)',(item.name,item.kind)).lastrowid if manual else None
+            table='preview_categories' if sandbox else 'categories'
+            identifier=db.execute(f'INSERT INTO {table}(name,kind) VALUES (?,?)',(item.name,item.kind)).lastrowid
+            if manual:db.execute('INSERT INTO category_sync VALUES (?,?)',(manual_id,identifier))
+            if item.budget is not None:save_category_budget(db,identifier,item.budget)
+        return {'id':identifier,'created':True}
     @router.put('/{identifier}')
     def edit(identifier:int,item:Edit):
         prepare()
         with context() as (db,manual):
             linked=stores(db,manual,identifier)
             if item.token!=state_token(linked):raise HTTPException(409,'Categories or records changed. Reload before applying.')
+            if item.budget is not None and require(db,sandbox,identifier)['kind']!='expense':
+                raise HTTPException(422,'Income categories do not have spending buckets or targets.')
             for current,preview,source,_ in linked:
                 old=require(current,preview,source);table='preview_categories' if preview else 'categories'
                 if item.name is not None:
@@ -195,6 +251,8 @@ def category_router(path,*,sandbox=False,initialize=lambda:None,source_database=
                     if item.archived:current.execute('UPDATE merchant_rules SET active=0 WHERE category_id=?',(source,))
                 current.execute('INSERT INTO category_operations(kind,source_id,payload,created_at) VALUES (?,?,?,?)',
                     ('edit',source,json.dumps({'before':old,'name':item.name,'archived':item.archived}),datetime.now(timezone.utc).isoformat()))
+            # Budget metadata remains scoped to this workspace, as in the existing plan editor.
+            if item.budget is not None:save_category_budget(db,identifier,item.budget)
         return {'saved':True}
     @router.delete('/{identifier}')
     def delete(identifier:int,token:str):

@@ -37,6 +37,62 @@ class CategoryTests(TestCase):
         self.client.__enter__();self.path='/api/plaid/live/preview/category-management'
         rows=self.listing()['categories']
         self.a=next(r['id'] for r in rows if r['name']=='Gas');self.b=next(r['id'] for r in rows if r['name']=='Transportation costs')
+    def create_details(self,name,kind='expense',budget=None,token=None):
+        payload={'token':token or self.listing()['token'],'name':name,'kind':kind}
+        if budget is not None:payload['budget']=budget
+        return self.client.post(self.path,json=payload)
+    def test_hub_create_edit_metadata_and_default_unused_category(self):
+        result=self.create_details('Vacation',budget={'bucket':'savings','group':'Future goals','target_minor':200000,'target_type':'dated','target_date':'2027-12-31'})
+        self.assertEqual(result.status_code,201,result.text);identifier=result.json()['id']
+        category=next(c for c in self.listing()['categories'] if c['id']==identifier)
+        self.assertEqual(category['budget']['bucket'],'savings');self.assertEqual(category['budget']['target_date'],'2027-12-31')
+        self.assertEqual(self.client.get('/api/plan?month='+self.month).json()['ready_minor'],0)
+        tx=self.tx(identifier)
+        self.edit(identifier,name='Travel fund',budget={'bucket':'wants','group':'Travel','target_minor':300000,'target_type':'refill'})
+        with connect(self.database) as db:
+            self.assertEqual(db.execute('SELECT category_id FROM transactions WHERE id=?',(tx,)).fetchone()[0],identifier)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM budget_events').fetchone()[0],0)
+        plain=self.create_details('A plain category',budget={}).json()['id']
+        self.assertTrue(next(c for c in self.listing()['categories'] if c['id']==plain)['can_delete'])
+        income=self.create_details('New salary','income').json()['id']
+        self.assertIsNone(next(c for c in self.listing()['categories'] if c['id']==income)['budget'])
+        response=self.client.put(self.path+'/'+str(income),json={'token':self.listing()['token'],'name':'Should roll back','budget':{}})
+        self.assertEqual(response.status_code,422)
+        self.assertIn('New salary',[c['name'] for c in self.listing()['categories']])
+    def test_hub_validation_duplicates_stale_and_atomic_failure(self):
+        token=self.listing()['token'];self.add('Changed list')
+        self.assertEqual(self.create_details('Stale create',token=token).status_code,409)
+        self.assertEqual(self.create_details('Gas').status_code,409)
+        self.edit(self.a,archived=True)
+        self.assertEqual(self.create_details('Gas').status_code,409)
+        self.assertEqual(self.create_details('No date',budget={'target_type':'dated'}).status_code,422)
+        self.assertEqual(self.create_details('Invalid group',budget={'group':'   '}).status_code,422)
+        self.assertEqual(self.create_details('Invalid amount',budget={'target_minor':-1}).status_code,422)
+        self.assertEqual(self.create_details('Invalid income','income',{}).status_code,422)
+        with patch('finance.category_management.save_category_budget',side_effect=RuntimeError('Synthetic settings failure')):
+            with self.assertRaises(RuntimeError):self.create_details('Partial creation',budget={'bucket':'wants'})
+        names=[c['name'] for c in self.listing()['categories']]
+        self.assertNotIn('Partial creation',names);self.assertNotIn('No date',names);self.assertNotIn('Stale create',names)
+    def test_hub_shared_creation_rollback_links_and_preserved_funding(self):
+        self.shared()
+        result=self.create_details('Emergency fund',budget={'bucket':'savings','target_minor':500000})
+        self.assertEqual(result.status_code,201,result.text);identifier=result.json()['id']
+        with connect(self.database.with_suffix('.plaid-live.db')) as db:
+            manual_id=db.execute('SELECT manual_id FROM category_sync WHERE local_id=?',(identifier,)).fetchone()[0]
+        plan=self.client.get('/api/plaid/live/preview/plan?month='+self.month).json()
+        before=[(c['id'],c['assigned_minor'],c['available_minor']) for c in plan['categories']]
+        self.edit(identifier,name='Emergency savings',budget={'bucket':'savings','group':'Long term','target_minor':600000,'target_type':'refill'})
+        for _ in range(2):
+            rows=self.listing()['categories'];row=next(c for c in rows if c['id']==identifier)
+            self.assertEqual(row['name'],'Emergency savings');self.assertEqual(row['budget']['target_minor'],600000)
+        with connect(self.database) as db:
+            self.assertEqual(db.execute('SELECT name FROM categories WHERE id=?',(manual_id,)).fetchone()[0],'Emergency savings')
+        after=self.client.get('/api/plaid/live/preview/plan?month='+self.month).json()
+        self.assertEqual(before,[(c['id'],c['assigned_minor'],c['available_minor']) for c in after['categories']])
+        with patch('finance.category_management.save_category_budget',side_effect=RuntimeError('Synthetic second-store create failure')):
+            with self.assertRaises(RuntimeError):self.create_details('No orphan shared category',budget={'bucket':'wants'})
+        with connect(self.database) as db:self.assertIsNone(db.execute("SELECT 1 FROM categories WHERE name='No orphan shared category'").fetchone())
+        self.assertNotIn('No orphan shared category',[c['name'] for c in self.listing()['categories']])
     def test_rename_archive_restore_preserve_history_and_pause_rules(self):
         tx=self.tx(self.a)
         with connect(self.database,write=True) as db:
