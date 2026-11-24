@@ -20,8 +20,12 @@ const buckets = [
   { key: 'uncategorized', label: 'Uncategorized', tone: 'amber' },
 ] as const
 
-export function BudgetOverview({ summary, categories, month, ratios, onCategory, onBreakdown, onManage }: {
+export function BudgetOverview({ summary, postedSummary, includePending, pendingIncome, pendingNet, categories, month, ratios, onCategory, onBreakdown, onManage }: {
   summary: MonthlySummary
+  postedSummary: MonthlySummary
+  includePending: boolean
+  pendingIncome: number
+  pendingNet: number
   categories: Category[]
   month: string
   ratios: number[]
@@ -42,6 +46,7 @@ export function BudgetOverview({ summary, categories, month, ratios, onCategory,
   }).join(', ')
 
   return <div className="budget-monthly">
+    <p className="pending-report-note"><strong>{includePending?'Estimated spending · posted + pending':'Posted spending only'}</strong><span>Posted spending: {money(postedSummary.spending_minor)} · Pending net spending: {money(pendingNet)}</span><small>Income and guide percentages use posted income only. Pending income {money(pendingIncome)} is provisional. Pending amounts, dates and categories may change or disappear on sync.</small></p>
     <div className="budget-summary" aria-label={'Monthly totals for ' + month}>
       <section className="budget-ready" data-over={surplus < 0 || undefined}>
         <small><Icon name="budgets" /> {surplus < 0 ? 'Spending above income' : 'Income left after spending'}</small>
@@ -50,7 +55,7 @@ export function BudgetOverview({ summary, categories, month, ratios, onCategory,
       </section>
       <div className="budget-month-flows">
         <section><small><Icon name="income" /> Income received</small><strong>{money(income)}</strong><span>Posted income · USD</span></section>
-        <section><small><Icon name="expense" /> Net spending</small><strong>{money(spending)}</strong><span>Purchases minus refunds · USD</span></section>
+        <section><small><Icon name="expense" /> Net spending</small><strong>{money(spending)}</strong><span>{includePending?'Posted + pending purchases minus refunds · estimate':'Posted purchases minus refunds · USD'}</span></section>
       </div>
     </div>
     <div className="budget-monthly-grid">
@@ -70,9 +75,9 @@ export function BudgetOverview({ summary, categories, month, ratios, onCategory,
           <FinanceMeter label="Surplus compared with savings guide" max={Math.max(1, savingsTarget, surplus)} value={Math.max(0, surplus)} />
         </div>
         {(summary.buckets.uncategorized !== 0 || summary.excluded_count > 0) &&
-          <p className="notice">{money(summary.buckets.uncategorized)} uncategorized net spending. {summary.excluded_count} pending or needs-review entries excluded.</p>}
+          <p className="notice">{money(summary.buckets.uncategorized)} uncategorized net spending. {summary.excluded_count} entries excluded (pending income or needs review{includePending?'':' / pending spending'}).</p>}
         <details className="metric-note"><summary>How the guide works</summary>
-          <p>The guide uses the month’s posted USD income. Income left after spending measures potential savings. Actual savings deposits, principal payments, and investment transfers can change cash separately. Existing savings and funded assignments are separate.</p>
+          <p>The guide uses the month’s posted USD income. Spending follows the pending-preview switch; combined spending and surplus are estimates. Income left after spending measures potential savings. Actual savings deposits, principal payments, and investment transfers can change cash separately. Existing savings and funded assignments are separate.</p>
         </details>
       </section>
       <section className="card budget-distribution">
@@ -100,7 +105,7 @@ export function BudgetOverview({ summary, categories, month, ratios, onCategory,
         return <details className="budget-monthly-categories" data-bucket={key} key={key}>
           <summary>{key === 'savings' ? 'Savings & extra debt categories' : label} · {members.length} {members.length === 1 ? 'category' : 'categories'}</summary>
           {members.map(category => <button type="button" className="budget-comparison" key={category.id} onClick={() => onCategory(category.id)}>
-            <span>{category.name}{category.archived ? ' (Archived)' : ''}</span><strong>{money(category.actual_minor)} spent</strong>
+            <span>{category.name}{category.archived ? ' (Archived)' : ''}</span><strong>{money(category.actual_minor)} {includePending?'estimated spending':'spent'}</strong>
           </button>)}
         </details>
       })}

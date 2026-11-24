@@ -48,7 +48,7 @@ type Overview = {
   assets_minor: number; liabilities_minor: number; net_worth_minor: number;
   income_minor: number; spending_minor: number; cash_flow_minor: number; uncategorized_minor: number;
   pending_count?: number; missing_balance_count?: number; review_count?: number;
-  spending: SpendingReport;
+  spending: SpendingReport; spending_preview?: SpendingReport;
 }
 type Theme = 'dark' | 'light'
 type Mode = 'personal' | 'sandbox' | 'live'
@@ -180,12 +180,16 @@ function EntryForm({ data, state, save, remove, busy }: {
 
 function CashFlow({ data, month, drill }: { data: Overview; month: string; drill: (ids: number[], label: string) => void }) {
   const eligible = data.transactions.filter(tx => tx.currency === 'USD' && !tx.pending && !tx.needs_review && !tx.transfer_pair_id && ['income', 'expense', 'refund'].includes(tx.kind))
+  const pending = data.transactions.filter(tx => tx.currency==='USD' && tx.pending && !tx.needs_review && !tx.transfer_pair_id && ['income','expense','refund'].includes(tx.kind))
+  const pendingIncome = pending.filter(tx=>tx.kind==='income').reduce((s,tx)=>s+tx.amount_minor,0)
+  const pendingSpending = pending.filter(tx=>tx.kind!=='income').reduce((s,tx)=>s+tx.amount_minor*(tx.kind==='refund'?-1:1),0)
   const magnitude = Math.max(data.income_minor, Math.abs(data.spending_minor), 1)
   return <section className="card cashflow" aria-labelledby="cashflow-title">
-    <div className="section-heading"><div><h2 id="cashflow-title">Cash flow</h2><small>{month} · USD</small></div>
+    <div className="section-heading"><div><h2 id="cashflow-title">Cash flow</h2><small>{month} · Posted · USD</small></div>
       <span className="panel-icon"><Icon name="transactions" /></span>
     </div>
     <button className={'cashflow-total cashflow-value numeric ' + (data.cash_flow_minor < 0 ? 'negative' : data.cash_flow_minor > 0 ? 'positive' : '')} data-help="View the posted income, purchases and refunds included in this month’s cash flow. Transfers and pending entries are excluded." onClick={() => drill(eligible.map(tx => tx.id), 'Cash flow · ' + month)}>{money(data.cash_flow_minor)}<small>View transactions →</small></button>
+    {!!pending.length&&<div className="pending-report-note"><strong>{money(data.cash_flow_minor-pendingSpending)} after pending spending (estimate)</strong><span>Pending net spending: {money(pendingSpending)} · Pending income: {money(pendingIncome)} (not included above)</span><button className="secondary small" onClick={()=>drill(pending.map(tx=>tx.id),'Pending cash flow activity · '+month)}>Review pending transactions</button></div>}
     <div className="cashflow-bars">
       <button className="flow-income cashflow-drill" onClick={() => drill(eligible.filter(tx => tx.kind === 'income').map(tx => tx.id), 'Income · ' + month)}><div><span><Icon name="income" /> Income</span><strong className="numeric">{money(data.income_minor)}</strong></div>
         <FinanceMeter label="Income relative to the larger monthly total" max={magnitude} value={data.income_minor} /></button>
@@ -602,14 +606,14 @@ function App() {
             <CashFlow data={ready} month={activeMonth} drill={(ids, label) => drillSpending(ids, label, 'Overview')} />
           </div>
           <div className="overview-activity">
-            <HomeSpending report={ready.spending} money={money} drill={(ids, label) => drillSpending(ids, label, 'Overview')} changeMonth={setMonth} openSpending={() => setPage('Spending')} />
+            <HomeSpending report={ready.spending_preview??ready.spending} money={money} drill={(ids, label) => drillSpending(ids, label, 'Overview')} changeMonth={setMonth} openSpending={() => setPage('Spending')} />
             <section className="card recent-spending" aria-labelledby="recent-spending-title">
-              <div className="section-heading"><h2 id="recent-spending-title">Recent spending</h2><button className="text-button" onClick={() => drillSpending(ready.spending.eligible_ids, 'Posted spending · ' + monthLabel(ready.spending.month), 'Overview')}>View all</button></div>
+              <div className="section-heading"><div><h2 id="recent-spending-title">Recent spending</h2><small>Posted purchases</small></div><button className="text-button" onClick={() => drillSpending(ready.spending.eligible_ids, 'Posted spending · ' + monthLabel(ready.spending.month), 'Overview')}>View all</button></div>
               <TransactionList transactions={ready.transactions.filter(tx => ready.spending.eligible_ids.includes(tx.id)).slice(0, 5)} edit={editTransaction} empty="No posted spending this month." />
             </section>
           </div>
           <div className="overview-summary">
-            <section className="card overview-budget"><div className="section-heading"><div><h2>Budget progress</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => setPage('Budgets')}>View budgets <Icon name="right" /></button></div>
+            <section className="card overview-budget"><div className="section-heading"><div><h2>Budget progress · posted</h2><small>{activeMonth}</small></div><button className="secondary small with-icon" onClick={() => setPage('Budgets')}>View budgets <Icon name="right" /></button></div>
               <BudgetRows budgets={budgetRows} edit={editBudget} filter={filterCategory} />
             </section>
             <AssetSummary accounts={ready.accounts.filter(account => chartAccountIds?.includes(account.id))} loading={chartAccountIds === null} money={money} openAccounts={() => setPage('Accounts')} />
@@ -732,7 +736,7 @@ function App() {
             <label>Limit (USD)<input data-autofocus name="amount" inputMode="decimal" defaultValue={dialog.budget.limit_minor === null ? '' : editableMoney(dialog.budget.limit_minor)} /></label>
           </>}
           {dialog.type === 'sandbox-transaction' && <>
-            <p className="muted">{dialog.entry.date} · {money(dialog.entry.amount_minor, dialog.entry.currency)} · {dialog.entry.account_name}</p>
+            <p className="muted">{dialog.entry.date} · {money(dialog.entry.amount_minor, dialog.entry.currency)} · {dialog.entry.account_name} · {dialog.entry.pending?'Pending estimate':'Posted'}</p>{!!dialog.entry.pending&&<p className="analytics-note">Pending amount, merchant and date may change or disappear. Classifying this entry does not make it posted or release budget funding.</p>}
             <label>Merchant<input name="merchant" data-autofocus required maxLength={120} defaultValue={dialog.entry.merchant} /></label>
             <label>Type<select value={sandboxKind} onChange={event => { setSandboxKind(event.target.value as Kind); setSandboxCategory(0) }}>
               {Object.entries(kinds).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}

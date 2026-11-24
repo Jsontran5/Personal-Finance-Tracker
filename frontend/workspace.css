@@ -449,3 +449,12 @@ button.primary:active:not(:disabled), button.secondary:active:not(:disabled), .a
 .category-success { background:color-mix(in srgb,var(--positive) 10%,var(--surface)); border-color:color-mix(in srgb,var(--positive) 35%,var(--line)); color:var(--text); }
 
 .budget-table .budget-availability-label { display: block; margin-top: .4rem; max-width: 12rem; margin-left: auto; text-align: right; line-height: 1.4; white-space: normal; color: var(--text); }
+
+/* Pending previews are visually separate from posted funding. */
+.pending-report-note { display: grid; gap: .5rem; padding: 1rem; margin: 1rem 0; border: 1px dashed var(--amber); border-radius: .8rem; background: color-mix(in srgb, var(--amber) 8%, var(--surface)); color: var(--text); overflow-wrap: anywhere; }
+.pending-report-note small { line-height: 1.5; }
+.pending-marker { display: inline-block; color: var(--text); border-bottom: 1px dashed var(--amber); font-size: .75rem; line-height: 1.4; }
+.calendar-day .pending-marker { font-size: .6rem; }
+.budget-pending-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; margin: 1rem 0; }
+.budget-pending-controls small { flex: 1 1 18rem; line-height: 1.5; }
+.budget-table .budget-pending-preview { display: block; max-width: 13rem; margin: .5rem 0 0 auto; text-align: right; line-height: 1.5; white-space: normal; color: var(--text); }
