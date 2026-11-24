@@ -16,7 +16,7 @@ def analytics_router(database, transactions, initialize=lambda: None):
     @router.get('/analytics')
     def report(month: Month, measure: Literal['spending', 'income', 'cashflow'] = 'spending',
                comparison: Month | None = None, account: Annotated[list[int] | None, Query()] = None,
-               category: str = 'all'):
+               category: str = 'all', status: Literal['posted', 'pending', 'all'] = 'posted'):
         if month.startswith('0000') or comparison and comparison.startswith('0000'):
             raise HTTPException(422, 'Choose a valid reporting month.')
         if category not in {'all', 'uncategorized'} and (not category.isdecimal() or int(category) < 1):
@@ -33,6 +33,6 @@ def analytics_router(database, transactions, initialize=lambda: None):
 
         with connect(database) as db:
             return spending_report(selected(transactions(db, month)), selected(transactions(db, prior)) if prior else [],
-                                   month, date.today(), measure=measure, comparison_month=prior)
+                                   month, date.today(), measure=measure, comparison_month=prior, status=status)
 
     return router

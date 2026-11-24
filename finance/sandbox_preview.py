@@ -199,6 +199,7 @@ def preview_overview(db, month):
     return {
         **totals(accounts), "accounts": accounts, "transactions": transactions, "categories": categories,
         "spending": spending_report(transactions, previous_transactions, month, date.today()),
+            "spending_preview": spending_report(transactions, previous_transactions, month, date.today(), status='all'),
         "budgets":budgets,"budget_method":method,
         "history": history, "income_minor": income, "spending_minor": spending,
         "cash_flow_minor": income - spending, "uncategorized_minor": actual.get(None, 0),

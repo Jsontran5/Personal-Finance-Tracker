@@ -83,9 +83,9 @@ def config(db):
     return json.loads(saved[0]) if saved else {'method':'categories','ratios':[50,30,20], 'cash_accounts':[], 'credit_accounts':[]}
 
 
-def monthly_summary(rows, categories, ratios):
+def monthly_summary(rows, categories, ratios, *, include_pending=False):
     """Full-month observation, independent of opening cash and allocation journal."""
-    posted = [tx for tx in rows if not tx['pending'] and not tx['needs_review'] and not tx.get('transfer_pair_id')]
+    posted = [tx for tx in rows if (not tx['pending'] or include_pending and tx['kind'] in {'expense','refund'}) and not tx['needs_review'] and not tx.get('transfer_pair_id')]
     income = sum(tx['amount_minor'] for tx in posted if tx['kind'] == 'income')
     buckets = dict.fromkeys(['needs', 'wants', 'savings', 'uncategorized'], 0)
     metadata = {c['id']: c for c in categories if c['id']}
@@ -100,7 +100,7 @@ def monthly_summary(rows, categories, ratios):
     return {'income_minor': income, 'spending_minor': spending, 'surplus_minor': surplus,
             'surplus_rate': surplus / income * 100 if income > 0 else None,
             'buckets': buckets, 'ratios': ratios,
-            'excluded_count': sum(bool(tx['pending'] or tx['needs_review']) for tx in rows)}
+            'excluded_count': sum(bool(tx['needs_review'] or tx['pending'] and (not include_pending or tx['kind'] not in {'expense','refund'})) for tx in rows)}
 
 
 def projection(db, sandbox, month):
@@ -254,15 +254,23 @@ def projection(db, sandbox, month):
             'activity_minor':-funding_actual[key],'available_minor':available,'cash_available_minor':balances[key],
             'actual_minor':actual[cat['id']],'previous_minor':previous[cat['id']],'need_minor':need,'transaction_ids':txids[cat['id']]})
     unknown_debt=sum(v for (category,_),v in unpaid.items() if category=='c:0')
-    if actual[None] or balances['c:0'] or assigned['c:0'] or unknown_debt:
+    if actual[None] or balances['c:0'] or assigned['c:0'] or unknown_debt or any(tx['pending'] and not tx['needs_review'] and not tx.get('transfer_pair_id') and tx['kind'] in {'expense','refund'} and tx['category_id'] is None for tx in current):
         result.append({'id':0,'name':'Uncategorized','kind':'expense','group':'Needs attention','bucket':'needs','target_minor':0,
             'target_type':'monthly','target_date':None,'repeat_monthly':False,'limit_minor':None,'assigned_minor':assigned['c:0'],
             'activity_minor':-funding_actual['c:0'],'available_minor':balances['c:0']-unknown_debt,'cash_available_minor':balances['c:0'],
             'actual_minor':actual[None],'previous_minor':previous[None],'need_minor':max(0,unknown_debt-balances['c:0']),'transaction_ids':txids[None]})
+    # Preview only: never feed pending entries into allocations, reserves or funding.
+    pending_purchases=[tx for tx in current if tx['pending'] and not tx['needs_review'] and not tx.get('transfer_pair_id')
+                       and tx['kind']=='expense' and (settings['method']=='categories' or not start or tx['account_id'] in cash|cards)]
+    for category in result:
+        amount=sum(tx['amount_minor'] for tx in pending_purchases if (tx['category_id'] or 0)==category['id'])
+        category['pending_purchases_minor']=amount
+        category['after_pending_minor']=category['available_minor']-amount
     transactions=[{k:tx.get(k) for k in ['id','source_id','account_id','account_name','date','merchant','amount_minor','kind','category_id','pending','needs_review','transfer_pair_id']} for tx in current]
     transfers=[{**tx,'linked':tx['source_id'] in used_sources} for tx in eligible if tx['account_id'] in cash and tx['direction']<0 and (tx['kind'] in {'transfer','investment'} or tx.get('transfer_pair_id')) and tx['other_account_id'] not in cash|cards]
     return {'month':month,'settings':settings,'token':token,'accounts':accounts,'categories':result,'ready_minor':ready,
         'monthly_summary':monthly_summary(current,result,settings['ratios']),
+        'preview_summary':monthly_summary(current,result,settings['ratios'],include_pending=True),
         'reconciliation':{'saved_cash_minor':saved_cash,'modeled_cash_minor':modeled_cash,'difference_minor':difference},
         'receipts':receipts,'transfers':transfers,'reserves':[{'account_id':a['id'],'name':a['name'],'reserved_minor':reserves[a['id']],
             'assigned_minor':assigned['card:'+str(a['id'])],
