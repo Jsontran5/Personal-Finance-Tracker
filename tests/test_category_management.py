@@ -71,8 +71,10 @@ class CategoryTests(TestCase):
         self.assertEqual(self.create_details('Invalid income','income',{}).status_code,422)
         with patch('finance.category_management.save_category_budget',side_effect=RuntimeError('Synthetic settings failure')):
             with self.assertRaises(RuntimeError):self.create_details('Partial creation',budget={'bucket':'wants'})
+            with self.assertRaises(RuntimeError):self.edit(self.a,name='Partial rename',budget={'bucket':'wants'})
         names=[c['name'] for c in self.listing()['categories']]
         self.assertNotIn('Partial creation',names);self.assertNotIn('No date',names);self.assertNotIn('Stale create',names)
+        self.assertNotIn('Partial rename',names);self.assertIn('Gas',names)
     def test_hub_shared_creation_rollback_links_and_preserved_funding(self):
         self.shared()
         result=self.create_details('Emergency fund',budget={'bucket':'savings','target_minor':500000})
@@ -80,6 +82,13 @@ class CategoryTests(TestCase):
         with connect(self.database.with_suffix('.plaid-live.db')) as db:
             manual_id=db.execute('SELECT manual_id FROM category_sync WHERE local_id=?',(identifier,)).fetchone()[0]
         plan=self.client.get('/api/plaid/live/preview/plan?month='+self.month).json()
+        base='/api/plaid/live/preview/plan'
+        setup=self.client.post(base+'/setup',json={'token':plan['opening_token'],'cash_accounts':[a['id'] for a in plan['accounts'] if a['kind']=='checking'],'method':'zero'})
+        self.assertEqual(setup.status_code,200,setup.text)
+        plan=self.client.get(base+'?month='+self.month).json()
+        assigned=self.client.post(base+'/actions?month='+self.month,json={'token':plan['token'],'lines':[{'category':'c:'+str(identifier),'amount_minor':12300}]})
+        self.assertEqual(assigned.status_code,200,assigned.text)
+        plan=self.client.get(base+'?month='+self.month).json()
         before=[(c['id'],c['assigned_minor'],c['available_minor']) for c in plan['categories']]
         self.edit(identifier,name='Emergency savings',budget={'bucket':'savings','group':'Long term','target_minor':600000,'target_type':'refill'})
         for _ in range(2):
@@ -89,6 +98,7 @@ class CategoryTests(TestCase):
             self.assertEqual(db.execute('SELECT name FROM categories WHERE id=?',(manual_id,)).fetchone()[0],'Emergency savings')
         after=self.client.get('/api/plaid/live/preview/plan?month='+self.month).json()
         self.assertEqual(before,[(c['id'],c['assigned_minor'],c['available_minor']) for c in after['categories']])
+        self.assertEqual(plan['ready_minor'],after['ready_minor'])
         with patch('finance.category_management.save_category_budget',side_effect=RuntimeError('Synthetic second-store create failure')):
             with self.assertRaises(RuntimeError):self.create_details('No orphan shared category',budget={'bucket':'wants'})
         with connect(self.database) as db:self.assertIsNone(db.execute("SELECT 1 FROM categories WHERE name='No orphan shared category'").fetchone())

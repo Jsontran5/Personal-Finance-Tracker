@@ -93,7 +93,7 @@ export function BudgetOverview({ summary, categories, month, ratios, onCategory,
     </div>
     <section className="card">
       <div className="section-heading"><div><h2>Budget categories</h2><small>Open a category to edit its bucket or view its transactions.</small></div>
-        <button className="secondary small" onClick={onManage}>Organize categories</button>
+        <button className="secondary small" onClick={onManage}>Manage categories</button>
       </div>
       {buckets.slice(0, 3).map(({ key, label }) => {
         const members = categories.filter(category => category.id && category.bucket === key && (!category.archived || category.actual_minor))

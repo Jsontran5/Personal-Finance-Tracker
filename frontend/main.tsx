@@ -59,7 +59,6 @@ type DialogState =
   | { type: 'account'; account?: Account }
   | { type: 'balance'; account: Account }
   | { type: 'budget'; budget: Budget }
-  | { type: 'category' }
   | { type: 'sandbox-transaction'; entry: Transaction }
 
 const kinds: Record<Kind, string> = { expense: 'Expense', income: 'Income', refund: 'Refund', transfer: 'Transfer', investment: 'Investment activity' }
@@ -501,8 +500,6 @@ function App() {
       void save((synced ? previewPath : '') + '/budgets/' + month + '/' + dialog.budget.id, 'PUT', () => ({
         limit_minor: read(form, 'amount') ? parseMoney(read(form, 'amount'), 'USD') : null,
       }))
-    } else if (dialog?.type === 'category') {
-      void save((synced ? previewPath : '') + '/categories', 'POST', () => ({ name: read(form, 'name'), kind: read(form, 'kind') }))
     }
   }
 
@@ -677,7 +674,7 @@ function App() {
             }}>Delete</button></div></div>)}
         </section>}
       </div>}
-      {ready && page === 'Budgets' && <BudgetWorkspace key={mode+scenario} request={request} path={(synced?previewPath:'')+'/plan'} month={month} revision={revision} onChanged={()=>setRevision(value=>value+1)} onNewCategory={()=>open({type:'category'})} onOpenTransaction={id=>{drillSpending([id], 'Budget transaction details', 'Budgets');const entry=ready.transactions.find(tx=>tx.id===id);if(entry)editTransaction(entry)}} />}
+      {ready && page === 'Budgets' && <BudgetWorkspace key={mode+scenario} request={request} path={(synced?previewPath:'')+'/plan'} month={month} revision={revision} onChanged={()=>setRevision(value=>value+1)} onOpenTransaction={id=>{drillSpending([id], 'Budget transaction details', 'Budgets');const entry=ready.transactions.find(tx=>tx.id===id);if(entry)editTransaction(entry)}} />}
       {ready && page === 'Accounts' && <AccountList unified={unified} live={mode === 'live'} key={mode + scenario} accounts={ready.accounts} sandbox={synced} primary={ready.primary_account_id}
         money={money} add={() => unified ? void openManual('account') : open({ type: 'account' })} details={account => <>
           <button className="secondary small" onClick={() => { setPage('Transactions'); setAllReviewDates(true); setAccountFilter(account.id); setCategoryFilter(0); setReviewFilter('all'); setSearch(''); setDrilldown(null) }}>View account transactions →</button>
@@ -700,7 +697,6 @@ function App() {
       dialog.type === 'manual-transfers' ? 'Manual transfer matches' : dialog.type === 'account' ? dialog.account ? 'Edit account' : 'Add account'
         : dialog.type === 'balance' ? 'Record balance'
         : dialog.type === 'budget' ? dialog.budget.name + ' limit'
-        : dialog.type === 'category' ? 'New category'
         : dialog.type === 'sandbox-transaction' ? mode === 'live' ? 'Classify bank transaction' : 'Classify test transaction'
         : dialog.template ? 'New template' : dialog.entry && 'date' in dialog.entry ? 'Edit transaction' : 'Add transaction'
     } close={() => { if (!busy) setDialog(null) }}>
@@ -734,10 +730,6 @@ function App() {
           {dialog.type === 'budget' && <>
             <p className="muted">{activeMonth} · Leave blank to clear this limit.</p>
             <label>Limit (USD)<input data-autofocus name="amount" inputMode="decimal" defaultValue={dialog.budget.limit_minor === null ? '' : editableMoney(dialog.budget.limit_minor)} /></label>
-          </>}
-          {dialog.type === 'category' && <>
-            <label>Name<input data-autofocus name="name" required maxLength={120} /></label>
-            <label>Type<select name="kind"><option value="expense">Expense</option><option value="income">Income</option></select></label>
           </>}
           {dialog.type === 'sandbox-transaction' && <>
             <p className="muted">{dialog.entry.date} · {money(dialog.entry.amount_minor, dialog.entry.currency)} · {dialog.entry.account_name}</p>
