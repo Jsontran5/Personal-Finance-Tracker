@@ -20,7 +20,8 @@ def snapshot_history(db, *, investments=False):
     """One latest daily snapshot, retaining only that day's observed values.
 
     Copies of another institution's older balance remain stored for recovery,
-    but are null in this day's chart rather than presented as a new observation.
+    but remain null as fresh observations. A separate saved_balance_minor field
+    permits explicit tracking-addition points to use the values captured then.
     """
     points = {row['id']: {'date': row['date'], 'net_worth_minor': row['assets_minor'] - row['liabilities_minor'],
                           'assets_minor': row['assets_minor'], 'liabilities_minor': row['liabilities_minor'],
@@ -37,6 +38,7 @@ def snapshot_history(db, *, investments=False):
         value = row['balance_minor'] if valid else None
         point['accounts'].append({'account_id': row['account_id'] if investments else row['row_id'],
                                   'currency': row['currency'], 'value_minor': value, 'balance_minor': value,
+                                  'saved_balance_minor': row['balance_minor'] if row['currency']=='USD' else None,
                                   'observed_at': row['checked_at'], 'source': row['source']})
     return list(points.values())
 

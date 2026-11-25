@@ -3,14 +3,15 @@ import { Popover, PopoverClose, PopoverContent, PopoverTitle, PopoverTrigger } f
 import { Icon } from './icons'
 import { groupedAccounts, type GroupAccount } from './accounts'
 import { BankingHistory, SnapshotGuide } from './BankingHistory'
+import { recordedHistory } from './recordedHistory'
 
 type Money = (value: number, currency?: string) => string
 type Request = <T>(path: string, method?: string, body?: object, signal?: AbortSignal) => Promise<T>
-export type ChartPoint = { date: string; value_minor: number | null }
+export type ChartPoint = { date: string; value_minor: number | null; note?: string }
 export type HistoryPoint = {
   date: string
   net_worth_minor: number
-  accounts: { account_id: number; balance_minor: number | null }[]
+  accounts: { account_id: number; balance_minor: number | null; saved_balance_minor?: number | null }[]
 }
 type Account = GroupAccount & { id: number; name: string; currency: string; include_in_net_worth: number; balance_minor: number | null }
 
@@ -79,8 +80,8 @@ export function Chart({ history, money, currency = 'USD', label = 'Recorded net 
                 {!estimated && <polygon points={line + ' ' + segment.at(-1)!.x + ',150 ' + segment[0].x + ',150'} fill={'url(#' + gradient + ')'} />}
                 <polyline points={line} className="chart-line" />
               </>}
-              {segment.filter((_, index) => !estimated || index % Math.max(1, Math.ceil(segment.length / 24)) === 0 || index === segment.length - 1).map(({ x, y, point }) => <circle key={point.date} cx={x} cy={y} r={3.5} className="chart-point" tabIndex={0}>
-                <title>{point.date} · {estimated ? 'Estimated ' : 'Snapshot '}{money(point.value_minor!, currency)}</title>
+              {segment.filter((_, index) => !estimated || index % Math.max(1, Math.ceil(segment.length / 24)) === 0 || index === segment.length - 1).map(({ x, y, point }) => <circle key={point.date} cx={x} cy={y} r={point.note ? 5 : 3.5} data-tracking-change={point.note ? true : undefined} className="chart-point" tabIndex={0}>
+                <title>{point.date} · {estimated ? 'Estimated ' : 'Snapshot '}{money(point.value_minor!, currency)}{point.note ? ' · ' + point.note : ''}</title>
               </circle>)}
             </g>
           })}
@@ -89,6 +90,7 @@ export function Chart({ history, money, currency = 'USD', label = 'Recorded net 
       <div className="chart-caption"><span>{points[0].date}</span><span>{estimated ? 'Estimated banking balances' : 'Recorded balances'} · {currency}</span><span>{points.length > 1 && points.at(-1)!.date}</span></div>
     </> : <p className="empty">No complete recorded balances in this period.</p>}
     {missing > 0 && <p className="muted chart-gap-note">Missing or incomplete {estimated ? 'banking coverage' : 'balance dates'} leave gaps for this selection. No values are filled in.</p>}
+    {history.some(point => point.note) && <p className="muted chart-gap-note">Account additions change the tracked total. Hover an addition point for its saved-balance details.</p>}
   </div>
 }
 
@@ -143,17 +145,7 @@ export function NetWorth({ accounts, history, mode, request, money, onStart, onS
   const complete = selected.length > 0 && selected.every(account => account.balance_minor !== null)
   const assets = selected.reduce((sum, account) => sum + Math.max(account.balance_minor ?? 0, 0), 0)
   const liabilities = selected.reduce((sum, account) => sum - Math.min(account.balance_minor ?? 0, 0), 0)
-  const points = history.map(snapshot => {
-    const balances = new Map(snapshot.accounts.map(account => [account.account_id, account.balance_minor]))
-    return {
-      date: snapshot.date,
-      value_minor: selected.every(account => balances.get(account.id) != null)
-        ? selected.reduce((sum, account) => {
-          const value = balances.get(account.id)!
-          return sum + (chartMode === 'assets' ? Math.max(value, 0) : chartMode === 'debt' ? Math.max(-value, 0) : value)
-        }, 0) : null,
-    }
-  })
+  const points = recordedHistory(history, selected.map(account => account.id), chartMode as 'net' | 'assets' | 'debt')
 
   return <section className="card hero" aria-labelledby="net-worth-title">
     <div className="net-worth-statement">

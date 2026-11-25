@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Chart } from './Charts'
+import { recordedHistory } from './recordedHistory'
 import { SnapshotGuide } from './BankingHistory'
 import { ViewSelector } from './ViewSelector'
 
@@ -10,7 +11,7 @@ type Holding = { account_id: string; security_id: string; name: string; ticker: 
   quantity: number | string | null; price: number | string | null; value_minor: number | null; cost_basis_minor: number | null; gain_minor: number | null;
   price_as_of: string | null; retrieved_at: string; provider: object; security: object }
 type Portfolio = { accounts: Account[]; holdings: Holding[]; state: { holdings_at: string | null; activity_at: string | null; activity_start: string | null; activity_end: string | null } | null;
-  history: { date: string; accounts: { account_id: string; currency: string | null; value_minor: number | null }[] }[] }
+  history: { date: string; accounts: { account_id: string; currency: string | null; value_minor: number | null; saved_balance_minor?:number|null }[] }[] }
 type Activity = { id: string; account_name: string; date: string; name: string; type: string | null; subtype: string | null; quantity: number | string | null;
   security_name: string | null; ticker: string | null; amount_minor: number | null; price: number | string | null; fees_minor: number | null; currency: string | null; provider: object; security: object }
 type ActivityPage = { rows: Activity[]; total: number; page_size: number }
@@ -95,10 +96,7 @@ export function Investments({ sandbox, managed, live, request, money, openBank, 
   })
   const allocation = [...exposure.entries()].sort((a, b) => b[1] - a[1])
   const allocationTotal = allocation.reduce((sum, item) => sum + item[1], 0)
-  const history = data.history.map(point => {
-    const selected = usd.map(item => point.accounts.find(observed => observed.account_id === item.id && observed.currency === 'USD'))
-    return { date: point.date, value_minor: selected.length && selected.every(item => item?.value_minor != null) ? selected.reduce((sum, item) => sum + item!.value_minor!, 0) : null }
-  })
+  const history = recordedHistory(data.history.map(point => ({...point, accounts:point.accounts.map(observed=>({...observed,value_minor:observed.currency==='USD'?observed.value_minor:null}))})), usd.map(item=>item.id))
   const format = (value: number | null, currency: string | null) => value === null || !currency ? '—' : money(value, currency)
   function price(value: number | string | null, currency: string | null) {
     if (value == null || !currency || !Number.isFinite(Number(value))) return '—'
