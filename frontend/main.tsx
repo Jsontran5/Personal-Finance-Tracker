@@ -179,23 +179,25 @@ function EntryForm({ data, state, save, remove, busy }: {
 }
 
 function CashFlow({ data, month, drill }: { data: Overview; month: string; drill: (ids: number[], label: string) => void }) {
-  const eligible = data.transactions.filter(tx => tx.currency === 'USD' && !tx.pending && !tx.needs_review && !tx.transfer_pair_id && ['income', 'expense', 'refund'].includes(tx.kind))
-  const pending = data.transactions.filter(tx => tx.currency==='USD' && tx.pending && !tx.needs_review && !tx.transfer_pair_id && ['income','expense','refund'].includes(tx.kind))
-  const pendingIncome = pending.filter(tx=>tx.kind==='income').reduce((s,tx)=>s+tx.amount_minor,0)
-  const pendingSpending = pending.filter(tx=>tx.kind!=='income').reduce((s,tx)=>s+tx.amount_minor*(tx.kind==='refund'?-1:1),0)
-  const magnitude = Math.max(data.income_minor, Math.abs(data.spending_minor), 1)
+  const [includePending,setIncludePending]=useState(true)
+  const entries=data.transactions.filter(tx=>tx.date.slice(0,7)===data.spending.month&&Number(tx.date.slice(8))<=data.spending.through_day&&tx.currency==='USD'&&!tx.needs_review&&!tx.transfer_pair_id&&['income','expense','refund'].includes(tx.kind))
+  const eligible=entries.filter(tx=>includePending||!tx.pending)
+  const pending=entries.filter(tx=>tx.pending)
+  const pendingIncome=pending.filter(tx=>tx.kind==='income').reduce((s,tx)=>s+tx.amount_minor,0)
+  const pendingSpending=pending.filter(tx=>tx.kind!=='income').reduce((s,tx)=>s+tx.amount_minor*(tx.kind==='refund'?-1:1),0)
+  const income=data.income_minor+(includePending?pendingIncome:0)
+  const spending=data.spending_minor+(includePending?pendingSpending:0)
+  const total=income-spending
+  const magnitude=Math.max(income,Math.abs(spending),1)
   return <section className="card cashflow" aria-labelledby="cashflow-title">
-    <div className="section-heading"><div><h2 id="cashflow-title">Cash flow</h2><small>{month} · Posted · USD</small></div>
-      <span className="panel-icon"><Icon name="transactions" /></span>
-    </div>
-    <button className={'cashflow-total cashflow-value numeric ' + (data.cash_flow_minor < 0 ? 'negative' : data.cash_flow_minor > 0 ? 'positive' : '')} data-help="View the posted income, purchases and refunds included in this month’s cash flow. Transfers and pending entries are excluded." onClick={() => drill(eligible.map(tx => tx.id), 'Cash flow · ' + month)}>{money(data.cash_flow_minor)}<small>View transactions →</small></button>
-    {!!pending.length&&<div className="pending-report-note"><strong>{money(data.cash_flow_minor-pendingSpending)} after pending spending (estimate)</strong><span>Pending net spending: {money(pendingSpending)} · Pending income: {money(pendingIncome)} (not included above)</span><button className="secondary small" onClick={()=>drill(pending.map(tx=>tx.id),'Pending cash flow activity · '+month)}>Review pending transactions</button></div>}
+    <div className="section-heading"><div><h2 id="cashflow-title">Cash flow</h2><small>{month} · USD</small></div><span className="panel-icon"><Icon name="transactions" /></span></div>
+    <label className="cashflow-scope"><span className="sr-only">Cash flow activity</span><select aria-label="Cash flow activity" value={includePending?'all':'posted'} onChange={e=>setIncludePending(e.target.value==='all')}><option value="all">Posted + pending</option><option value="posted">Posted only</option></select></label>
+    <button className={'cashflow-total cashflow-value numeric '+(total<0?'negative':total>0?'positive':'')} data-help="Income minus spending for the selected activity status. Pending entries are provisional; they do not become budget funding." onClick={()=>drill(eligible.map(tx=>tx.id),'Cash flow · '+month)}>{money(total)}<small>View transactions →</small></button>
     <div className="cashflow-bars">
-      <button className="flow-income cashflow-drill" onClick={() => drill(eligible.filter(tx => tx.kind === 'income').map(tx => tx.id), 'Income · ' + month)}><div><span><Icon name="income" /> Income</span><strong className="numeric">{money(data.income_minor)}</strong></div>
-        <FinanceMeter label="Income relative to the larger monthly total" max={magnitude} value={data.income_minor} /></button>
-      <button className="flow-spending cashflow-drill" onClick={() => drill(eligible.filter(tx => tx.kind !== 'income').map(tx => tx.id), 'Spending · ' + month)}><div><span><Icon name="expense" /> Spending</span><strong className="numeric">{money(data.spending_minor)}</strong></div>
-        <FinanceMeter label="Net spending magnitude relative to the larger monthly total" max={magnitude} value={Math.abs(data.spending_minor)} /></button>
+      <button className="flow-income cashflow-drill" onClick={()=>drill(eligible.filter(tx=>tx.kind==='income').map(tx=>tx.id),'Income · '+month)}><div><span><Icon name="income" /> Income</span><strong className="numeric">{money(income)}</strong></div><FinanceMeter label="Income relative to the larger monthly total" max={magnitude} value={income}/></button>
+      <button className="flow-spending cashflow-drill" onClick={()=>drill(eligible.filter(tx=>tx.kind!=='income').map(tx=>tx.id),'Spending · '+month)}><div><span><Icon name="expense" /> Spending</span><strong className="numeric">{money(spending)}</strong></div><FinanceMeter label="Net spending relative to the larger monthly total" max={magnitude} value={Math.abs(spending)}/></button>
     </div>
+    <details className="metric-note"><summary>Posted and pending breakdown</summary><p>Posted cash flow: {money(data.cash_flow_minor)}. Pending income: {money(pendingIncome)}. Pending net spending: {money(pendingSpending)}. Pending amounts may change; pending income is not assignable budget cash.</p>{!!pending.length&&<button className="secondary small" onClick={()=>drill(pending.map(tx=>tx.id),'Pending cash flow activity · '+month)}>View pending transactions</button>}</details>
   </section>
 }
 
@@ -207,7 +209,7 @@ function TransactionList({ transactions, edit, empty = 'No transactions match th
       const flow: Flow = tx.flow ?? { direction: fallbackDirection, from: fallbackDirection === 'in' ? tx.transfer_other_account ?? 'Source not supplied' : fallbackDirection === 'out' ? tx.account_name : 'Direction unavailable', to: fallbackDirection === 'in' ? tx.account_name : tx.destination_name ?? tx.transfer_other_account ?? 'Destination not supplied', basis: tx.destination_name ? 'manual' : 'unavailable' }
       const row = <button className="ledger-row" data-transaction-id={tx.id} data-direction={flow.direction} key={tx.id} onClick={() => edit(tx)}>
       <span className={'row-icon row-' + tx.kind + ' flow-' + flow.direction}><Icon name={flow.direction === 'in' ? 'income' : flow.direction === 'out' ? 'expense' : 'transactions'} /></span>
-      <span className="row-main"><strong>{tx.merchant}</strong><TransactionFlow flow={flow} /><small className="transaction-meta">{tx.transfer_pair_id ? tx.transfer_kind === 'card_payment' ? 'Card payment' : 'Transfer' : tx.needs_review ? 'Review credit' : kinds[tx.kind]} · <time dateTime={tx.date}>{tx.date}</time>{tx.pending ? ' · Pending' : ' · Posted'}{tx.transfer_pair_id ? ' · Confirmed pair' : ''}{tx.needs_review ? ' · Review credit type' : statuses[tx.id] === 'needs_review' ? ' · Flagged' : statuses[tx.id] === 'reviewed' ? ' · Reviewed' : ''}</small></span>
+      <span className="row-main"><strong>{tx.merchant}</strong><TransactionFlow flow={flow} /><small className="transaction-meta">{tx.transfer_pair_id ? tx.transfer_kind === 'card_payment' ? 'Card payment' : 'Transfer' : tx.needs_review ? 'Review credit' : kinds[tx.kind]} · <time dateTime={tx.date}>{tx.date}</time><span className="posting-status" data-status={tx.pending?'pending':'posted'}>{tx.pending?'Pending':'Posted'}</span>{tx.transfer_pair_id ? ' · Confirmed pair' : ''}{tx.needs_review ? ' · Review credit type' : statuses[tx.id] === 'needs_review' ? ' · Flagged' : statuses[tx.id] === 'reviewed' ? ' · Reviewed' : ''}</small></span>
       <span className="chip row-category" data-tone={tx.category_id ? tx.category_id % 5 : 0}>{tx.transfer_pair_id ? tx.transfer_kind === 'card_payment' ? 'Card payment' : 'Linked transfer' : tx.needs_review ? 'Review credit' : tx.category_name ?? kinds[tx.kind]}</span>
       <span className="row-money"><span className={'numeric ' + (flow.direction === 'in' ? 'positive' : '')}>
         {flow.direction === 'out' ? '\u2212' : flow.direction === 'in' ? '+' : ''}{money(tx.amount_minor, tx.currency)}

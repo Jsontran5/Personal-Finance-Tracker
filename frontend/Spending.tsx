@@ -177,8 +177,7 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
       onChange={measure => change({ measure, category: 'all' })}
       onReselect={() => change({ category: 'all' })}
       options={[{ value: 'spending', label: 'Spending' }, { value: 'income', label: 'Income' }, { value: 'cashflow', label: 'Cash flow' }]} />
-    <section className="card report-filters" aria-label="Report filters">
-      <div className="section-heading"><h2>Report filters</h2><p className="analytics-note">{filters.status==='posted'?'Posted':filters.status==='pending'?'Pending estimates':'Posted + pending estimates'} · USD</p></div>
+    <div className="report-toolbar"><label>Activity<select aria-label="Report transaction status" value={filters.status} onChange={event => change({status:event.target.value as ReportFilters['status']})}><option value="all">Posted + pending</option><option value="posted">Posted only</option><option value="pending">Pending only</option></select></label><details className="report-filters report-filter-disclosure" aria-label="Report filters"><summary>More filters <small>{filters.accounts.length?filters.accounts.length+' accounts':'All accounts'} · {filters.category==='all'?'All categories':'Category selected'}</small></summary>
       <div className="report-filter-fields">
         <details className="report-account-filter"><summary>Accounts · {filters.accounts.length ? filters.accounts.length + ' selected' : 'All'}</summary>
           <div className="report-account-options">
@@ -191,28 +190,28 @@ export function SpendingPage({ month, money, drill, changeMonth, sandbox, reques
             <button className="secondary small" onClick={event => { const details = event.currentTarget.closest('details'); if (details) { details.open = false; details.querySelector('summary')?.focus() } }}>Done</button>
           </div>
         </details>
-        <label>Transaction status<select aria-label="Report transaction status" value={filters.status} onChange={event => change({status:event.target.value as ReportFilters['status']})}><option value="all">Posted + pending</option><option value="posted">Posted only</option><option value="pending">Pending only</option></select></label>
         <label>Assigned category<select aria-label="Report category" value={filters.category} onChange={event => change({ category: event.target.value })}>
           <option value="all">All categories</option><option value="uncategorized">Uncategorized</option>{selectedCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
         </select></label>
         <label>Compare with<select aria-label="Report comparison" value={comparison ? 'custom' : 'previous'} onChange={event => {
-          if (event.target.value === 'previous') change({ comparison: '', status: 'all' })
+          if (event.target.value === 'previous') change({ comparison: '' })
           else change({ comparison: previousMonth(month) })
         }}><option value="previous">Previous month</option><option value="custom" disabled={month === '0001-01'}>Choose month</option></select></label>
         {comparison && <MonthPicker label="Comparison month" value={comparison} max={previousMonth(month)} onChange={value => change({ comparison: value })} />}
         <button className="secondary small" onClick={() => setFilters({ ...defaultReportFilters, measure: filters.measure })}>Reset filters</button>
       </div>
-    </section>
+    </details></div>
     <div className="report-results">
     {error && <p className="notice" role="alert">{error} <button className="secondary small" onClick={() => setRetry(value => value + 1)}>Retry report</button></p>}
     {!report && !error && <p className="muted" role="status">Loading report…</p>}
     {report && <>
-      <section className="pending-report-note" aria-label="Report status breakdown"><strong>{filters.status==='posted'?'Posted totals':filters.status==='pending'?'Pending estimate':'Combined estimate · posted + pending'}</strong><span>Posted: {money(report.posted_minor??0)} · Pending: {money(report.pending_minor??0)} ({report.pending_count??0} {(report.pending_count??0)===1?'entry':'entries'})</span><small>All charts, calendars and transactions below follow this status filter. Pending amounts, dates and names can change or disappear on sync. Pending income is provisional and cannot be assigned in your budget.</small></section>
+
       <div className={'spending-metrics' + (income ? ' income-metrics' : '')}>
         {(income ? [['Income', report.net_minor], ['Daily average', report.average_minor]] : cashflow ? [['Cash flow', report.net_minor], ['Income', report.income_minor], ['Net spending', report.spending_minor], ['Daily average', report.average_minor]] : [['Net spending', report.net_minor], ['Purchases', report.purchases_minor], ['Refunds', report.refunds_minor], ['Daily average', report.average_minor]]).map(([title, value]) =>
-          <section className="card metric-card" key={title} data-metric={title}><h2>{title}</h2><strong className="numeric">{value === null ? '—' : money(Number(value))}</strong><small className={filters.status==='posted'?'':'pending-marker'}>{filters.status==='posted'?'Posted':filters.status==='pending'?'Pending estimate':'Estimate · includes pending'}</small>
+          <section className="card metric-card" key={title} data-metric={title}><h2>{title}</h2><strong className="numeric">{value === null ? '—' : money(Number(value))}</strong><small className="report-scope">{filters.status==='posted'?'Posted':filters.status==='pending'?'Pending':'Posted + pending'}</small>
             {title === 'Daily average' ? <small>Per elapsed calendar day</small> : title === 'Net spending' ? <small>Purchases minus refunds</small> : title === 'Cash flow' && <small>Income minus net spending</small>}</section>)}
       </div>
+      <details className="report-status-detail" aria-label="Report status breakdown"><summary><span>Posted {money(report.posted_minor??0)} · Pending {money(report.pending_minor??0)}</span><span className="muted">How pending works</span></summary><p>These totals and charts follow the activity filter. Pending amounts, dates and names can change or disappear on sync. Pending income cannot be assigned in your budget. {report.pending_count??0} pending {(report.pending_count??0)===1?'entry':'entries'} in this view.</p></details>
       <section className="card spending-main">
         <div className="section-heading"><div><h2>{label} this month</h2><small>{monthLabel(month)} · {report.through_day ? 'Through day ' + report.through_day : 'No elapsed days'}</small></div>
           <button className="secondary small" onClick={() => drill(report.eligible_ids, label + ' · ' + monthLabel(month) + ' · ' + money(report.net_minor))}>View transactions →</button></div>

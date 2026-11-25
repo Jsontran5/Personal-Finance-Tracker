@@ -450,11 +450,43 @@ button.primary:active:not(:disabled), button.secondary:active:not(:disabled), .a
 
 .budget-table .budget-availability-label { display: block; margin-top: .4rem; max-width: 12rem; margin-left: auto; text-align: right; line-height: 1.4; white-space: normal; color: var(--text); }
 
-/* Pending previews are visually separate from posted funding. */
-.pending-report-note { display: grid; gap: .5rem; padding: 1rem; margin: 1rem 0; border: 1px dashed var(--amber); border-radius: .8rem; background: color-mix(in srgb, var(--amber) 8%, var(--surface)); color: var(--text); overflow-wrap: anywhere; }
-.pending-report-note small { line-height: 1.5; }
-.pending-marker { display: inline-block; color: var(--text); border-bottom: 1px dashed var(--amber); font-size: .75rem; line-height: 1.4; }
+/* Status is ordinary context, not a warning banner. */
+.pending-marker { display: inline-block; color: var(--notice); font-size: .75rem; line-height: 1.4; }
 .calendar-day .pending-marker { font-size: .6rem; }
-.budget-pending-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; margin: 1rem 0; }
-.budget-pending-controls small { flex: 1 1 18rem; line-height: 1.5; }
-.budget-table .budget-pending-preview { display: block; max-width: 13rem; margin: .5rem 0 0 auto; text-align: right; line-height: 1.5; white-space: normal; color: var(--text); }
+.posting-status { display: inline-block; vertical-align: baseline; margin-inline-start: .4rem; padding: .08rem .45rem; border-radius: 999px; border: 1px solid; font-size: .72rem; font-weight: 650; line-height: 1.5; white-space: nowrap; }
+.posting-status[data-status="pending"] { color: var(--notice); border-color: color-mix(in srgb, var(--notice) 35%, transparent); background: color-mix(in srgb, var(--notice) 10%, var(--surface)); }
+.posting-status[data-status="posted"] { color: var(--positive); border-color: color-mix(in srgb, var(--positive) 35%, transparent); background: color-mix(in srgb, var(--positive) 10%, var(--surface)); }
+.budget-pending-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.5rem; margin: .5rem 0; }
+.budget-pending-controls > span { font-size: .8rem; }
+.budget-column-scope { display: block; font-weight: 400; font-size: .72rem; margin-top: .15rem; color: var(--muted); }
+.budget-table td { vertical-align: middle; }
+.budget-table .budget-availability-label { white-space: normal; }
+.report-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: .75rem; min-width: 0; }
+.report-toolbar > label { flex: 0 1 13rem; font-size: .8rem; }
+.report-toolbar > label select { margin-top: .3rem; }
+.report-filter-disclosure { flex: 1 1 15rem; background: transparent; padding: 0; display: block; }
+.report-filter-disclosure > summary { min-height: 42px; padding: .6rem .8rem; border: 1px solid var(--control-line); border-radius: var(--radius-control); cursor: pointer; }
+.report-filter-disclosure > summary small { margin-left: .75rem; color: var(--muted); }
+.report-filter-disclosure[open] { flex-basis: 100%; }
+.report-filter-disclosure[open] > .report-filter-fields { margin-top: .75rem; padding: 1rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--raised); }
+.report-status-detail { color: var(--muted); font-size: .82rem; margin: 0; }
+.report-status-detail > summary { display: flex; justify-content: space-between; gap: .75rem; cursor: pointer; list-style: none; }
+.report-status-detail > summary::after { content: '+'; }
+.report-status-detail[open] > summary::after { content: '−'; }
+.report-status-detail p { max-width: 75ch; margin: .5rem 0 0; line-height: 1.5; }
+.report-scope { color: var(--muted); font-size: .75rem; }
+.cashflow-scope { display: block; max-width: 15rem; }
+.cashflow-scope select { min-height: 36px; padding-block: .4rem; }
+.cashflow > .metric-note { margin-top: 1rem; font-size: .8rem; }
+@media (max-width: 600px) {
+  .report-toolbar > label, .report-filter-disclosure { flex: 1 1 100%; }
+  .report-filter-disclosure > summary small { display: none; }
+  .report-status-detail > summary { flex-wrap: wrap; }
+  .budget-column-scope { display: none; }
+}
+
+@media (max-width: 640px) {
+  .budget-table[data-pending="true"] td:nth-child(3)::before { content: 'Activity + pending'; }
+  .budget-table[data-pending] td:last-child::before { content: 'Posted available'; display: block; color: var(--muted); font-size: .65rem; margin-bottom: 5px; }
+  .budget-table[data-pending="true"] td:last-child::before { content: 'Available after pending'; }
+}

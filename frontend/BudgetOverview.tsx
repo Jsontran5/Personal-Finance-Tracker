@@ -46,7 +46,7 @@ export function BudgetOverview({ summary, postedSummary, includePending, pending
   }).join(', ')
 
   return <div className="budget-monthly">
-    <p className="pending-report-note"><strong>{includePending?'Estimated spending · posted + pending':'Posted spending only'}</strong><span>Posted spending: {money(postedSummary.spending_minor)} · Pending net spending: {money(pendingNet)}</span><small>Income and guide percentages use posted income only. Pending income {money(pendingIncome)} is provisional. Pending amounts, dates and categories may change or disappear on sync.</small></p>
+
     <div className="budget-summary" aria-label={'Monthly totals for ' + month}>
       <section className="budget-ready" data-over={surplus < 0 || undefined}>
         <small><Icon name="budgets" /> {surplus < 0 ? 'Spending above income' : 'Income left after spending'}</small>
@@ -96,6 +96,7 @@ export function BudgetOverview({ summary, postedSummary, includePending, pending
         </details>
       </section>
     </div>
+    <details className="metric-note"><summary>Posted and pending breakdown</summary><p>Posted spending: {money(postedSummary.spending_minor)} · Pending net spending: {money(pendingNet)} · Pending income: {money(pendingIncome)}. Spending follows the preview switch; income and funding use posted income only. Pending amounts can change on sync.</p></details>
     <section className="card">
       <div className="section-heading"><div><h2>Budget categories</h2><small>Open a category to edit its bucket or view its transactions.</small></div>
         <button className="secondary small" onClick={onManage}>Manage categories</button>
