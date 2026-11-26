@@ -1,6 +1,6 @@
 # Personal Finance
 
-A local-first personal finance app for tracking accounts, transactions, budgets, investments, debt, and net worth. Use manual accounts on their own or connect financial institutions with your own Plaid credentials.
+A local-first personal finance app for tracking accounts, transactions, budgets, investments, debt, and net worth. Use manual accounts on their own or connect financial institutions with your own Plaid Free Trial credentials.
 
 ## Features
 
