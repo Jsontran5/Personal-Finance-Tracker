@@ -48,12 +48,12 @@ export function BackupRestore({ request, onRestored, initialWorkspace, unified =
   const matching = backups?.filter(backup => backup.id.toLowerCase().includes(filter.toLowerCase())) ?? []
   const currentPage = Math.min(page, Math.max(0, Math.ceil(matching.length / 10) - 1))
   const expectedConfirmation = preview?.workspace === 'personal' ? 'RESTORE MANUAL' : preview?.confirmation
-  const policy = preview?.bank_policy === 'keep_multiple_authorizations' ? 'Keeps the current authorizations for every institution. Restores data and per-connection cursors without creating connections.' : preview?.bank_policy === 'restore_multiple_authorizations' ? 'Restores the saved Windows-user encrypted authorizations. No new connections are created.' : preview?.bank_policy === 'keep_authorization_reset_feed'
+  const policy = preview?.bank_policy === 'keep_multiple_authorizations' ? 'Keeps the current authorizations for every institution. Restores data and per-connection cursors without creating connections.' : preview?.bank_policy === 'restore_multiple_authorizations' ? 'Restores saved authorizations protected by your OS user’s vault. No new connections are created.' : preview?.bank_policy === 'keep_authorization_reset_feed'
     ? 'Restores empty Sandbox data while retaining your current bank authorization. The next sync starts a fresh data checkpoint on the same connection.'
     : preview?.bank_policy === 'keep_current_authorization'
     ? 'Keeps your current bank authorization. Restores the backup’s data and transaction cursor; the next sync may replay later activity. No new connection is created.'
     : preview?.bank_policy === 'restore_saved_authorization'
-      ? 'Restores the saved encrypted bank authorization for this Windows user. No bank connection is created or contacted during restore.'
+      ? 'Restores the saved encrypted bank authorization for this OS user. No bank connection is created or contacted during restore.'
       : preview?.workspace !== 'personal' ? 'This backup has no saved bank connection.' : unified ? 'Your connected bank authorizations are unaffected.' : 'Your Sandbox bank connections are unaffected.'
   return <div className="backup-page">
     <div className="backup-actions">
@@ -70,7 +70,7 @@ export function BackupRestore({ request, onRestored, initialWorkspace, unified =
           setBackups(listed.backups); setFilter(''); setPage(0); setMessage(describe(mode) + ' backup created: ' + created.id)
         })}>Create backup</button></div>
       <details className="metric-note"><summary>Storage and automatic backups</summary>
-        <p>Backup files live in this project’s backups folder and contain private financial records. Bank authorization is encrypted for your Windows user. API credentials and local context files are excluded.</p>
+        <p>Backup files live in this project’s backups folder and contain private financial records. Bank authorization uses Windows DPAPI or macOS Keychain. Moving to another computer requires an encrypted migration. API credentials and local context files are excluded.</p>
         {unified && <p>Startup creates a backup pair before syncing when the last automatic pair is over 24 hours old. The latest 14 automatic pairs are kept. Manual and recovery backups are kept separately. Restore Manual first, then Connected from the same set.</p>}
         {(mode === 'sandbox_combined' || mode === 'live') && <p>{unified ? 'Restore the Manual file first and Connected second for a full recovery. Bank backups require the same connected institutions.' : 'Multi-institution backups require the same connected institutions. Back up Manual separately to preserve the original records mirrored here.'}</p>}
       </details>

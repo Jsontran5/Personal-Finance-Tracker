@@ -13,6 +13,7 @@ context_folder/
 *.db
 *.db-*
 *.finance-backup.zip
+*.finance-migration
 *.sqlite
 *.sqlite-*
 *.log

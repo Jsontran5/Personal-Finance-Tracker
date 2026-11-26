@@ -329,7 +329,7 @@ class BackupStore:
                     try:
                         protect(row['token'], False)
                     except Exception:
-                        raise ValueError('Combined saved authorization cannot be unlocked by this Windows user.') from None
+                        raise ValueError('Saved authorization cannot be unlocked by this OS user. Use an encrypted migration from the original computer.') from None
             return ('keep_multiple_authorizations' if current else 'restore_multiple_authorizations'), current
         with readonly(candidate) as db:
             saved = db.execute('SELECT * FROM connection WHERE id=1').fetchone()
@@ -355,7 +355,7 @@ class BackupStore:
             try:
                 protect(saved['token'], False)
             except Exception:
-                raise ValueError('This saved bank authorization cannot be unlocked by this Windows user. Restore it on the original Windows profile.') from None
+                raise ValueError('This saved bank authorization cannot be unlocked by this OS user. Restore it on the original computer or use an encrypted migration.') from None
             return 'restore_saved_authorization', None
         return 'no_saved_connection', None
 
