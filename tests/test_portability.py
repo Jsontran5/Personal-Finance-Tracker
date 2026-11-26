@@ -1,5 +1,5 @@
 """Synthetic-only OS vault and offline migration regression checks."""
-from io import BytesIO
+from io import BytesIO, StringIO
 from types import SimpleNamespace
 import json
 import os
@@ -15,6 +15,38 @@ from finance.recovery import BackupStore
 from finance.plaid_sandbox import SCHEMA
 from finance.multi_bank import initialize_combined
 from finance.live_setup import initialize_live
+
+
+class MigrationCLITests(TestCase):
+    def run_cli(self, passwords, failure=None):
+        with patch('sys.argv', ['finance.migration', 'export', 'fixture.finance-migration']), patch.object(migration, 'getpass', side_effect=passwords), patch.object(migration, 'export_bundle', side_effect=failure) as export, patch('sys.stderr', new_callable=StringIO) as stderr:
+            with self.assertRaises(SystemExit) as stopped:
+                migration.main()
+            self.assertEqual(stopped.exception.code, 1)
+            return stderr.getvalue(), export.called
+
+    def test_short_or_mismatched_passphrase_has_actionable_error_without_echo(self):
+        message, called = self.run_cli(['short'])
+        self.assertIn('between 12 and 1024 characters', message)
+        self.assertNotIn('short', message)
+        self.assertFalse(called)
+        message, called = self.run_cli(['synthetic first passphrase', 'synthetic other passphrase'])
+        self.assertIn('Passphrases do not match', message)
+        self.assertNotIn('synthetic', message)
+        self.assertFalse(called)
+
+    def test_expected_file_errors_are_specific_and_untrusted_errors_stay_hidden(self):
+        for failure, expected in [(FileExistsError('private filename'), 'already exists'),
+                                  (PermissionError('private filename'), 'access was denied'),
+                                  (FileNotFoundError('private filename'), 'does not exist'),
+                                  (migration.MigrationError('Migration exceeds the 256 MB limit.'), '256 MB'),
+                                  (ValueError('sensitive provider value'), 'Check the passphrase')]:
+            with self.subTest(error=type(failure).__name__):
+                message, called = self.run_cli(['synthetic passphrase', 'synthetic passphrase'], failure)
+                self.assertTrue(called)
+                self.assertIn(expected, message)
+                self.assertNotIn('private filename', message)
+                self.assertNotIn('sensitive provider value', message)
 
 
 class VaultTests(TestCase):

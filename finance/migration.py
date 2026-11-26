@@ -5,7 +5,7 @@ Keep the app stopped on both computers while exporting/importing.
 """
 import argparse
 from contextlib import ExitStack
-from getpass import getpass
+from getpass import GetPassWarning, getpass
 from io import BytesIO
 import json
 import os
@@ -28,9 +28,17 @@ HEADER = b'Finance-Migration-v1\0'
 TOKEN_AAD = HEADER + b'token'
 
 
-def password_key(password, salt):
+class MigrationError(ValueError):
+    """Only fixed, intentionally public messages may be shown by the CLI."""
+
+
+def validate_password(password):
     if not 12 <= len(password) <= 1024:
-        raise ValueError('Use a migration passphrase between 12 and 1024 characters.')
+        raise MigrationError('Use a migration passphrase between 12 and 1024 characters.')
+
+
+def password_key(password, salt):
+    validate_password(password)
     return Scrypt(salt=salt, length=32, n=2**17, r=8, p=1).derive(password.encode('utf-8'))
 
 
@@ -59,12 +67,12 @@ def rewrap(path, decode, encode):
 def export_bundle(database, destination, password):
     store = BackupStore(database)
     if destination.suffix != '.finance-migration':
-        raise ValueError('Choose a filename ending in .finance-migration.')
+        raise MigrationError('Choose a filename ending in .finance-migration.')
     salt = os.urandom(16)
     key = password_key(password, salt)
     modes = [mode for mode in VERSIONS if store.target(mode).is_file()]
     if not modes:
-        raise ValueError('No saved workspaces to export.')
+        raise MigrationError('No saved workspaces to export.')
     database.parent.mkdir(parents=True, exist_ok=True)
     with ExitStack() as locks:
         locks.enter_context(database_lock(store.guard))
@@ -81,10 +89,10 @@ def export_bundle(database, destination, password):
                     snapshot(store.target(mode), copy)
                     info = check_database(copy)
                     if info['workspace'] != ('sandbox' if mode == 'sandbox_investments' else mode):
-                        raise ValueError('Workspace identity does not match its file.')
+                        raise MigrationError('Workspace identity does not match its file.')
                     total += copy.stat().st_size
                     if total > MAX_SIZE - 1048576:
-                        raise ValueError('Migration exceeds the 256 MB limit.')
+                        raise MigrationError('Migration exceeds the 256 MB limit.')
                     rewrap(copy, lambda value: protect(value, False), lambda value: seal(key, value, TOKEN_AAD))
                     archive.write(copy, mode + '.sqlite')
                     preference = store.preference(mode)
@@ -92,7 +100,7 @@ def export_bundle(database, destination, password):
                     archive.writestr(mode + '.json', json.dumps(settings))
             content = memory.getvalue()
             if len(content) > MAX_SIZE:
-                raise ValueError('Migration exceeds the 256 MB limit.')
+                raise MigrationError('Migration exceeds the 256 MB limit.')
             encrypted = HEADER + salt + seal(key, content, HEADER + salt)
             # Exclusive creation avoids replacing an existing export or unrelated file.
             fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -108,16 +116,16 @@ def export_bundle(database, destination, password):
 def import_bundle(database, source, password):
     store = BackupStore(database)
     if source.stat().st_size > MAX_SIZE + 128:
-        raise ValueError('Migration exceeds the 256 MB limit.')
+        raise MigrationError('Migration exceeds the 256 MB limit.')
     content = source.read_bytes()
     if not content.startswith(HEADER) or len(content) < len(HEADER) + 44:
-        raise ValueError('Unsupported or incomplete migration file.')
+        raise MigrationError('Unsupported or incomplete migration file.')
     salt = content[len(HEADER):len(HEADER) + 16]
     key = password_key(password, salt)
     try:
         raw = unseal(key, content[len(HEADER) + 16:], HEADER + salt)
     except InvalidTag:
-        raise ValueError('Incorrect passphrase or damaged migration file. Nothing was imported.') from None
+        raise MigrationError('Incorrect passphrase or damaged migration file. Nothing was imported.') from None
     database.parent.mkdir(parents=True, exist_ok=True)
     with ExitStack() as locks:
         locks.enter_context(database_lock(store.guard))
@@ -125,23 +133,23 @@ def import_bundle(database, source, password):
             locks.enter_context(database_lock(store.target(mode)))
         # Intentionally fresh-install only, never merge or overwrite financial data.
         if any(store.target(mode).exists() or store.preference(mode).exists() for mode in VERSIONS):
-            raise ValueError('Import requires a fresh installation. Use a separate clone before its first launch; existing data was not changed.')
+            raise MigrationError('Import requires a fresh installation. Use a separate clone before its first launch; existing data was not changed.')
         with TemporaryDirectory(dir=database.parent, prefix='.migration-') as temporary:
             folder = Path(temporary)
             staged = []
             with zipfile.ZipFile(BytesIO(raw)) as archive:
                 entries = archive.infolist()
                 if len(entries) > 11 or len({entry.filename for entry in entries}) != len(entries) or sum(entry.file_size for entry in entries) > MAX_SIZE or any(entry.flag_bits & 1 for entry in entries):
-                    raise ValueError('Invalid migration contents or size.')
+                    raise MigrationError('Invalid migration contents or size.')
                 if archive.getinfo('manifest.json').file_size > 65536:
-                    raise ValueError('Invalid migration manifest.')
+                    raise MigrationError('Invalid migration manifest.')
                 manifest = json.loads(archive.read('manifest.json'))
                 modes = manifest.get('workspaces') if isinstance(manifest, dict) else None
                 if not isinstance(manifest, dict) or manifest.get('version') != 1 or not isinstance(modes, list) or not modes or any(not isinstance(mode, str) or mode not in VERSIONS for mode in modes) or len(set(modes)) != len(modes):
-                    raise ValueError('Unsupported migration manifest.')
+                    raise MigrationError('Unsupported migration manifest.')
                 expected = {'manifest.json'} | {mode + suffix for mode in modes for suffix in ('.sqlite', '.json')}
                 if {entry.filename for entry in entries} != expected:
-                    raise ValueError('Migration file list does not match its manifest.')
+                    raise MigrationError('Migration file list does not match its manifest.')
                 for mode in modes:
                     work = folder / mode
                     work.mkdir(mode=0o700)
@@ -150,12 +158,12 @@ def import_bundle(database, source, password):
                     copy.chmod(0o600)
                     info = check_database(copy)
                     if info['workspace'] != ('sandbox' if mode == 'sandbox_investments' else mode):
-                        raise ValueError('Migration database identity does not match.')
+                        raise MigrationError('Migration database identity does not match.')
                     migrate(copy, mode)
                     validate_current_schema(copy, mode, work)
                     rewrap(copy, lambda value: unseal(key, value, TOKEN_AAD), lambda value: protect(value, True))
                     if archive.getinfo(mode + '.json').file_size > 65536:
-                        raise ValueError('Invalid chart settings size.')
+                        raise MigrationError('Invalid chart settings size.')
                     settings = valid_selection(json.loads(archive.read(mode + '.json')))
                     staged.extend([(store.target(mode), copy.read_bytes()),
                                    (store.preference(mode), json.dumps(settings).encode())])
@@ -179,12 +187,25 @@ def main():
     parser.add_argument('file', type=Path, help='Password-encrypted .finance-migration file; import requires a fresh installation.')
     args = parser.parse_args()
     try:
-        warnings.simplefilter('error', __import__('getpass').GetPassWarning)
+        warnings.simplefilter('error', GetPassWarning)
         password = getpass('Migration passphrase (12+ characters): ')
+        validate_password(password)
         if args.action == 'export' and getpass('Confirm passphrase: ') != password:
-            raise ValueError('Passphrases do not match.')
+            raise MigrationError('Passphrases do not match. Run export again and enter the same passphrase both times.')
         action = export_bundle if args.action == 'export' else import_bundle
         modes = action(DATABASE, args.file, password)
+    except MigrationError as error:
+        parser.exit(1, 'Migration failed: ' + str(error) + '\n')
+    except FileExistsError:
+        parser.exit(1, 'Migration failed: the destination file already exists. Choose a new .finance-migration filename; the existing file was not replaced.\n')
+    except FileNotFoundError:
+        parser.exit(1, 'Migration failed: the source file or destination folder does not exist. Check the path and try again.\n')
+    except PermissionError:
+        parser.exit(1, 'Migration failed: file access was denied. Choose a writable destination and close programs locking the file.\n')
+    except GetPassWarning:
+        parser.exit(1, 'Migration failed: a hidden passphrase prompt is unavailable. Run this command directly in an interactive terminal.\n')
+    except KeyboardInterrupt:
+        parser.exit(130, '\nMigration cancelled.\n')
     except (ValueError, OSError, RuntimeError, sqlite3.Error, zipfile.BadZipFile, KeyError, TypeError, InvalidTag, Warning):
         # Never print exception contents: database/provider errors may contain private values.
         parser.exit(1, 'Migration failed. Check the passphrase, file, OS vault access and disk permissions. Import requires a fresh clone before first launch. The source computer is unchanged.\n')
